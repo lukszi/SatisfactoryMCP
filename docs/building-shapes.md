@@ -1,9 +1,10 @@
 # Building shapes
 
 The web map draws machines, extractors, generators, storage boxes, fluid buffers, belt
-splitters/mergers, pipe fittings (junctions, pumps, valves) and the one-off facilities (the HUB,
-the AWESOME Sink, the MAM and the like) as an approximation of their real top-down shape: the
-footprint, up to four lighter height bands inside it, and a notch at each belt and pipe port.
+splitters/mergers, pipe fittings (junctions, pumps, valves), hypertube entrances and the one-off
+facilities (the HUB, the AWESOME Sink, the MAM and the like) as an approximation of their real
+top-down shape: the footprint, up to four lighter height bands inside it, and a notch at each
+belt and pipe port.
 This page says where those outlines and ports come from and how far to trust them.
 
 ## Where they come from
@@ -12,7 +13,7 @@ This page says where those outlines and ports come from and how far to trust the
 container needs `ooz`) and writes `data/building_shapes.json`. It is a committed table like the
 node tables: derived measurements (a few dozen vertices per class and the connector positions),
 not meshes, and the server needs no game assets to serve it. It is written one line per class
-(56 KB for 61 classes), so a regeneration diffs by class rather than by number. The `_meta` block carries the
+(56 KB for 62 classes), so a regeneration diffs by class rather than by number. The `_meta` block carries the
 build it was cut from, and `provenance.PINNED_ARTIFACTS` lists it, so a game update reports it
 as stale alongside the other tables. Rerun the tool after an update:
 
@@ -20,7 +21,7 @@ as stale alongside the other tables. Rerun the tool after an update:
 
 The classes are every `Build_*` class under `FactoryGame/Buildable/` that the save projection
 files as a machine, extractor, generator, attachment or pipe fitting (`registers.*_HINTS`) or
-lists as storage, a fluid buffer or a facility. A class is keyed by the name its package
+lists as storage, a fluid buffer, a facility or a hypertube entrance. A class is keyed by the name its package
 generates, which is not always the package's own spelling: the Mk.2 pump's package is
 `Build_PipelinePumpMK2`, its class `Build_PipelinePumpMk2_C`. A run takes about 20 seconds.
 
@@ -80,9 +81,9 @@ its whole footprint, ended up with one. The cuts are therefore the class's own n
    tight around its own mean height as possible: the plateaus a building is made of (a base
    plate, a housing, a roof deck, a tower) come out as groups, wherever they sit.
 4. A split only counts if it shows. Every band but the top one must leave at least 6% of its
-   area (and 2 m²) visible under the next band, in strips at least 60 cm wide, which a thin
+   area (and 2 mÂ²) visible under the next band, in strips at least 60 cm wide, which a thin
    ledge round a block is not; consecutive floors must be at least 1 m apart; no band starts
-   under 2 m (walkways and base plates are the footprint's); the top band covers 2 m². The
+   under 2 m (walkways and base plates are the footprint's); the top band covers 2 mÂ². The
    search takes the most bands that can meet this, so a box gets none and a stepped tower
    gets four.
 
@@ -178,10 +179,15 @@ the splitters are in the belts layer. The one-off facilities ride with `/api/mac
 their own layer, `facilities`, in teal. Neither is listed by `/api/floors`, so the floor filter
 places them by where they stand, as it places storage.
 
+Hypertubes are a route layer of their own, `hypertubes`, drawn from their splines the way pipes
+are (`/api/hypertubes`). Their entrances are outlined in that layer from this table. The
+entrance's components trace to a small box behind the actor origin (about 1.6 x 2.4 m), so the
+outline marks where the tube starts; whether the rest of the entrance is a mesh this reader
+misses has not been checked.
+
 Placed classes in the reference world that are still not drawn, on purpose: belt and pipe
 supports (conveyor poles, ceiling and wall mounts, stackable poles, pipeline supports and their
-wall variants), pipe flow indicators, foundation passthroughs, hypertubes (a spline like a pipe,
-with supports and entrances; a route layer of its own, not an outline), lights, ladders, the
+wall variants), pipe flow indicators, foundation passthroughs, hypertube supports, lights, ladders, the
 toilet, the doors, gates and conveyor walls placed as actors, and the HUB's own terminal and
 work bench, which the HUB's outline already covers. Power poles and towers are the power
 layer's.

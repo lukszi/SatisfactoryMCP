@@ -119,7 +119,7 @@ function drawChevrons(pipe: PipeRow, group: L.LayerGroup, opacity: number): void
 }
 
 export function drawPipes(data: PipesResponse): void {
-  // Off by default, like `belts` and `machines`. Directly under the belts, which is the pair
+  // Off by default, unlike `belts` and `machines`. Directly under the belts, which is the pair
   // they are.
   const group = clearedLayer("pipes", { on: false, colour: PIPE_COLOUR, rank: [BAND.built, 20, "pipes"] });
   const ppm = pixelsPerMetre();

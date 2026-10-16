@@ -19,11 +19,13 @@ from typing_extensions import TypeIs
 
 __all__ = [
     "BELT_ROW_WIDTH",
+    "HYPERTUBE_ROW_WIDTH",
     "PIPE_ROW_WIDTH",
     "POWER_POLE_ROW_WIDTH",
     "STRUCTURE_ROW_WIDTH",
     "WIRE_ROW_WIDTH",
     "BeltSegment",
+    "HypertubeSegment",
     "PipeSegment",
     "PowerPole",
     "SpanTangents",
@@ -32,6 +34,7 @@ __all__ = [
     "Wire",
     "belt_segment_count",
     "iter_belt_segments",
+    "iter_hypertube_segments",
     "iter_pipe_segments",
     "iter_power_poles",
     "iter_structures",
@@ -56,6 +59,10 @@ BELT_ROW_WIDTH = 5
 #: The actor join arrived in schema 14 and the spans in 15, the latter again only where the
 #: pipe bends. The same five columns as a belt, in the same order, since schema 20.
 PIPE_ROW_WIDTH = 5
+
+#: Columns of ``hypertubes["segments"]``: the pipe row, with ``-1`` where a pipe has its network.
+#: Schema 24.
+HYPERTUBE_ROW_WIDTH = 5
 
 #: Columns of ``power["poles"]["instances"]``: ``[classIndex, x, y, z, yaw, actorIndex]``. All
 #: six arrived together in schema 17, so there is no short form of this row yet.
@@ -118,6 +125,18 @@ class PipeSegment(NamedTuple):
 
     position: int
     network_index: int
+    class_index: int
+    cls: str | None
+    points: list[list[float]]
+    actor_index: int
+    spans: SplineSpans | None
+
+
+class HypertubeSegment(NamedTuple):
+    """One hypertube piece: its class, its polyline, its actor and its curve, on a
+    ``PipeSegment``'s terms. Schema 24; an older projection has none."""
+
+    position: int
     class_index: int
     cls: str | None
     points: list[list[float]]
@@ -392,6 +411,24 @@ def iter_pipe_segments(projection: Mapping[str, object]) -> Iterator[PipeSegment
         yield PipeSegment(
             position=position,
             network_index=route.group,
+            class_index=route.class_index,
+            cls=_class_at(classes, route.class_index),
+            points=route.points,
+            actor_index=route.actor_index,
+            spans=route.spans,
+        )
+
+
+def iter_hypertube_segments(projection: Mapping[str, object]) -> Iterator[HypertubeSegment]:
+    """Every hypertube piece in ``hypertubes``, decoded, in the table's own order."""
+    table = _table(projection, "hypertubes")
+    classes = _classes(table)
+    for position, row in enumerate(_rows(table, "segments")):
+        route = _route(row)
+        if route is None:
+            continue
+        yield HypertubeSegment(
+            position=position,
             class_index=route.class_index,
             cls=_class_at(classes, route.class_index),
             points=route.points,

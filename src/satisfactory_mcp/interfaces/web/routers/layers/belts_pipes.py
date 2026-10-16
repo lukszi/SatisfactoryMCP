@@ -1,7 +1,7 @@
-"""``/api/belts`` and ``/api/pipes``: the two routed networks, as built.
+"""``/api/belts``, ``/api/pipes`` and ``/api/hypertubes``: the routed networks, as built.
 
-One module for both because ``_curve_m`` is the one translation of a bend they share. What
-each field means: docs/web-wire.md "Belts and pipes". Handler names are operation_ids.
+One module for all three because ``_curve_m`` is the one translation of a bend they share.
+What each field means: docs/web-wire.md "Belts and pipes". Handler names are operation_ids.
 """
 
 from __future__ import annotations
@@ -287,4 +287,62 @@ def pipes(request: Request, save: str | None = None, world: str | None = None) -
         "directed": sum(1 for r in rows if r["direction"] != "unknown"),
         "fittings": fittings,
         "shapes": building_shapes(st.game, (f["cls"] for f in fittings)),
+    }
+
+
+# ---------------------------------------------------------------------- hypertubes
+
+
+class HypertubeRow(TypedDict):
+    """One hypertube piece, as the polyline it was built along.
+
+    ``row`` is the piece's position in the raw segments table; ``cls``/``name`` are null past
+    the legend's end.
+    """
+
+    row: int
+    cls: str | None
+    name: str | None
+    points_m: list[Point3M]
+    curve_m: RouteCurveM
+
+
+class HypertubesResponse(TypedDict):
+    """What ``/api/hypertubes`` sends on a 200. An error is a 4xx with ``{"error": ...}``."""
+
+    hypertubes: list[HypertubeRow]
+    count: int
+    #: Where the runs start: placed records, the same row shape as a pipe fitting.
+    entrances: list[AttachmentRow]
+    #: Each entrance class's outline, once (docs/web-wire.md).
+    shapes: dict[str, BuildingShape]
+
+
+@router.get("/hypertubes", response_model=HypertubesResponse)
+def hypertubes(
+    request: Request, save: str | None = None, world: str | None = None
+) -> HypertubesResponse:
+    """Every hypertube piece, as the polyline it was built along, and the entrances."""
+    st = require_world(request, save, world)
+    rows: list[HypertubeRow] = []
+    for seg in saverows.iter_hypertube_segments(st.projection):
+        points = _points_m(seg.points)
+        rows.append(
+            {
+                "row": seg.position,
+                "cls": seg.cls,
+                "name": st.game.building_name(seg.cls),
+                "points_m": points,
+                "curve_m": _curve_m(seg.spans, points),
+            }
+        )
+    entrances = [
+        placement_fields(st.game, row)
+        for row in object_rows(st.projection.get("hypertube_entrances"))
+    ]
+    return {
+        "hypertubes": rows,
+        "count": len(rows),
+        "entrances": entrances,
+        "shapes": building_shapes(st.game, (e["cls"] for e in entrances)),
     }

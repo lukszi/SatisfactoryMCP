@@ -62,6 +62,8 @@ declare module "leaflet" {
     /** The route this polyline was tessellated from; see drawn/route-geometry.ts. */
     _route?: import("./geometry").RouteShape;
     _occupied?: boolean;
+    /** A well's core-to-satellite line: left where it was drawn, under the dots. */
+    _spoke?: boolean;
   }
 
   interface Marker {

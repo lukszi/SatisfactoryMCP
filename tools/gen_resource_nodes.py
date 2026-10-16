@@ -67,6 +67,18 @@ class ResourceNodeRow(TypedDict):
     well_core: str | None
 
 
+class WellCoreRow(TypedDict):
+    """One row of ``well_cores`` in ``data/resource_nodes.json``: a fracking core, drawn but
+    never extracted, and the satellites that name it as their ``mCore``."""
+
+    instance: str
+    resource: str | None
+    x: float
+    y: float
+    z: float
+    satellites: list[str]
+
+
 #: A well satellite yields half a plain node's rate AND needs a Pressurizer on its parent
 #: core, so conflating the two with a plain node overstates a field by 2x.
 _KINDS: dict[str, NodeKind] = {
@@ -145,6 +157,27 @@ def project_nodes(world: list[WorldNode]) -> tuple[list[ResourceNodeRow], int]:
             print("  UNKNOWN PURITY:", u)
         raise SystemExit(f"{len(unknown_purity)} row(s) carry a purity this table cannot speak")
     return nodes, len(core_ids)
+
+
+def project_well_cores(world: list[WorldNode]) -> list[WellCoreRow]:
+    """Every fracking core with its position and its satellites, sorted by instance."""
+    satellites: dict[str, list[str]] = {}
+    for entry in world:
+        if entry["class"] == FRACKING_SATELLITE_CLASS and "core" in entry:
+            satellites.setdefault(entry["core"], []).append(INSTANCE_PREFIX + entry["id"])
+    cores: list[WellCoreRow] = [
+        {
+            "instance": INSTANCE_PREFIX + entry["id"],
+            "resource": entry["resource"],
+            "x": round(float(entry["x"]), 2),
+            "y": round(float(entry["y"]), 2),
+            "z": round(float(entry["z"]), 2),
+            "satellites": sorted(satellites.get(entry["id"], [])),
+        }
+        for entry in world
+        if entry["class"] == FRACKING_CORE_CLASS
+    ]
+    return sorted(cores, key=lambda c: c["instance"])
 
 
 def check_well_links_by_position(world: list[WorldNode]) -> JsonObject:
@@ -243,6 +276,7 @@ def main(argv: list[str] | None = None) -> int:
     argparse.ArgumentParser(description=(__doc__ or "").partition("\n")[0]).parse_args(argv)
     world, world_meta = load_world_node_table()
     nodes, core_count = project_nodes(world)
+    well_cores = project_well_cores(world)
     geometry = check_well_links_by_position(world)
     projection = check_projection(nodes, world, world_meta)
 
@@ -260,7 +294,8 @@ def main(argv: list[str] | None = None) -> int:
         world_meta=world_meta,
     )
     dest = ROOT / "data" / "resource_nodes.json"
-    dest.write_text(json.dumps({"_meta": meta, "nodes": nodes}, indent=1), encoding="utf-8")
+    payload = {"_meta": meta, "nodes": nodes, "well_cores": well_cores}
+    dest.write_text(json.dumps(payload, indent=1), encoding="utf-8")
     print_summary(dest, nodes, by_kind, core_count, geometry, projection)
     return 0
 
@@ -321,7 +356,10 @@ def build_meta(
                 "hand-mineable only, no extractor can be placed; the world table "
                 "emits no deposit rows in the first place"
             ),
-            FRACKING_CORE_CLASS: "produces nothing itself; referenced as well_core on satellites",
+            FRACKING_CORE_CLASS: (
+                "produces nothing itself, so it is no node row; listed under well_cores "
+                "with its satellites, and referenced as well_core on each satellite"
+            ),
         },
         "geyser_note": (
             "Desc_Geyser_C is a synthetic label. A geyser is not an item in "

@@ -6,7 +6,7 @@
  * node dots have to be raised after ANY draw. The pickups are pickups.ts.
  */
 
-import { code, popup } from "../../kit/dom";
+import { code, esc, popup } from "../../kit/dom";
 import { byCodeUnit, regionLine, shortResource } from "../../kit/format";
 import { registerSection } from "../layercontrol/control";
 import { L } from "../leaflet";
@@ -22,7 +22,9 @@ import { byMapTone, onMapTone } from "../map-tone";
 
 import type { OnMap } from "../leaflet-private";
 
-import type { NodeRow, NodesResponse, SummaryResponse } from "../../api/shapes";
+import { satelliteRadius, satelliteSummary, wellSpokes } from "./well-geometry";
+
+import type { NodeRow, NodesResponse, SummaryResponse, WellCoreRow } from "../../api/shapes";
 
 /* Raised explicitly after either draw, because otherwise whichever of /api/nodes and
  * /api/machines resolved last decides who takes the click on an occupied node. The dot wins;
@@ -45,7 +47,7 @@ export function raiseNodeDots() {
     if (name.indexOf("node: ") !== 0) return;
     state.layers[name]!.eachLayer(function (dot) {
       bringToFrontIf(dot, function (path) {
-        return !path._occupied;
+        return !path._occupied && !path._spoke;
       });
     });
   });
@@ -121,6 +123,7 @@ function paintNodes(data: NodesResponse): void {
     });
     if (!stillPresent) state.layers[name]!.clearLayers();
   });
+  const satellites = satelliteIndex(data.nodes);
   Object.keys(byResource)
     .sort(byCodeUnit)
     .forEach(function (resource) {
@@ -135,11 +138,61 @@ function paintNodes(data: NodesResponse): void {
         rank: [BAND.node, 0, name],
         title: byResource[resource]![0]!.resource_name,
       });
+      // The wells first, so the spokes lie under the satellite rings they lead to.
+      (data.wells || []).forEach(function (core) {
+        if (core.resource === resource) wellCore(core, satellites, colour, group);
+      });
       byResource[resource]!.forEach(function (node) {
         nodeDot(node, colour, !!data.save_error, group);
       });
     });
   raiseNodeDots();
+}
+
+/* A resource well: its core as a ring a step larger than any node, thin spokes out to the
+ * satellites the game links to it (`mCore`, never a guess by distance), and a card that counts
+ * them. In its resource's layer, so unticking Water takes the water wells with it. */
+const CORE_RADIUS_PX = 8;
+const SPOKE_WEIGHT_PX = 1;
+
+function satelliteIndex(nodes: NodeRow[]): Record<string, NodeRow> {
+  const out: Record<string, NodeRow> = {};
+  nodes.forEach(function (node) {
+    if (node.kind === "well_sat") out[node.name] = node;
+  });
+  return out;
+}
+
+function wellCore(core: WellCoreRow, satellites: Record<string, NodeRow>, colour: string, group: L.LayerGroup): void {
+  wellSpokes(core, satellites).forEach(function (spoke) {
+    const line = L.polyline([latLngOf(spoke[0]), latLngOf(spoke[1])], {
+      color: colour,
+      weight: SPOKE_WEIGHT_PX,
+      opacity: 0.55,
+      interactive: false,
+    });
+    line._spoke = true;
+    line.addTo(group);
+  });
+  const summary = satelliteSummary(core, satellites);
+  L.circleMarker(latLngOf(core), {
+    radius: CORE_RADIUS_PX,
+    color: colour,
+    weight: 2,
+    fillOpacity: 0,
+  })
+    .bindTooltip(esc(core.resource_name + " well · " + summary), { direction: "top" })
+    .bindPopup(
+      popup([
+        ["well", core.resource_name + " resource well"],
+        ["satellites", summary],
+        ["pressurizer", core.occupied ? core.occupant_name || "built" : "none known here"],
+        ["region", regionLine(core.region)],
+        ["core", code(core.name)],
+        ["at", core.x_m + ", " + core.y_m + " m"],
+      ])
+    )
+    .addTo(group);
 }
 
 function nodeFillOpacity(n: NodeRow, locked: boolean): number {
@@ -154,29 +207,49 @@ function occupancyText(n: NodeRow, saveUnread: boolean): string {
 
 /* One node: its dot, and a dark ring under it when it is locked. Null `reachable` is "no save
  * read", which is not a claim either way; only false is LOCKED. */
+/* A well satellite is a RING, never a disc: it yields only through its core's Pressurizer, so
+ * it must not read as an ore node a miner can stand on. Occupied thickens the ring; locked
+ * dashes it, as on a node. */
+function dotStyle(n: NodeRow, colour: string, locked: boolean): L.CircleMarkerOptions {
+  const radius = PURITY_RADIUS[n.purity] || 4;
+  if (n.kind === "well_sat") {
+    return {
+      radius: satelliteRadius(radius),
+      color: colour,
+      weight: n.occupied ? 3 : 2,
+      fillOpacity: 0,
+      dashArray: locked ? "2 3" : undefined,
+    };
+  }
+  return {
+    radius: radius,
+    color: colour,
+    weight: n.occupied ? 2 : 1,
+    // Locked keeps the ore colour, hollow and dashed: a grey would sink into the ground.
+    fillOpacity: nodeFillOpacity(n, locked),
+    dashArray: locked ? "2 3" : undefined,
+  };
+}
+
 function nodeDot(n: NodeRow, colour: string, saveUnread: boolean, group: L.LayerGroup): void {
   const locked = n.reachable === false;
+  const style = dotStyle(n, colour, locked);
   if (locked) {
     L.circleMarker(latLngOf(n), {
-      radius: PURITY_RADIUS[n.purity] || 4,
+      radius: style.radius,
       color: TONED["locked casing"],
       weight: 3,
       fillOpacity: 0,
       interactive: false,
     }).addTo(group);
   }
-  const dot = L.circleMarker(latLngOf(n), {
-    radius: PURITY_RADIUS[n.purity] || 4,
-    color: colour,
-    weight: n.occupied ? 2 : 1,
-    // Locked keeps the ore colour, hollow and dashed: a grey would sink into the ground.
-    fillOpacity: nodeFillOpacity(n, locked),
-    dashArray: locked ? "2 3" : undefined,
-  }).bindPopup(
+  const satellite = n.kind === "well_sat";
+  const dot = L.circleMarker(latLngOf(n), style).bindPopup(
     popup([
       // The server's word, not the class id the layer key is cut from: the popup is
       // read next to an assistant that says "Iron Ore".
-      ["node", n.resource_name + " (" + n.purity + ")"],
+      [satellite ? "well spot" : "node", n.resource_name + " (" + n.purity + ")"],
+      ["well", satellite && n.well ? code(n.well) : null],
       // Only when it is locked: "free" is already said by the occupancy row below,
       // and a row saying "reachable: yes" on every dot is noise.
       ["status", locked ? "locked: no extractor this world has unlocked can work it" : null],
@@ -197,6 +270,9 @@ function nodeDot(n: NodeRow, colour: string, saveUnread: boolean, group: L.Layer
       ],
     ])
   );
+  if (satellite) {
+    dot.bindTooltip(esc(n.resource_name + " well spot (" + n.purity + ")"), { direction: "top" });
+  }
   dot._occupied = n.occupied;
   dot.addTo(group);
 }

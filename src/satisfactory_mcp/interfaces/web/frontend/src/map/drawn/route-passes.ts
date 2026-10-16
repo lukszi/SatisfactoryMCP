@@ -9,14 +9,16 @@ import { state } from "../../app/state";
 import { raiseNodeDots } from "./markers";
 import { chevronOpacity, retessellate } from "./route-geometry";
 
-export const ROUTE_LAYERS = ["belts", "pipes", "power"] as const;
+export const ROUTE_LAYERS = ["belts", "pipes", "hypertubes", "power"] as const;
 
 type RouteLayer = (typeof ROUTE_LAYERS)[number];
 
-/* Each route layer's width in metres: the save carries a centre line and no width. */
+/* Each route layer's width in metres: the save carries a centre line and no width. The
+ * hypertube's is the belt's, a stand-in rather than a measured bore. */
 export const ROUTE_WIDTH_M: Record<RouteLayer, number> = {
   belts: 2,
   pipes: 1.3,
+  hypertubes: 2,
   power: 0.2,
 };
 

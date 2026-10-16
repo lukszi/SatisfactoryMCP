@@ -126,6 +126,12 @@ stat-compared every 3 s. `settings` carries data too: the tail stats the shared 
 - **A failed save is not a failed answer.** The table needs no `.sav`, so a world whose save
   will not load still gets its geography; it loses the occupancy join and the unlock set, and
   `save_error` says so with `occupied` and every `reachable` null beside it.
+- **Resource wells** come as `wells`: one row per fracking core (`kind` `well_core`), with its
+  position, resource and the `name`s of its `satellites`, and `occupied` when a Pressurizer
+  stands on it. A core is no node row because nothing extracts from it; each satellite row
+  names its core back in `well`. The link is the game's own `mCore`, read into
+  `data/resource_nodes.json` (`well_cores`) by `tools/gen_resource_nodes.py`, not a guess
+  from distance.
 
 ## Placements
 
@@ -230,6 +236,20 @@ are actors.
   must not on the fourth. A projection too old to carry the join reads as all `unknown`.
 - Pumps, junctions, valves and fluid buffers carry no spline, only a header position, so they
   are not pipe rows.
+- `/api/hypertubes` sends the hypertube pieces in the pipe row's shape without the fluid or
+  direction fields (a tube carries the player, and either way), and the `entrances` as
+  placement rows with their `shapes`. A projection older than schema 24 answers with none.
+
+## Map markers
+
+`/api/map-markers` (`routers/layers/map_markers.py`) is every marker the player placed on the
+in-game map, in the save's order: `name`, the position in metres, `colour`, `icon_id`, `type`,
+`category` and `compass`.
+
+- `colour` is `#rrggbb` sRGB. The save stores a linear `LinearColor`; sending it unconverted
+  would make every marker darker on the page than in the game.
+- `icon_id` is the game's icon library id. The page does not resolve it to a picture; it is in
+  the popup so a reader can match a marker to the one in game.
 
 ## Power lines
 

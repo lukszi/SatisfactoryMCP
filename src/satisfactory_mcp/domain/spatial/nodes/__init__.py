@@ -30,6 +30,7 @@ from .table import (
     SUPPORT_BUILDINGS_FOR_KIND,
     NodeRecord,
     NodeTable,
+    WellCoreRecord,
     load_nodes,
 )
 
@@ -42,6 +43,7 @@ __all__ = [
     "NodeRecord",
     "NodeTable",
     "TableSkew",
+    "WellCoreRecord",
     "annotate",
     "annotate_for_save",
     "blocking_buildings",

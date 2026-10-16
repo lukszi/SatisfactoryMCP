@@ -182,6 +182,10 @@ against a 256 m flat fill faded to 0.45 wherever there is imagery.
 | `crates` | `crates` | `#3fcc94` | crate glyphs (`drawn/crates.ts`) | placements/generators 21.5 | a 13 px glyph found on open terrain at world zoom: dE 50.2 from the nearest ground |
 | `plans` | `plans` | `#4ec22e` | a sited plan's dashed outline (`drawn/plan-sitings.ts`) | markers/Desc_OreUranium_C 25.0 | green, which nothing built spends; dE 105.5 from the concrete and 110.7 from the machine blue it is laid over |
 | `map-highlight` | `highlight` | `#ff4fd8` | the one selection outline or ring (`map/map-highlight.ts`) | markers/Desc_SAM_C 27.6 | |
+| `hypertubes` | `hypertubes` | `#ff9f1c` | hypertube runs and the entrance fill, and the layer swatch (`drawn/hypertubes.ts`) | markers/Desc_OreCopper_C 28.3 | FICSIT orange, which no ore, network or pickup spends; clear of the blocked yellow (30.7) it could sit beside |
+| `hypertubes` | `hypertube entrance` | `#c86b00` | an entrance's outline, one value step below | markers/Desc_OreCopper_C 19.5 | |
+| `map-markers` | `casing light` | `#f6e6ff` | the ring round a dark in-game marker, and the layer swatch (`drawn/map-markers.ts`) | outlines/band veil 15.7 | the fill is the save's own colour, data rather than palette, and the game's default marker grey sits dE 4.7 from the coal dot and 8.1 from Rocky Desert: the casing is what keeps a marker findable |
+| `map-markers` | `casing dark` | `#3b1030` | the ring round a light in-game marker | markers/locked casing 16.2 | chosen by `casingFor` on the marker colour's luminance |
 
 ## Plan graph lines
 
