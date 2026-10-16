@@ -152,8 +152,8 @@ resolutions, and the line between them decides every nullable field on the place
   class in that response to its outline once, never per actor: `source` (`mesh` from
   `data/building_shapes.json`, or `clearance` from the clearance boxes at their own offsets),
   `rings` as `[x, y]` metres in the actor's frame, `bands` (the parts standing above `z_m`,
-  `tier` 1 for the body above 2 m and 2 for the tall parts, each with its own `rings`; empty
-  for a clearance outline), and `ports` (`kind` belt/pipe, `flow` in/out/any,
+  `tier` the rank of the break in the class's own heights, 1 the lowest, up to 4, each with
+  its own `rings`; empty for a clearance outline), and `ports` (`kind` belt/pipe, `flow` in/out/any,
   `x_m`/`y_m`/`z_m`, `yaw` the facing in degrees). A class with neither is absent and the page
   draws the `w_m` x `l_m` rectangle. [building-shapes.md](building-shapes.md).
 - `facilities` on `/api/machines` are the one-off buildings that are neither machines nor

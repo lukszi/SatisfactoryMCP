@@ -5,8 +5,8 @@
 For every machine, extractor, generator, storage box, fluid buffer, belt splitter/merger, pipe
 fitting and facility class the save projection files, the class's mesh components are read
 from the installed game, placed in the actor's own frame and traced from above into a few
-simplified polygons: the footprint, and the parts standing above 2 m and above most of the
-class's height; its belt and pipe connection components become ports. Method, frame
+simplified polygons: the footprint, and up to four height bands cut at the class's own
+natural breaks in height; its belt and pipe connection components become ports. Method, frame
 and limits: docs/building-shapes.md.
 """
 
@@ -48,21 +48,27 @@ from satisfactory_mcp.core.gamedata.shapes import (
 )
 from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
 from satisfactory_mcp.core.saveio.extract import registers
-from tools.building_shapes.silhouette import BandRule, Ring, height_bands, silhouette
+from tools.building_shapes.bands import BandOptions, height_bands
+from tools.building_shapes.silhouette import Ring, silhouette
 
 #: Grid cell, gap bridged between parts, and the vertex budget per outline.
 CELL_CM = 10.0
 CLOSE_CM = 40.0
 MAX_VERTICES = 48
 
-#: The height bands above the footprint: the body above 2 m, and the tall parts (the top
-#: 45% of the class's height, never under 4 m), each with its own vertex budget.
-BAND_RULES = [BandRule(200.0, 0.0, 32), BandRule(400.0, 0.55, 20)]
-#: Parts thinner than twice this are not mass (railings, pipes, cables).
-BAND_OPENING_CM = 30.0
-#: A band smaller than this, or covering more than this share of the one below, adds nothing.
-BAND_MIN_AREA_CM2 = 5_000.0
-BAND_MAX_OVERLAP = 0.9
+#: Up to four height bands above the footprint at the class's own breaks in height, each with
+#: its own vertex budget; the rules each field sets: BandOptions, docs/building-shapes.md.
+BAND_OPTIONS = BandOptions(
+    budgets=(32, 28, 24, 20),
+    min_floor=200.0,
+    step=25.0,
+    min_visible=0.06,
+    min_width=60.0,
+    min_rise=100.0,
+    opening=30.0,
+    min_area=20_000.0,
+    max_overlap=0.9,
+)
 
 #: Where buildable classes live in the container, and the prefix every one of them carries.
 BUILDABLE_DIR = "/FactoryGame/Buildable/"
@@ -232,15 +238,7 @@ def shape_row(meshes: MeshCache, components: list[Component]) -> tuple[ShapeRow,
     report: ClassReport = {"meshes": [], "failed_meshes": [], "triangles": 0}
     triangles = placed_triangles(meshes, components, report)
     rings = silhouette(triangles[:, :, :2], CELL_CM, CLOSE_CM, MAX_VERTICES)
-    bands = height_bands(
-        triangles,
-        CELL_CM,
-        CLOSE_CM,
-        BAND_RULES,
-        opening=BAND_OPENING_CM,
-        min_area=BAND_MIN_AREA_CM2,
-        max_overlap=BAND_MAX_OVERLAP,
-    )
+    bands = height_bands(triangles, CELL_CM, CLOSE_CM, BAND_OPTIONS)
     ports = [port for port in map(_port, components) if port is not None]
     row: ShapeRow = {
         "rings": _metres(rings),
@@ -284,7 +282,8 @@ def build_meta(
                 f"rasterised at {CELL_CM:g} cm, closed over {CLOSE_CM:g} cm, hole-filled, "
                 f"traced and simplified to at most {MAX_VERTICES} vertices per ring; bands cut "
                 f"the same way from the highest point over each cell, opened over "
-                f"{BAND_OPENING_CM:g} cm first"
+                f"{BAND_OPTIONS.opening:g} cm first, at natural breaks in each class's own "
+                f"heights"
             ),
             "decoder": dict(versions),
         },

@@ -3,7 +3,7 @@
 The web map draws machines, extractors, generators, storage boxes, fluid buffers, belt
 splitters/mergers, pipe fittings (junctions, pumps, valves) and the one-off facilities (the HUB,
 the AWESOME Sink, the MAM and the like) as an approximation of their real top-down shape: the
-footprint, up to two lighter height bands inside it, and a notch at each belt and pipe port.
+footprint, up to four lighter height bands inside it, and a notch at each belt and pipe port.
 This page says where those outlines and ports come from and how far to trust them.
 
 ## Where they come from
@@ -62,21 +62,34 @@ holes. The closing bevels inside corners by about its radius.
 
 An outline alone says how much ground a building takes, not what it looks like: a Refinery and
 a Coal Generator are both long rectangles. So the generator keeps each triangle's height, takes
-the highest point over every 10 cm cell, and cuts up to two bands out of that top-down height
-map, each traced like the footprint with its own vertex budget:
+the highest point over every 10 cm cell, and cuts up to four bands out of that top-down height
+map (`tools/building_shapes/bands.py`), each traced like the footprint with its own vertex
+budget (32, 28, 24, 20, lowest first).
 
-| tier | parts above | budget | reads as |
-| --- | --- | --- | --- |
-| footprint | anything | 48 | the base plate, walkways, everything that stands on the floor |
-| 1 | 2 m | 32 | the body: the mass a player walks around |
-| 2 | 55% of the class's height, at least 4 m | 20 | chimneys, towers, tanks, hoppers |
+Fixed heights do not work across classes: a 2 m and 55%-of-height pair of cuts gave a
+Constructor and a Refinery the same two bands, and the Refinery, whose body above 2 m is nearly
+its whole footprint, ended up with one. The cuts are therefore the class's own natural breaks:
 
-The class's height is the 99th percentile of its cell tops, so one antenna does not set it.
-Before closing, a band is opened over 30 cm: railings, thin pipes and cables over a walkway are
-not mass and would otherwise join the body to the edge of the footprint. A band with less than
-0.5 mÂ² left, or covering more than 90% of the band kept below it, adds nothing and is left out:
-a storage container is a box, so it has no body band, and a Refinery's body above 2 m is
-nearly all of its footprint, so it gets its tall band only.
+1. The height map is opened over 30 cm (railings, thin pipes and cables over a walkway are not
+   mass) and closed over 40 cm, as grey-scale morphology, so each level set of the result is
+   exactly the band that would be drawn at that height; the cuts are chosen on what is drawn,
+   not on the mesh's speckle.
+2. The cells' heights, capped at their 99th percentile so one antenna does not stretch the
+   scale, are binned at 25 cm (coarser past 160 bins) into an area-per-height histogram.
+3. Fisher-Jenks breaks split the histogram into the ground and up to four bands, each group as
+   tight around its own mean height as possible: the plateaus a building is made of (a base
+   plate, a housing, a roof deck, a tower) come out as groups, wherever they sit.
+4. A split only counts if it shows. Every band but the top one must leave at least 6% of its
+   area (and 2 m²) visible under the next band, in strips at least 60 cm wide, which a thin
+   ledge round a block is not; consecutive floors must be at least 1 m apart; no band starts
+   under 2 m (walkways and base plates are the footprint's); the top band covers 2 m². The
+   search takes the most bands that can meet this, so a box gets none and a stepped tower
+   gets four.
+
+After tracing, a band covering more than 90% of the band kept below it is still dropped, and a
+band keeps at most its six largest parts. `tier` is the break's rank (1 the lowest); a dropped
+band leaves a gap rather than renumbering the ones above it, so a higher tier always reads
+lighter.
 
 Alternatives weighed: crease lines from the mesh (sharp edges seen from above) are dense and
 noisy on these meshes, where every bolt and grille is modelled; a small baked raster per class
@@ -135,11 +148,14 @@ behaviour the rectangles had. Notches are small triangles (pointing out for an o
 an input) or diamonds (either way), in the belt or pipe tone, hidden below 3 px per metre where
 they would be specks.
 
-Height bands are drawn over the footprint as a white veil with a thin dark edge: 0.22 for the
-body, 0.42 for the tall parts, at 40% of that on an idle building whose fill is faded. The veil
-keeps the layer's hue and lightens it, so lower reads darker and higher lighter, and the status
-colours (blocked yellow, stopped red) stay on the outline alone. Bands are hidden below 1.5 px
-per metre and take no clicks; a click on one lands on the building.
+Height bands are drawn over the footprint as a white veil with a thin dark edge, in even steps:
+tier n lightens the fill by n x 0.15 in all (0.15, 0.30, 0.45, 0.60), at 40% of that on an idle
+building whose fill is faded. Bands nest and their veils stack, so each band's own opacity is
+what takes the band under it to its tier's lightness (`bandVeil`); a tier dropped in between
+does not leave the one above it darker. The veil keeps the layer's hue and lightens it, so
+lower reads darker and higher lighter, and the status colours (blocked yellow, stopped red)
+stay on the outline alone. Bands are hidden below 1.5 px per metre and take no clicks; a click
+on one lands on the building.
 
 Notches and bands carry their building's floor mark without a height, so the floor filter keeps
 or drops them with the building and never ghosts them.
