@@ -524,6 +524,14 @@ a.bh:hover .dash-h {
   vertical-align: middle;
 }
 
+/* an empty lead slot of an icon's size: an object with no icon, never letters */
+.noic {
+  display: inline-block;
+  flex: none;
+  width: 24px;
+  height: 24px;
+}
+
 .mono {
   display: inline-grid;
   flex: none;
@@ -1467,6 +1475,7 @@ details.fold > summary {
 
   .entry > .ic,
   .entry > .mono,
+  .entry > .noic,
   .entry > .thumb {
     grid-row: 1;
     grid-column: 1;

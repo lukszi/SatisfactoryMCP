@@ -114,13 +114,6 @@
   padding-bottom: var(--sp-2);
 }
 
-.noic {
-  display: inline-block;
-  flex: none;
-  width: 24px;
-  height: 24px;
-}
-
 .sub {
   display: grid;
   grid-template-columns: 84px minmax(0, 1fr) 40px 24px;
