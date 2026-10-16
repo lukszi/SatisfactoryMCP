@@ -22,7 +22,7 @@ import { onPins } from "../../chat/pins";
 import { clearPick } from "./result";
 import { showGhost } from "./site";
 import { focusStartup, revealStage, settleTrackFocus } from "./track/track";
-import { onBiomass } from "../power-ledger";
+import { onBiomass } from "../power/readings";
 import { onSetting, settingChoice, settingNumber, settingOn } from "../../app/settings";
 import { isSincePageOpened, state } from "../../app/state";
 import { notify, offer } from "../../kit/toast";

@@ -8,17 +8,17 @@ import { reveal } from "./labels";
 import { selectAndRing } from "./map-highlight";
 import {
   biomassLine,
-  ledgerBar,
   readGeneration,
   readHeadroomFull,
   readHeadroomNow,
   readMeasuredDraw,
   whereOf,
-} from "../dash/power-ledger";
+} from "../dash/power/readings";
+import { ledgerBar } from "../dash/power/ledger-bar";
 import { WORDS } from "../kit/words";
 
 import type { MachineRef, StarvedGenerator } from "../api/shapes";
-import type { Rated, Reading } from "../dash/power-ledger";
+import type { Rated, Reading } from "../dash/power/readings";
 
 /** How many machines a folded reference list shows; the rest are counted. */
 const REF_ROWS_SHOWN = 40;

@@ -2789,7 +2789,7 @@ export interface components {
             index: number;
             ledger: components["schemas"]["Ledger"];
             /** Generators */
-            generators: components["schemas"]["GeneratorTotal"][];
+            generators: components["schemas"]["GeneratorGroup"][];
             /** Starved */
             starved: components["schemas"]["StarvedGenerator"][];
             /** Unmodellable */
@@ -2825,7 +2825,7 @@ export interface components {
             /** Paused */
             paused: number;
             /** Generators */
-            generators: components["schemas"]["GeneratorTotal"][];
+            generators: components["schemas"]["GeneratorGroup"][];
             /** Starved */
             starved: components["schemas"]["StarvedGenerator"][];
             /** Unmodellable */
@@ -3826,6 +3826,23 @@ export interface components {
             spoiler: boolean;
         };
         /**
+         * GeneratorGroup
+         * @description One generator type, counted and summed; ``starved_mw`` is the part of ``mw`` standing on
+         *     starved generators, ``icon`` the descriptor ``/api/icons/`` files its picture under.
+         */
+        GeneratorGroup: {
+            /** Name */
+            name: string;
+            /** Count */
+            count: number;
+            /** Mw */
+            mw: number;
+            /** Starved Mw */
+            starved_mw: number;
+            /** Icon */
+            icon: string | null;
+        };
+        /**
          * GeneratorTotal
          * @description One generator class, counted and summed: a value of ``PowerReport.by_generator``.
          */
@@ -4131,7 +4148,8 @@ export interface components {
          * MachineRef
          * @description ``circuit`` is the ``index`` of the circuit it stands on, null when on none;
          *     ``factory`` the named factory it is an anchor of, null when none; ``region`` where it
-         *     stands, null when unplaced or off the region map.
+         *     stands, null when unplaced or off the region map; ``icon`` the building's descriptor for
+         *     ``/api/icons/``, null when game data has none.
          */
         MachineRef: {
             /** Instance */
@@ -4143,6 +4161,8 @@ export interface components {
             /** Factory */
             factory: string | null;
             region: components["schemas"]["Region"] | null;
+            /** Icon */
+            icon: string | null;
             /** X M */
             x_m: number | null;
             /** Y M */
@@ -7150,6 +7170,7 @@ export interface components {
         /**
          * StarvedGenerator
          * @description ``cause`` is ``missing`` as one phrase: "out of Coal, Water" or "no fuel loaded".
+         *     ``circuit``, ``factory`` and ``region`` read as on ``MachineRef``.
          */
         StarvedGenerator: {
             /** Instance */
@@ -7162,6 +7183,13 @@ export interface components {
             missing: string[];
             /** Cause */
             cause: string;
+            /** Circuit */
+            circuit: number | null;
+            /** Factory */
+            factory: string | null;
+            region: components["schemas"]["Region"] | null;
+            /** Icon */
+            icon: string | null;
             /** X M */
             x_m: number | null;
             /** Y M */

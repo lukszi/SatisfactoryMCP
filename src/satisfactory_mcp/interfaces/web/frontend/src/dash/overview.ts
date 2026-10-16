@@ -13,17 +13,13 @@ import { actionTone, statesOf } from "./machine-states";
 import { issueCount, issueGroups, issueTable, mixBar, mixLegend, mixOf } from "./machine-health";
 import { factoryMapButton, pointButton } from "./actions";
 import { go } from "../app/nav";
-import {
-  circuitTable,
-  faultCount,
-  faultsOf,
-  faultWords,
-  generationTile,
-  headroomTiles,
-  problemTable,
-  retryCircuits,
-} from "./power-tab";
-import { ledgerBar, ratedWorld } from "./power-ledger";
+import { faultCount, faultsOf, faultWords, ratedWorld } from "./power/readings";
+import { problemsOf } from "./power/model";
+import { circuitList, problemList, wirePowerLists } from "./power/lists";
+import { retryCircuits } from "./power/page";
+import { generationTile, headroomTiles } from "./overview-power";
+import { ledgerBar } from "./power/ledger-bar";
+import { mount, type Safe } from "../kit/html";
 import { counted, WORDS } from "../kit/words";
 
 import type { FactoryHealthRow } from "../api/shapes";
@@ -78,7 +74,7 @@ function headlineTiles(body: HTMLElement): void {
     const generation = generationTile(ratedWorld(v.circuits), counted(generators, "generator"), v.circuits.world.starved_generation_mw > 0, power);
     generation.appendChild(ledgerBar(v.circuits.world));
     row.appendChild(generation);
-    headroomTiles(ratedWorld(v.circuits), { href: power }).forEach(function (headroomTile) {
+    headroomTiles(ratedWorld(v.circuits), power).forEach(function (headroomTile) {
       row.appendChild(headroomTile);
     });
     const faults = faultsOf(v.circuits);
@@ -201,12 +197,21 @@ function problemsCard(parent: HTMLElement): void {
     else loading(card, "power circuits");
     return;
   }
-  const faults = faultsOf(v.circuits);
-  if (!faultCount(faults)) {
+  const problems = problemsOf(v.circuits);
+  if (!problems.length) {
     empty(card, "no " + WORDS.powerProblems);
     return;
   }
-  problemTable(card, faults, ROWS_SHOWN);
+  kitPart(card, problemList(problems.slice(0, ROWS_SHOWN)));
+  if (problems.length > ROWS_SHOWN) appendNote(card, "showing " + ROWS_SHOWN + " of " + problems.length + " rows; Power lists all");
+}
+
+/* A kit list inside an old card, with its row links and map buttons wired. */
+function kitPart(card: HTMLElement, markup: Safe): void {
+  const holder = make("div");
+  mount(holder, markup);
+  wirePowerLists(holder);
+  card.appendChild(holder);
 }
 
 function circuitsCard(parent: HTMLElement): void {
@@ -214,7 +219,7 @@ function circuitsCard(parent: HTMLElement): void {
   const card = make("section", "dash-card");
   heading(card, "power per circuit");
   parent.appendChild(card);
-  if (v.circuits) circuitTable(card, v.circuits.circuits);
+  if (v.circuits) kitPart(card, circuitList(v.circuits.circuits));
   else if (v.circuitsError) error(card, "power circuits", "", retryCircuits);
   else loading(card, "power circuits");
 }

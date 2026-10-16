@@ -12,7 +12,7 @@ import { bench, changed } from "../state";
 import { headroomControls } from "./headroom";
 import { startupCard, STARTUP_CTL } from "./startup";
 import { appendAskMarks, askAbout, jobsCard, onSiteCard, shortItemsCard, stageCtl, stateChips, takeRefocusCtl, TRACK_TABLE_NARROW } from "./tables";
-import { headroom } from "../../power-ledger";
+import { headroom } from "../../power/readings";
 import { actionTone } from "../../machine-states";
 import { counted, WORDS } from "../../../kit/words";
 

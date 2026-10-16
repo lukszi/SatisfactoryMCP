@@ -7,7 +7,7 @@ import { settingChoice, spoilerQuery } from "../../app/settings";
 import { state } from "../../app/state";
 import { friendlyError } from "../../kit/toast";
 import { WORDS } from "../../kit/words";
-import { biomassQuery } from "../power-ledger";
+import { biomassQuery } from "../power/readings";
 import { trackDash } from "./address";
 import { bench, changed } from "./state";
 

@@ -33,7 +33,7 @@ phones are one `max-width: 600px` media query per stylesheet.
 
 | module | parts |
 |---|---|
-| `kit/ui/text.ts` | `dashH` (heading · n), `blockHead` + `fig` / `figSub` (at most two headline figures), `toolrow`, `note`, `emptyLine`, `icon` (game icon or monogram; a failed load becomes the monogram) |
+| `kit/ui/text.ts` | `pageHead` (object-page header: breadcrumb, title, chips, figures, note), `dashH` (heading · n), `blockHead` + `fig` / `figSub` (at most two headline figures), `toolrow`, `note`, `emptyLine`, `icon` (game icon or monogram; a failed load becomes the monogram) |
 | `kit/ui/entry.ts` | `list(name, mode)` — the list's column template is `.l-<name> .entry { --cols: … }` in the page's CSS — `entry`, `identity`, `nameLine`, `metric`, `facts`, `chips`, `acts`, `chevron` + `expandBody` + `wireExpand`, `group` |
 | `kit/ui/marks.ts` | `chip` / `tagChip`, `pill` / `flow`, `bar` / `mixBar`, `jobBar`, `slotTile` |
 | `kit/ui/controls.ts` | `btn`, `busyBtn`, `glyphBtn`, `moreBtn`, `seg`, `selectBox`, `sortSelect`, `filterField`, `filterChip`, `switchBox`, `check` |
@@ -67,3 +67,25 @@ land elsewhere. A bare first word is a shorthand (`#maps` is `#dash=maps`).
   opens it over the current page, so Back closes it. `#dash=settings` opens it over the page shown
   last; `#dash=settings/maps` goes to `#maps`.
 - Map types, jobs, the generate form and inputs are the `#maps` page (`dash/maps/`).
+
+## Power
+
+`dash/power/` is the Power page (`#dash=power`) and a circuit's page (`#dash=power/<n>`), both
+from `/api/power/circuits` (circuit pages also read factory health for the factory rows).
+
+- **Supply and demand** (`supply.ts`): three bars on one scale, the largest of generation and
+  both draws. Generation is segmented by generator type, each type's starved MW hatched; "if
+  all run" is nameplate draw (every machine flat out at its saved clock), "drawing now" the
+  measured draw. A white line marks generation, so the gap to it is the headroom; draw past it
+  turns red. Under the bars, "not counted" chips with tooltips name what the figures leave
+  out: hand-fed biomass, starved MW, unmeasured machines (charged in full), paused buildings,
+  what stands on no wire, and generator types game data cannot rate (no line then).
+- **Problems** (`model.ts` `problemsOf`): one building with one fault at one place is one row;
+  no wire and no generator first, starved generators next, generators on no wire last and
+  muted (they are not a fault, just left out).
+- **Circuits**: worst first (no generator, short now, a starved generator, then least
+  headroom per MW generated). The bar's 100% is that circuit's own generation, and every bar
+  shares one overflow room (`utilScale`, up to 150%), so overdraw reads alike across rows.
+- `readings.ts` reads a ledger for every surface (the header, the map's side panel, the
+  planner); `ledger-bar.ts` is the compact DOM bar the side panel and the old Overview tiles
+  still use.

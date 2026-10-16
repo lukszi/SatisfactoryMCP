@@ -7,7 +7,7 @@ import { count, flow, mw } from "../../kit/format";
 import { vitals } from "../../app/vitals";
 import { bench } from "./state";
 import { undoRev } from "./writes";
-import { headroom } from "../power-ledger";
+import { headroom } from "../power/readings";
 import { WORDS } from "../../kit/words";
 
 import type { Column } from "../../kit/dashkit";

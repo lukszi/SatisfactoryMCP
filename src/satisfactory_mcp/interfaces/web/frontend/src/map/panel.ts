@@ -14,14 +14,14 @@ import { flyPadded, NARROW } from "./map";
 import {
   biomassQuery,
   circuitName,
-  ledgerBar,
   onBiomass,
   ratedCircuit,
   ratedWorld,
   readGeneration,
   readHeadroomNow,
   readMeasuredDraw,
-} from "../dash/power-ledger";
+} from "../dash/power/readings";
+import { ledgerBar } from "../dash/power/ledger-bar";
 import { badgeTone, ledgerBlock, nameButton, panelNote, refList, showOnMapButton, STARVED_HINT } from "./panel-rows";
 import { registerFetch } from "../app/registry";
 import { onSelect, select, selected } from "../app/selection";

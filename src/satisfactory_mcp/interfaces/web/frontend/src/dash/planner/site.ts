@@ -9,7 +9,7 @@ import { map } from "../../map/map";
 import { stageHeadroom } from "./reads";
 import { bench, changed } from "./state";
 import { applyOps } from "./writes";
-import { biomassQuery } from "../power-ledger";
+import { biomassQuery } from "../power/readings";
 import { onSetting, settingChoice } from "../../app/settings";
 import {
   crossCancel,
