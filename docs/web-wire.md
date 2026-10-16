@@ -236,6 +236,20 @@ are actors.
   must not on the fourth. A projection too old to carry the join reads as all `unknown`.
 - Pumps, junctions, valves and fluid buffers carry no spline, only a header position, so they
   are not pipe rows.
+- `/api/hypertubes` sends the hypertube pieces in the pipe row's shape without the fluid or
+  direction fields (a tube carries the player, and either way), and the `entrances` as
+  placement rows with their `shapes`. A projection older than schema 24 answers with none.
+
+## Map markers
+
+`/api/map-markers` (`routers/layers/map_markers.py`) is every marker the player placed on the
+in-game map, in the save's order: `name`, the position in metres, `colour`, `icon_id`, `type`,
+`category` and `compass`.
+
+- `colour` is `#rrggbb` sRGB. The save stores a linear `LinearColor`; sending it unconverted
+  would make every marker darker on the page than in the game.
+- `icon_id` is the game's icon library id. The page does not resolve it to a picture; it is in
+  the popup so a reader can match a marker to the one in game.
 
 ## Power lines
 

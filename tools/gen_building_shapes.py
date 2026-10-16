@@ -80,6 +80,7 @@ _LISTED = {
     *registers.STORAGE_CLASSES,
     *registers.FLUID_BUFFER_CLASSES,
     *registers.FACILITY_CLASSES,
+    *registers.HYPERTUBE_ENTRANCE_CLASSES,
 }
 
 #: Connection component classes, by what they carry.

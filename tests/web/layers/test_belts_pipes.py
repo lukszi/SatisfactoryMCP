@@ -170,7 +170,11 @@ def test_the_splitters_and_mergers_ride_with_the_belts_and_with_nothing_else(cli
 
     # The no-double-draw claim, checked rather than asserted in a comment.
     machines = client.get("/api/machines").json()
-    drawn = {r["instance_leaf"] for kind in ("machines", "extractors", "generators") for r in machines[kind]}
+    drawn = {
+        r["instance_leaf"]
+        for kind in ("machines", "extractors", "generators")
+        for r in machines[kind]
+    }
     assert not drawn & {r["instance_leaf"] for r in body["attachments"]}
 
 
@@ -506,3 +510,19 @@ def test_pipe_fittings_come_with_the_pipes_and_their_outlines(client, state):
     kinds = ("machines", "extractors", "generators")
     drawn = {r["instance_leaf"] for kind in kinds for r in machines[kind]}
     assert not drawn & {r["instance_leaf"] for r in body["fittings"]}
+
+
+def test_hypertubes_are_drawn_from_their_splines_with_the_entrances(client, state):
+    """The tubes read the pipe way, curves included, and the entrances come with an outline."""
+    body = client.get("/api/hypertubes").json()
+    raw = state.projection["hypertubes"]["segments"]
+    assert body["count"] == len(body["hypertubes"]) == len(raw) == 60
+    for row in body["hypertubes"]:
+        assert row["cls"] == "Build_PipeHyper_C"
+        assert row["name"] and not row["name"].startswith("Build_")
+        assert len(row["points_m"]) >= 2
+    assert any(row["curve_m"] for row in body["hypertubes"]), "the reference tubes bend"
+    entrances = body["entrances"]
+    assert len(entrances) == 8
+    assert {e["cls"] for e in entrances} == {"Build_PipeHyperStart_C"}
+    assert set(body["shapes"]) == {"Build_PipeHyperStart_C"}
