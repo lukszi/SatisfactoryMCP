@@ -81,6 +81,33 @@ ATTACHMENT_HINTS = (
     "ConveyorAttachmentMerger",
 )
 
+#: The pieces a pipe run passes through: junctions, pumps and valves. Filed so the map can draw
+#: them; none runs a recipe, and the flow they carry is the ``pipes`` block's.
+FITTING_HINTS = (
+    "PipelineJunction",
+    "PipelinePump",
+    "Build_Valve",
+)
+
+#: One-off buildings that are neither machines nor storage: drawn on the map, counted nowhere
+#: else. Written out, because "Mam" or "Sink" as a pattern would catch other names.
+FACILITY_CLASSES = (
+    "Build_TradingPost_C",  # the HUB
+    "Build_SpaceElevator_C",
+    "Build_Mam_C",
+    "Build_ResourceSink_C",
+    "Build_ResourceSinkShop_C",
+    "Build_Workshop_C",
+    "Build_WorkBench_C",
+    "Build_BlueprintDesigner_C",
+    "Build_BlueprintDesigner_Mk2_C",
+    "Build_BlueprintDesigner_Mk3_C",
+    "Build_RadarTower_C",
+    "Build_PowerStorageMk1_C",
+    "Build_AlienPowerBuilding_C",
+    "Build_TreeGiftProducer_C",
+)
+
 #: The classes whose whole point is to hold items in a ``StorageInventory``. Listed, because
 #: every splitter and merger owns a component by that name holding items in transit. Machine
 #: buffers, the AWESOME Shop and the Space Elevator intake are reported elsewhere.
@@ -109,19 +136,13 @@ FLUID_BUFFER_CLASSES = (
 #: Classes carrying a factory building's evidence (a productivity monitor or a machine
 #: buffer) that deliberately get no record. **Edit this list** when the unfiled-class census
 #: names a class: adding it here claims its record is not wanted, a hint list claims it is.
-#: Across 18 saves (save versions 25 to 60) these were the only such classes.
+#: Across 18 saves (save versions 25 to 60) these and the pump, the HUB, the Space Elevator and
+#: the AWESOME Shop were the only such classes; those four are filed now, as a fitting and as
+#: facilities.
 DISMISSED_FACTORY_CLASSES = frozenset(
     {
-        # Moves fluid along a pipe the ``pipes`` layer already draws, and runs no recipe.
-        "Build_PipelinePump_C",
         # A hypertube entrance. It moves the player, which is not production.
         "Build_PipeHyperStart_C",
-        # The HUB. Its milestone intake is ``progression``'s business.
-        "Build_TradingPost_C",
-        # Its intake is already reported against the phase, by ``progression``.
-        "Build_SpaceElevator_C",
-        # The AWESOME Shop. Its inventory is a catalogue, not stock the player owns.
-        "Build_ResourceSinkShop_C",
         # The Portable Miner extracts, but has no ``Build_`` class or descriptor, so nothing
         # downstream could cost, size or draw it.
         "BP_PortableMiner_C",

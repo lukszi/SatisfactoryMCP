@@ -48,6 +48,8 @@ declare module "leaflet" {
     _chevron?: boolean;
     /** A building's port notch: shown only when zoomed in; see drawn/outlines.ts. */
     _port?: boolean;
+    /** A building's height band, and the veil opacity it shows when zoomed in. */
+    _band?: number;
     /** A glyph whose radius is a fixed pixel size; read twice in drawn/route-passes.ts. */
     _fixed?: boolean;
     /** How this path was drawn before it was ghosted; present while it is ghosted. */

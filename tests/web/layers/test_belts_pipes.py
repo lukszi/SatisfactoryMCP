@@ -297,6 +297,8 @@ def test_a_world_with_no_pipes_answers_with_empty_plumbing(game):
                 "count": 0,
                 "networks": 0,
                 "directed": 0,
+                "fittings": [],
+                "shapes": {},
             }
 
 
@@ -481,3 +483,26 @@ def test_a_malformed_curve_costs_the_curve_and_not_the_route(game):
     assert rows[1]["curve_m"] is None
     assert rows[2]["curve_m"] is None
     assert rows[3]["curve_m"] is None
+
+
+def test_pipe_fittings_come_with_the_pipes_and_their_outlines(client, state):
+    """Junctions, pumps and valves are placements the pipe layer draws, each class's outline
+    sent once beside them, and none of them is also a machine."""
+    body = client.get("/api/pipes").json()
+    raw = state.projection["fittings"]
+    assert len(body["fittings"]) == len(raw) > 100, "the reference world joins pipes a lot"
+    assert {r["cls"] for r in body["fittings"]} == {
+        "Build_PipelineJunction_Cross_C",
+        "Build_PipelinePump_C",
+        "Build_PipelinePumpMk2_C",
+        "Build_Valve_C",
+    }
+    assert set(body["shapes"]) == {r["cls"] for r in body["fittings"]}
+    junction = body["shapes"]["Build_PipelineJunction_Cross_C"]
+    assert junction["source"] == "mesh"
+    assert [p["kind"] for p in junction["ports"]] == ["pipe"] * 4
+
+    machines = client.get("/api/machines").json()
+    kinds = ("machines", "extractors", "generators")
+    drawn = {r["instance_leaf"] for kind in kinds for r in machines[kind]}
+    assert not drawn & {r["instance_leaf"] for r in body["fittings"]}

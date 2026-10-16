@@ -37,10 +37,19 @@ AUTOSAVE = re.compile(r"_autosave_\d+\.sav$")
 #: so that a field emitted by mistake is not absorbed with the legitimate additions.
 POST_11_ADDITIONS = {
     #: New top-level keys: belt and pipe polylines (12, 13), the splitters and mergers on belt
-    #: runs (13), storage (15), power geometry (17) and crates (18). Columns added inside belts
-    #: or pipes (14, 15, 20) need no entry because those keys are dropped whole; who is wired
-    #: to whom stays compared as ``graph["power"]``.
-    "keys": ("belts", "pipes", "attachments", "storage", "power", "crates"),
+    #: runs (13), storage (15), power geometry (17), crates (18), and the pipe fittings and
+    #: facilities (23). Columns added inside belts or pipes (14, 15, 20) need no entry because
+    #: those keys are dropped whole; who is wired to whom stays compared as ``graph["power"]``.
+    "keys": (
+        "belts",
+        "pipes",
+        "attachments",
+        "storage",
+        "power",
+        "crates",
+        "fittings",
+        "facilities",
+    ),
     #: The banked version label: a projection filtered back to schema 11 claims schema 11.
     "schema_version": 11,
     #: Schema 12. A new field on every record of these keys: top-down placement yaw in degrees.

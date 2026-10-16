@@ -18,7 +18,8 @@ import { L } from "../leaflet";
 import { BAND, clearedLayer } from "../layers";
 import { footprintCorners, hashFor } from "../map";
 import { raiseNodeDots } from "./markers";
-import { addNotches, outlineLatLngs } from "./outlines";
+import { addBands, addNotches, addXray, outlineLatLngs } from "./outlines";
+import { lowestFirst } from "./outline-geometry";
 import { showMachine } from "../map-highlight";
 import { declareColours } from "../palette";
 import { registerFetch } from "../../app/registry";
@@ -27,6 +28,7 @@ import { WORDS } from "../../kit/words";
 
 import type { InspectedEvent } from "../leaflet-private";
 import type {
+  FacilityRow,
   MachinesResponse,
   StorageResponse,
   StorageRow,
@@ -133,7 +135,9 @@ export function drawMachines(data: MachinesResponse): void {
       colour: KIND_COLOUR[kind],
       rank: [BAND.built, MACHINE_SLOT[kind], kind],
     });
-    data[kind].forEach(function (m) {
+    // Lowest first, so a building on an upper deck is painted over the one under it; the x-ray
+    // line keeps the lower one findable (docs/building-shapes.md).
+    lowestFirst(data[kind]).forEach(function (m) {
       // One guard, on x only. The row type says `y_m` can be null too, and the assertion below
       // is that claim not being acted on: if the projection ever sends half a position it
       // should be visible rather than silently skipped.
@@ -204,10 +208,54 @@ export function drawMachines(data: MachinesResponse): void {
         h_m: m.h_m,
       };
       piece.addTo(group);
+      addBands(group, m.x_m, m.y_m!, m.yaw, shape, piece._floor, idle);
       addNotches(group, m.x_m, m.y_m!, m.yaw, shape, piece._floor);
+      addXray(group, piece, piece._floor);
     });
   });
+  drawFacilities(data.facilities || [], data.shapes);
   raiseNodeDots();
+}
+
+/* The one-off buildings: the HUB, the AWESOME Sink and Shop, the MAM, the Space Elevator,
+ * workshops. Teal, a hue no other layer spends (docs/frontend_palette.md); no state, because
+ * none of them runs a recipe. */
+const FACILITY_COLOUR = declareColours("placements", { facilities: "#3fa0a0" }).facilities;
+const FACILITY_FALLBACK_M = 8;
+
+function drawFacilities(rows: FacilityRow[], shapes: MachinesResponse["shapes"]): void {
+  const group = clearedLayer("facilities", {
+    on: true,
+    colour: FACILITY_COLOUR,
+    rank: [BAND.built, 65, "facilities"],
+  });
+  lowestFirst(rows).forEach(function (f) {
+    if (f.x_m === null || f.y_m === null) return;
+    const w = (f.w_m || FACILITY_FALLBACK_M) / 2;
+    const l = (f.l_m || FACILITY_FALLBACK_M) / 2;
+    const shape = shapes[f.cls];
+    const piece = L.polygon(outlineLatLngs(f.x_m, f.y_m, f.yaw, shape, w, l), {
+      color: FACILITY_COLOUR,
+      fillColor: FACILITY_COLOUR,
+      weight: 1,
+      fillOpacity: 0.65,
+    }).bindPopup(
+      popup([
+        ["building", f.name],
+        ["footprint", f.w_m && f.l_m ? f.w_m + " x " + f.l_m + " m" : null],
+        ["height", f.h_m ? f.h_m + " m" : null],
+        ["facing", f.yaw === null || f.yaw === undefined ? null : Math.round(f.yaw) + "°"],
+        ["at", f.x_m + ", " + f.y_m + " m"],
+        ["id", code(f.instance_leaf)],
+      ])
+    );
+    // Where it stands, as storage is joined: `/api/floors` lists no facility in a band.
+    piece._floor = { x_m: f.x_m, y_m: f.y_m, z_m: f.z_m === null ? undefined : f.z_m };
+    piece.addTo(group);
+    addBands(group, f.x_m, f.y_m, f.yaw, shape, piece._floor, false);
+    addNotches(group, f.x_m, f.y_m, f.yaw, shape, piece._floor);
+    addXray(group, piece, piece._floor);
+  });
 }
 
 /* The live wave's first entry, and the only one on the page with a post-draw hook. A save
@@ -219,7 +267,7 @@ registerFetch<MachinesResponse>({
   rank: 10,
   path: "/api/machines",
   label: "machines",
-  clears: ["machines", "extractors", "generators"],
+  clears: ["machines", "extractors", "generators", "facilities"],
   refilters: true,
   draw: drawMachines,
   after: refreshFloors,
@@ -312,7 +360,7 @@ export function drawStorage(data: StorageResponse): void {
   // scatter of specks. Near the bottom of the built band, because the row is off by default
   // and the bottom of the list is where a reader who wants it goes looking.
   const group = clearedLayer("storage", { on: false, colour: STORAGE_COLOUR, rank: [BAND.built, 70, "storage"] });
-  data.storage.forEach(function (s) {
+  lowestFirst(data.storage).forEach(function (s) {
     if (s.x_m === null || s.y_m === null) return;
     const colour = s.kind === "fluid" ? STORAGE_FLUID_COLOUR : STORAGE_COLOUR;
     const w = (s.w_m || STORAGE_FALLBACK_M) / 2;
@@ -333,7 +381,9 @@ export function drawStorage(data: StorageResponse): void {
     // band lists this box and a mark carrying an id would be a join that always misses.
     box._floor = { x_m: s.x_m, y_m: s.y_m, z_m: s.z_m === null ? undefined : s.z_m };
     box.addTo(group);
+    addBands(group, s.x_m, s.y_m, s.yaw, shape, box._floor, !holdsAnything(s));
     addNotches(group, s.x_m, s.y_m, s.yaw, shape, box._floor);
+    addXray(group, box, box._floor);
   });
   raiseNodeDots();
 }

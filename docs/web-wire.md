@@ -148,12 +148,18 @@ resolutions, and the line between them decides every nullable field on the place
   client picks the fallback, because one drawn on the server would look measured.
 - `yaw` turns those extents into the rectangle the player placed, so the two are read
   together or not at all.
-- `shapes` (on `/api/machines`, `/api/storage` and `/api/belts`) maps each class in that
-  response to its outline once, never per actor: `source` (`mesh` from
+- `shapes` (on `/api/machines`, `/api/storage`, `/api/belts` and `/api/pipes`) maps each
+  class in that response to its outline once, never per actor: `source` (`mesh` from
   `data/building_shapes.json`, or `clearance` from the clearance boxes at their own offsets),
-  `rings` as `[x, y]` metres in the actor's frame, and `ports` (`kind` belt/pipe, `flow`
-  in/out/any, `x_m`/`y_m`/`z_m`, `yaw` the facing in degrees). A class with neither is absent
-  and the page draws the `w_m` x `l_m` rectangle. [building-shapes.md](building-shapes.md).
+  `rings` as `[x, y]` metres in the actor's frame, `bands` (the parts standing above `z_m`,
+  `tier` 1 for the body above 2 m and 2 for the tall parts, each with its own `rings`; empty
+  for a clearance outline), and `ports` (`kind` belt/pipe, `flow` in/out/any,
+  `x_m`/`y_m`/`z_m`, `yaw` the facing in degrees). A class with neither is absent and the page
+  draws the `w_m` x `l_m` rectangle. [building-shapes.md](building-shapes.md).
+- `facilities` on `/api/machines` are the one-off buildings that are neither machines nor
+  storage (the HUB, the AWESOME Sink and Shop, the MAM, the Space Elevator, workshops, the
+  radar tower; `registers.FACILITY_CLASSES`): placement rows with `h_m` and no recipe or
+  state, so no health verdict rides on them.
 - `uptime` keeps three decimals: at two, 0.9994 rounds onto 1.0 and `health.SATURATED`'s line
   vanishes.
 - `/api/machines` asks `health.assess` once for the whole world rather than per row (on the
@@ -207,6 +213,8 @@ are actors.
   no recipe, draws no power and means nothing without the runs either side, and being in no
   other payload keeps it from being drawn twice. Their `w_m`/`l_m` are the dump's 4 x 4 m soft
   clearance box.
+- `fittings` (pipe junctions, pumps and valves) ride with the pipes for the same reason, in the
+  same row shape, with their `shapes` beside them.
 - **Each pipe says which fluid it carries**, taken from the `FGPipeNetwork` that claims it: the
   world's own answer, not an inference from what the pipe is plugged into. `network` is that
   network's game id, not an index into the reply, and null for a pipe no network claims.

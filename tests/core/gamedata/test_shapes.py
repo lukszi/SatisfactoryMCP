@@ -6,7 +6,7 @@ import pytest
 
 from satisfactory_mcp.core.gamedata.footprint import clearance_rings, extract_footprint
 from satisfactory_mcp.core.gamedata.model import GameData
-from satisfactory_mcp.core.gamedata.shapes import building_shape, parse_shape_table
+from satisfactory_mcp.core.gamedata.shapes import ShapeRow, building_shape, parse_shape_table
 from satisfactory_mcp.core.jsontypes import JsonObject
 
 
@@ -90,9 +90,36 @@ def test_a_torn_table_row_costs_itself_only():
     assert [p["name"] for p in table["Build_Good_C"]["ports"]] == ["Input0"]
 
 
+def test_bands_come_lowest_first_and_a_torn_band_is_dropped():
+    ring = [[0, 0], [1, 0], [1, 1]]
+    table = parse_shape_table(
+        {
+            "classes": {
+                "Build_Tall_C": {
+                    "rings": [ring],
+                    "bands": [
+                        {"tier": 2, "z_m": 9.5, "rings": [ring]},
+                        {"tier": 1, "z_m": 2, "rings": [ring]},
+                        {"tier": 1, "z_m": "high", "rings": [ring]},
+                        {"tier": 2, "z_m": 4, "rings": [[[0, 0]]]},
+                        {"z_m": 3, "rings": [ring]},
+                    ],
+                    "ports": [],
+                },
+                "Build_Flat_C": {"rings": [ring], "ports": []},
+            }
+        }
+    )
+    bands = table["Build_Tall_C"]["bands"]
+    assert [(band["tier"], band["z_m"]) for band in bands] == [(1, 2.0), (2, 9.5)]
+    assert table["Build_Flat_C"]["bands"] == []
+
+
 def test_a_class_with_no_mesh_outline_falls_back_to_its_clearance_boxes(game: GameData):
     cls = "Build_ConstructorMk1_C"
-    mesh = {cls: {"rings": [[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0]]], "ports": []}}
+    mesh: dict[str, ShapeRow] = {
+        cls: {"rings": [[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0]]], "bands": [], "ports": []}
+    }
     assert building_shape(game, mesh, cls)["source"] == "mesh"  # type: ignore[index]
     fallback = building_shape(game, {}, cls)
     assert fallback is not None and fallback["source"] == "clearance" and fallback["rings"]

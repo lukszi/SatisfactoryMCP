@@ -29,6 +29,33 @@ export function placeRings(x: number, y: number, yaw: number | null | undefined,
   });
 }
 
+/* How strongly each height band's light veil covers its building: the body above 2 m, then the
+ * tall parts. A tier past the table reads as the tallest. docs/building-shapes.md. */
+export const BAND_VEIL: readonly number[] = [0.22, 0.42];
+/* The share of the veil an idle building keeps, matching its faded fill. */
+export const FADED_VEIL_SHARE = 0.4;
+
+/** The veil opacity of a band of `tier` (1-based), faded with its building. */
+export function bandVeil(tier: number, faded: boolean): number {
+  const veil = BAND_VEIL[Math.min(Math.max(tier, 1), BAND_VEIL.length) - 1]!;
+  return faded ? veil * FADED_VEIL_SHARE : veil;
+}
+
+/** Rows in drawing order, lowest first, so a building on an upper deck is painted over the one
+ *  under it; a row with no height counts as the ground. Stable, and a new array. */
+export function lowestFirst<T extends { z_m: number | null }>(rows: readonly T[]): T[] {
+  return rows
+    .map(function (row, at) {
+      return { row: row, at: at };
+    })
+    .sort(function (a, b) {
+      return (a.row.z_m ?? -Infinity) - (b.row.z_m ?? -Infinity) || a.at - b.at;
+    })
+    .map(function (entry) {
+      return entry.row;
+    });
+}
+
 /* A notch's size in metres: about a belt's width across, so it reads as the belt's mouth. */
 export const NOTCH_HALF_WIDTH_M = 0.8;
 const NOTCH_OUT_M = 0.7;

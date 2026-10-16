@@ -16,9 +16,9 @@ from .classfacts import AssetIndex
 from .properties import Vec3, property_tags, read_triple, relative_transform
 from .transforms import Quat, Transform, compose, rotator_to_quat
 from .view import PackageView, class_name_of
-from .zen import ScriptObjects
+from .zen import ScriptObjects, ZenExport
 
-__all__ = ["IDENTITY", "Component", "class_components"]
+__all__ = ["IDENTITY", "Component", "class_components", "generated_class"]
 
 IDENTITY: Transform = ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0), (1.0, 1.0, 1.0))
 
@@ -55,6 +55,13 @@ def _super_path(view: PackageView, slot: int) -> str | None:
     pkg = view.pkg
     at = pkg.export_offset + slot * _EXPORT_ENTRY_BYTES + _EXPORT_SUPER_AT
     return view.object_path(struct.unpack_from("<Q", pkg.blob, at)[0])
+
+
+def _own_export(view: PackageView, package: str) -> ZenExport | None:
+    """The class a blueprint package generates. Matched ignoring case: the Mk.2 pump's package
+    is ``Build_PipelinePumpMK2`` and its class ``Build_PipelinePumpMk2_C``."""
+    leaf = (package.rsplit("/", 1)[-1] + "_C").casefold()
+    return next((e for e in view.exports if e["name"].casefold() == leaf), None)
 
 
 def _local(props: dict[str, bytes], base: Transform | None = None) -> Transform:
@@ -103,8 +110,7 @@ class _Walk:
         view = self.open(package)
         if view is None or depth > _MAX_DEPTH:
             return False
-        leaf = package.rsplit("/", 1)[-1] + "_C"
-        own = next((e for e in view.exports if e["name"] == leaf), None)
+        own = _own_export(view, package)
         parent = _super_path(view, own["slot"]) if own is not None else None
         if parent and parent.startswith("/Game/"):
             self.visit(parent, depth + 1)
@@ -192,6 +198,15 @@ def _instance_transform(view: PackageView, payload: bytes) -> Transform:
     location: Vec3 = read_triple(fields.get("Translation", b"")) or IDENTITY[0]
     scale: Vec3 = read_triple(fields.get("Scale3D", b"")) or IDENTITY[2]
     return (location, _quat(fields.get("Rotation", b"")) or IDENTITY[1], scale)
+
+
+def generated_class(
+    store: IoStore, scripts: ScriptObjects, index: AssetIndex, class_package: str
+) -> str | None:
+    """The name of the class a blueprint package generates, as a save spells it."""
+    view = _Walk(store, scripts, index).open(class_package)
+    own = _own_export(view, class_package) if view is not None else None
+    return own["name"] if own is not None else None
 
 
 def class_components(

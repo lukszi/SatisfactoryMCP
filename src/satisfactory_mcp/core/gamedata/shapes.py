@@ -19,6 +19,7 @@ from .model import GameData
 
 __all__ = [
     "SHAPES_FILE",
+    "BandRow",
     "BuildingShape",
     "PortFlow",
     "PortKind",
@@ -52,18 +53,31 @@ class PortRow(TypedDict):
     yaw: float
 
 
+class BandRow(TypedDict):
+    """The parts of a class standing higher than ``z_m`` above its floor, as outline rings.
+    ``tier`` is the rule that cut it: 1 the body above 2 m, 2 the tall parts."""
+
+    tier: int
+    z_m: float
+    rings: list[list[list[float]]]
+
+
 class ShapeRow(TypedDict):
-    """One class in the table: outline rings as ``[x, y]`` pairs, and its ports."""
+    """One class in the table: footprint rings as ``[x, y]`` pairs, its height bands lowest
+    first, and its ports."""
 
     rings: list[list[list[float]]]
+    bands: list[BandRow]
     ports: list[PortRow]
 
 
 class BuildingShape(TypedDict):
-    """What the map draws a class as: where the outline came from, the rings, the ports."""
+    """What the map draws a class as: where the outline came from, the footprint rings, the
+    height bands (none for a clearance outline) and the ports."""
 
     source: ShapeSource
     rings: list[list[list[float]]]
+    bands: list[BandRow]
     ports: list[PortRow]
 
 
@@ -84,6 +98,18 @@ def _rings(raw: JsonValue) -> list[list[list[float]]]:
         if len(points) >= 3:
             out.append(points)
     return out
+
+
+def _bands(raw: JsonValue) -> list[BandRow]:
+    """Bands with a numeric height and at least one ring, lowest first."""
+    out: list[BandRow] = []
+    for band in raw if isinstance(raw, list) else ():
+        if not isinstance(band, dict):
+            continue
+        z, tier, rings = _number(band.get("z_m")), band.get("tier"), _rings(band.get("rings"))
+        if z is not None and isinstance(tier, int) and not isinstance(tier, bool) and rings:
+            out.append({"tier": tier, "z_m": z, "rings": rings})
+    return sorted(out, key=lambda band: band["z_m"])
 
 
 def _port(raw: JsonValue) -> PortRow | None:
@@ -118,6 +144,7 @@ def parse_shape_table(raw: JsonValue) -> dict[str, ShapeRow]:
         ports = row.get("ports")
         out[cls] = {
             "rings": _rings(row.get("rings")),
+            "bands": _bands(row.get("bands")),
             "ports": [p for p in map(_port, ports if isinstance(ports, list) else []) if p],
         }
     return out
@@ -138,9 +165,9 @@ def building_shape(game: GameData, table: dict[str, ShapeRow], cls: str) -> Buil
     row = table.get(cls)
     ports = row["ports"] if row else []
     if row and row["rings"]:
-        return {"source": "mesh", "rings": row["rings"], "ports": ports}
+        return {"source": "mesh", "rings": row["rings"], "bands": row["bands"], "ports": ports}
     building = game.buildings.get(cls)
     if building is None or not building.clearance:
         return None
     rings = [[[x, y] for x, y in ring] for ring in building.clearance]
-    return {"source": "clearance", "rings": rings, "ports": ports}
+    return {"source": "clearance", "rings": rings, "bands": [], "ports": ports}

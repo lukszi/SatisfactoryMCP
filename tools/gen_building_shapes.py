@@ -2,10 +2,11 @@
 
     uv run --extra gen python tools/gen_building_shapes.py
 
-For every machine, extractor, generator, storage box, fluid buffer and belt splitter/merger
-class the save projection files, the class's mesh components are read from the installed
-game, projected onto the ground plane in the actor's own frame and traced into a few
-simplified polygons; its belt and pipe connection components become ports. Method, frame
+For every machine, extractor, generator, storage box, fluid buffer, belt splitter/merger, pipe
+fitting and facility class the save projection files, the class's mesh components are read
+from the installed game, placed in the actor's own frame and traced from above into a few
+simplified polygons: the footprint, and the parts standing above 2 m and above most of the
+class's height; its belt and pipe connection components become ports. Method, frame
 and limits: docs/building-shapes.md.
 """
 
@@ -32,7 +33,11 @@ from mapgen.gamedata.install import GameReader, missing_container, open_game
 from satisfactory_mcp.core.arrays import F64Grid, I64Grid
 from satisfactory_mcp.core.gameassets import staticmesh
 from satisfactory_mcp.core.gameassets.packages import PackageView, Transform
-from satisfactory_mcp.core.gameassets.packages.blueprint import Component, class_components
+from satisfactory_mcp.core.gameassets.packages.blueprint import (
+    Component,
+    class_components,
+    generated_class,
+)
 from satisfactory_mcp.core.gameassets.provenance import InstallNotFound, installed_build
 from satisfactory_mcp.core.gamedata.shapes import (
     SHAPES_FILE,
@@ -43,12 +48,21 @@ from satisfactory_mcp.core.gamedata.shapes import (
 )
 from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
 from satisfactory_mcp.core.saveio.extract import registers
-from tools.building_shapes.silhouette import silhouette
+from tools.building_shapes.silhouette import BandRule, Ring, height_bands, silhouette
 
 #: Grid cell, gap bridged between parts, and the vertex budget per outline.
 CELL_CM = 10.0
 CLOSE_CM = 40.0
 MAX_VERTICES = 48
+
+#: The height bands above the footprint: the body above 2 m, and the tall parts (the top
+#: 45% of the class's height, never under 4 m), each with its own vertex budget.
+BAND_RULES = [BandRule(200.0, 0.0, 32), BandRule(400.0, 0.55, 20)]
+#: Parts thinner than twice this are not mass (railings, pipes, cables).
+BAND_OPENING_CM = 30.0
+#: A band smaller than this, or covering more than this share of the one below, adds nothing.
+BAND_MIN_AREA_CM2 = 5_000.0
+BAND_MAX_OVERLAP = 0.9
 
 #: Where buildable classes live in the container, and the prefix every one of them carries.
 BUILDABLE_DIR = "/FactoryGame/Buildable/"
@@ -60,8 +74,13 @@ _HINTS = (
     + registers.EXTRACTOR_HINTS
     + registers.GENERATOR_HINTS
     + registers.ATTACHMENT_HINTS
+    + registers.FITTING_HINTS
 )
-_LISTED = {*registers.STORAGE_CLASSES, *registers.FLUID_BUFFER_CLASSES}
+_LISTED = {
+    *registers.STORAGE_CLASSES,
+    *registers.FLUID_BUFFER_CLASSES,
+    *registers.FACILITY_CLASSES,
+}
 
 #: Connection component classes, by what they carry.
 _BELT_PORT = "FGFactoryConnectionComponent"
@@ -161,10 +180,10 @@ class MeshCache:
         return self._cache[mesh]
 
 
-def footprint_triangles(
+def placed_triangles(
     meshes: MeshCache, components: list[Component], report: ClassReport
 ) -> F64Grid:
-    """Every mesh component's triangles in the actor frame, flattened to ``(n, 3, 2)`` cm."""
+    """Every mesh component's triangles in the actor frame, ``(n, 3, 3)`` cm."""
     parts: list[F64Grid] = []
     for component in components:
         mesh = component.ref("StaticMesh")
@@ -178,9 +197,9 @@ def footprint_triangles(
         verts, tris = got
         rotation, offset = _matrix(component.transform)
         placed = verts @ rotation.T + offset
-        parts.append(placed[tris][:, :, :2])
+        parts.append(placed[tris])
         report["triangles"] += len(tris)
-    return np.concatenate(parts) if parts else np.zeros((0, 3, 2))
+    return np.concatenate(parts) if parts else np.zeros((0, 3, 3))
 
 
 def _port(component: Component) -> PortRow | None:
@@ -211,14 +230,31 @@ def _port(component: Component) -> PortRow | None:
 def shape_row(meshes: MeshCache, components: list[Component]) -> tuple[ShapeRow, ClassReport]:
     """One class's outline rings (metres, actor frame) and ports."""
     report: ClassReport = {"meshes": [], "failed_meshes": [], "triangles": 0}
-    triangles = footprint_triangles(meshes, components, report)
-    rings = silhouette(triangles, CELL_CM, CLOSE_CM, MAX_VERTICES)
+    triangles = placed_triangles(meshes, components, report)
+    rings = silhouette(triangles[:, :, :2], CELL_CM, CLOSE_CM, MAX_VERTICES)
+    bands = height_bands(
+        triangles,
+        CELL_CM,
+        CLOSE_CM,
+        BAND_RULES,
+        opening=BAND_OPENING_CM,
+        min_area=BAND_MIN_AREA_CM2,
+        max_overlap=BAND_MAX_OVERLAP,
+    )
     ports = [port for port in map(_port, components) if port is not None]
     row: ShapeRow = {
-        "rings": [[[round(x / 100.0, 2), round(y / 100.0, 2)] for x, y in ring] for ring in rings],
+        "rings": _metres(rings),
+        "bands": [
+            {"tier": band.tier, "z_m": round(band.floor / 100.0, 1), "rings": _metres(band.rings)}
+            for band in bands
+        ],
         "ports": sorted(ports, key=lambda port: port["name"]),
     }
     return row, report
+
+
+def _metres(rings: list[Ring]) -> list[list[list[float]]]:
+    return [[[round(x / 100.0, 1), round(y / 100.0, 1)] for x, y in ring] for ring in rings]
 
 
 def build_meta(
@@ -231,7 +267,8 @@ def build_meta(
             failed[cls] = unread
     return {
         "description": (
-            "Top-down outlines and belt/pipe ports of the buildables the map draws, in metres "
+            "Top-down outlines, height bands and belt/pipe ports of the buildables the map "
+            "draws, in metres "
             "in each class's own actor frame (+x forward, +y right, the save's axes at yaw 0). "
             "docs/building-shapes.md."
         ),
@@ -245,7 +282,9 @@ def build_meta(
             "method": (
                 f"LOD 0 of every mesh component, placed by the construction-script tree, "
                 f"rasterised at {CELL_CM:g} cm, closed over {CLOSE_CM:g} cm, hole-filled, "
-                f"traced and simplified to at most {MAX_VERTICES} vertices per ring"
+                f"traced and simplified to at most {MAX_VERTICES} vertices per ring; bands cut "
+                f"the same way from the highest point over each cell, opened over "
+                f"{BAND_OPENING_CM:g} cm first"
             ),
             "decoder": dict(versions),
         },
@@ -254,6 +293,16 @@ def build_meta(
         "count": len(reports),
         "meshes_unread": failed,
     }
+
+
+def table_text(meta: JsonObject, rows: dict[str, ShapeRow]) -> str:
+    """The table as JSON with one line per class: diffable by class, not a line per number."""
+    lines = [
+        f"  {json.dumps(cls)}: {json.dumps(row, separators=(',', ':'))}"
+        for cls, row in rows.items()
+    ]
+    head = json.dumps(meta, indent=1).replace("\n", "\n ")
+    return '{\n "_meta": ' + head + ',\n "classes": {\n' + ",\n".join(lines) + "\n }\n}\n"
 
 
 def main() -> int:
@@ -275,7 +324,8 @@ def main() -> int:
     meshes = MeshCache(reader)
     rows: dict[str, ShapeRow] = {}
     reports: dict[str, ClassReport] = {}
-    for cls, package in shape_classes(reader).items():
+    for leaf_cls, package in shape_classes(reader).items():
+        cls = generated_class(reader.store, reader.scripts, reader.index, package) or leaf_cls
         components = class_components(reader.store, reader.scripts, reader.index, package)
         if components is None:
             print(f"  {cls}: package unreadable, skipped")
@@ -283,9 +333,9 @@ def main() -> int:
         rows[cls], reports[cls] = shape_row(meshes, components)
         ring_sizes = [len(ring) for ring in rows[cls]["rings"]]
         print(f"  {cls}: rings {ring_sizes}, {len(rows[cls]['ports'])} ports")
+    rows = dict(sorted(rows.items()))
     meta = build_meta(build_pin, versions, reports)
-    body = {"_meta": meta, "classes": rows}
-    args.out.write_text(json.dumps(body, indent=1) + "\n", "utf-8")
+    args.out.write_text(table_text(meta, rows), "utf-8")
     print(f"wrote {args.out}  {len(rows)} classes in {time.time() - started:.0f}s")
     return 0
 

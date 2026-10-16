@@ -13,16 +13,17 @@
  * `unknown` where it admits two. The popup names which of the two a reader is looking at.
  */
 
-import { popup, popupTitleRow } from "../../kit/dom";
+import { code, popup, popupTitleRow } from "../../kit/dom";
 import { L } from "../leaflet";
 import { BAND, clearedLayer } from "../layers";
 import { latLngOf, pixelsPerMetre } from "../map";
 import { declareColours } from "../palette";
 import { registerFetch } from "../../app/registry";
+import { addNotches, outlineLatLngs } from "./outlines";
 import { chevronOpacity, routeChevrons, routePolyline } from "./route-geometry";
 import { ROUTE_WIDTH_M, routeWeight, sinkRoutes } from "./route-passes";
 
-import type { PipeFlowBasis, PipeRow, PipesResponse } from "../../api/shapes";
+import type { AttachmentRow, BuildingShape, PipeFlowBasis, PipeRow, PipesResponse } from "../../api/shapes";
 import type { Point3M } from "../geometry";
 
 // Oxide: warm where the belts are cool (docs/frontend_palette.md). The middle tone is the swatch.
@@ -138,7 +139,40 @@ export function drawPipes(data: PipesResponse): void {
     run.addTo(group);
     if (pipe.direction === "forward" || pipe.direction === "reverse") drawChevrons(pipe, group, alpha);
   });
+  (data.fittings || []).forEach(function (fitting) {
+    if (fitting.x_m === null || fitting.y_m === null) return;
+    const shape = data.shapes[fitting.cls];
+    const piece = fittingShape(fitting, fitting.x_m, fitting.y_m, shape).addTo(group);
+    addNotches(group, fitting.x_m, fitting.y_m, fitting.yaw, shape, piece._floor!);
+  });
   sinkRoutes();
+}
+
+/* A junction, pump or valve, the pipes' twin of a belt's splitter. Placed by where it stands,
+ * as storage is: `/api/floors` lists no fitting in a band. */
+const FITTING_FALLBACK_M = 2;
+
+function fittingShape(fitting: AttachmentRow, x_m: number, y_m: number, shape?: BuildingShape): L.Polygon {
+  const halfWidth = (fitting.w_m || FITTING_FALLBACK_M) / 2;
+  const halfLength = (fitting.l_m || FITTING_FALLBACK_M) / 2;
+  const piece = L.polygon(
+    outlineLatLngs(x_m, y_m, fitting.yaw, shape, halfWidth, halfLength),
+    {
+      color: PIPE_TIER["pipe mk2"],
+      weight: 1,
+      fillColor: PIPE_COLOUR,
+      fillOpacity: 0.9,
+    }
+  ).bindPopup(
+    popup([
+      popupTitleRow("pipe part", fitting.name, fitting.cls),
+      ["facing", fitting.yaw === null || fitting.yaw === undefined ? null : Math.round(fitting.yaw) + "°"],
+      ["at", x_m + ", " + y_m + " m"],
+      ["id", code(fitting.instance_leaf)],
+    ])
+  );
+  piece._floor = { x_m: x_m, y_m: y_m, z_m: fitting.z_m === null ? undefined : fitting.z_m };
+  return piece;
 }
 
 /** The belts' twin; see the note on that registration for why both are static. */

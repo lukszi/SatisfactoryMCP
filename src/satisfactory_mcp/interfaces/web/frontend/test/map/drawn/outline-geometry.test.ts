@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { notchLocal, placeLocal, placeRings } from "../../../src/map/drawn/outline-geometry";
+import {
+  BAND_VEIL,
+  bandVeil,
+  FADED_VEIL_SHARE,
+  lowestFirst,
+  notchLocal,
+  placeLocal,
+  placeRings,
+} from "../../../src/map/drawn/outline-geometry";
 
 import type { PortRow } from "../../../src/api/shapes";
 
@@ -48,5 +56,29 @@ describe("notchLocal", () => {
 
   it("draws a two-way port as a diamond", () => {
     expect(notchLocal(port("any")).length).toBe(4);
+  });
+});
+
+describe("bandVeil", () => {
+  it("lightens a higher tier more", () => {
+    expect(bandVeil(2, false)).toBeGreaterThan(bandVeil(1, false));
+  });
+
+  it("reads a tier past the table as the tallest, and fades with an idle building", () => {
+    expect(bandVeil(7, false)).toBe(BAND_VEIL[BAND_VEIL.length - 1]);
+    expect(bandVeil(1, true)).toBeCloseTo(BAND_VEIL[0]! * FADED_VEIL_SHARE, 9);
+  });
+});
+
+describe("lowestFirst", () => {
+  it("orders by height, keeps ties in place and puts an unknown height on the ground", () => {
+    const rows = [
+      { id: "upper", z_m: 15.4 },
+      { id: "a", z_m: -16.6 },
+      { id: "none", z_m: null },
+      { id: "b", z_m: -16.6 },
+    ];
+    expect(lowestFirst(rows).map((r) => r.id)).toEqual(["none", "a", "b", "upper"]);
+    expect(rows[0]!.id).toBe("upper");
   });
 });
