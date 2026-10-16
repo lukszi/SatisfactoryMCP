@@ -4,10 +4,12 @@ import { cls, html, type Hole, type Safe } from "../html";
 
 export type Tone = "ok" | "bad" | "blocked" | "mid" | "muted" | "accent" | "id" | "remove";
 
-/** A list or block heading, "name · n"; h2 for top-level blocks, h3 inside a section. */
-export function dashH(text: Hole, n?: number | string, tag?: "h2" | "h3"): Safe {
+/** A list or block heading, "name · n"; h2 for top-level blocks, h3 inside a section. The
+ *  small print about a list goes in `title`, not under it. */
+export function dashH(text: Hole, n?: number | string, tag?: "h2" | "h3", title?: string): Safe {
   const count = n === undefined ? "" : html` <span class="n">· ${n}</span>`;
-  return tag === "h3" ? html`<h3 class="dash-h">${text}${count}</h3>` : html`<h2 class="dash-h">${text}${count}</h2>`;
+  const tip = title ? html` title="${title}"` : "";
+  return tag === "h3" ? html`<h3 class="dash-h"${tip}>${text}${count}</h3>` : html`<h2 class="dash-h"${tip}>${text}${count}</h2>`;
 }
 
 /** A headline figure: big number, short unit; `pct` draws the thin "x of y" bar. */
