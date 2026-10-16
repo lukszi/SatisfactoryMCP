@@ -1,0 +1,487 @@
+/* The Progress page, shaped as a roadmap: the phase band, the target stop (gate | next steps),
+ * the supporting lists (alternates | buy now), the reference folded. */
+
+#dash-body:has(.prog) {
+  max-width: var(--page-w-wide);
+}
+
+.prog {
+  --road-head-h: 24px;
+  --road-rail-h: 24px;
+  --road-node: 12px;
+  --road-node-on: 20px;
+  --road-ln: 2px;
+  --road-seg-w: 104px;
+  --road-seg-h: 4px;
+  --road-stop-w: 128px;
+  --road-later-w: 96px;
+  --road-phone-w: 720px;
+  --road-chk: 14px;
+  --road-chk-step: 20px;
+}
+
+/* ---------- section headings: figures and controls share the heading ---------- */
+.prog .sec-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-3);
+  align-items: center;
+  justify-content: space-between;
+  margin: var(--sp-5) 0 var(--sp-2);
+  padding-bottom: var(--sp-1);
+  border-bottom: 1px solid var(--line);
+  scroll-margin-top: var(--sp-3);
+}
+
+.prog .sec-head h2 {
+  margin: 0;
+}
+
+.prog .sec-head h2 + .sec-figs {
+  margin-right: auto;
+}
+
+.sec-figs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-1) var(--sp-4);
+}
+
+.prog .sec-head > .tools {
+  margin-left: auto;
+}
+
+/* heading figures at the heading's size */
+.prog .sec-head .fig b,
+.prog .sec-head .fig .k {
+  font-size: var(--t-section-size);
+  line-height: inherit;
+}
+
+.prog .sec-head .fig .k {
+  font-weight: var(--w-regular);
+}
+
+.prog .sec-head .fig-bar {
+  display: none;
+}
+
+/* ---------- the band ---------- */
+.road {
+  display: flex;
+  flex-direction: row-reverse;
+  overflow-x: auto;
+  margin: 0 0 var(--sp-2);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+}
+
+.road-wait {
+  display: block;
+  padding: var(--sp-3);
+}
+
+.road-in {
+  display: flex;
+  flex: 1 0 auto;
+  min-width: 100%;
+  margin: 0;
+  padding: var(--sp-4) var(--sp-4) var(--sp-3);
+  list-style: none;
+}
+
+.road-in > .stop {
+  flex: 1 1 0;
+}
+
+.road-in > .later {
+  flex: 0 0 var(--road-later-w);
+}
+
+.stop {
+  display: grid;
+  grid-template-rows: var(--road-head-h) var(--road-rail-h) auto auto;
+  align-content: start;
+  row-gap: var(--sp-1);
+  min-width: var(--road-stop-w);
+}
+
+.stop .nm {
+  align-self: end;
+  color: var(--muted);
+  font-size: var(--t-body-size);
+  font-weight: var(--t-body-w);
+  white-space: nowrap;
+}
+
+.stop.on .nm {
+  color: var(--ink-hi);
+  font-size: var(--t-section-size);
+  font-weight: var(--t-section-w);
+  line-height: var(--t-section-lh);
+}
+
+.stop .st {
+  color: var(--muted);
+  font-size: var(--t-meta-size);
+  white-space: nowrap;
+}
+
+.stop.on .st {
+  color: var(--ink);
+}
+
+.rail {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.rail .node {
+  flex: none;
+  width: var(--road-node);
+  height: var(--road-node);
+  border: 2px solid var(--off);
+  border-radius: var(--r);
+  background: var(--panel);
+}
+
+.stop.done .node {
+  border-color: var(--ink-soft);
+  background: var(--ink-soft);
+}
+
+.stop.on .node {
+  width: var(--road-node-on);
+  height: var(--road-node-on);
+  border-color: var(--ink-hi);
+}
+
+.rail .ln {
+  flex: 1;
+  height: var(--road-ln);
+  margin: 0 var(--sp-1);
+  background: var(--line);
+}
+
+.rail .ln.done {
+  background: var(--ink-soft);
+}
+
+.rail .here {
+  position: relative;
+  flex: none;
+  width: var(--road-ln);
+  height: var(--road-node-on);
+  background: var(--ink-hi);
+}
+
+.rail .here span {
+  position: absolute;
+  bottom: calc(100% + var(--sp-0));
+  left: 50%;
+  color: var(--ink-hi);
+  font-size: var(--t-meta-size);
+  font-weight: var(--t-emph-w);
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+.segs {
+  display: flex;
+  gap: var(--sp-2);
+  padding-right: var(--sp-3);
+}
+
+.tseg {
+  display: grid;
+  grid-template-columns: auto auto;
+  flex: 0 1 var(--road-seg-w);
+  justify-content: space-between;
+  column-gap: var(--sp-1);
+  min-width: 0;
+  color: var(--ink-soft);
+  font-size: var(--t-meta-size);
+  font-variant-numeric: tabular-nums;
+  text-decoration: none;
+}
+
+.tseg .bar {
+  grid-column: 1 / -1;
+  height: var(--road-seg-h);
+  margin-top: var(--sp-0);
+}
+
+.tseg .v,
+.tseg.lock {
+  color: var(--muted);
+}
+
+.tseg:hover .k {
+  color: var(--accent-hi);
+}
+
+/* ---------- two columns from 1200 px ---------- */
+.psec {
+  min-width: 0;
+}
+
+.pstop .sec-head {
+  margin-top: var(--sp-3);
+}
+
+@media (min-width: 1200px) {
+  .pstop {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    gap: var(--sp-5);
+    align-items: start;
+  }
+
+  .psupp,
+  .pref {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--sp-5);
+    align-items: start;
+  }
+}
+
+/* ---------- the gate: a checklist, inputs in the part's columns ---------- */
+.l-gate .entry {
+  --cols: 52px minmax(0, 1fr) 110px minmax(0, 130px) 56px 72px 64px 20px;
+  padding-top: var(--sp-2);
+  padding-bottom: var(--sp-2);
+}
+
+.l-gate .expand {
+  --subcols: minmax(0, 1fr) 110px minmax(0, 130px) 56px 72px 64px calc(20px - var(--sp-2));
+}
+
+.prog .l-gate .sub {
+  display: grid;
+  grid-template-columns: var(--subcols);
+  gap: var(--sp-3);
+  align-items: center;
+  padding: var(--sp-0) 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.prog .l-gate .sub + .sub {
+  border-top: 1px solid var(--line-soft);
+}
+
+.l-gate .sub .r {
+  text-align: right;
+}
+
+.l-gate .sub .nl .ic,
+.l-gate .sub .nl .mono {
+  width: 20px;
+  height: 20px;
+}
+
+.l-gate .colh {
+  min-height: 0;
+  padding-top: var(--sp-1);
+  padding-bottom: var(--sp-1);
+  color: var(--muted);
+  font-size: var(--t-meta-size);
+}
+
+.colh .r {
+  text-align: right;
+}
+
+.l-gate .facts.start {
+  justify-content: flex-start;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.l-gate .facts a {
+  color: var(--ink-soft);
+}
+
+.l-gate .metric .bar {
+  margin-top: var(--sp-1);
+}
+
+.lead-chk {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+.lead-chk .ic,
+.lead-chk .mono {
+  width: 32px;
+  height: 32px;
+}
+
+.chk {
+  display: inline-grid;
+  place-items: center;
+  width: var(--road-chk);
+  height: var(--road-chk);
+  border: 1px solid var(--muted);
+  border-radius: var(--r);
+  color: var(--bg);
+  font-size: var(--t-meta-size);
+  font-weight: var(--t-emph-w);
+}
+
+.chk.ok {
+  background: var(--ink-soft);
+  border-color: var(--ink-soft);
+}
+
+.prog .muted {
+  color: var(--muted);
+}
+
+/* ---------- next steps: a path, numbered stops on one thin line ---------- */
+.l-next .entry {
+  --cols: 48px minmax(0, 1fr) 64px;
+}
+
+.l-next .go {
+  color: var(--muted);
+  font-size: var(--t-meta-size);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.path > .entry + .entry {
+  border-top: 0;
+}
+
+.path > .entry::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--edge) + var(--sp-3) + var(--road-chk-step) / 2);
+  width: 1px;
+  background: var(--line);
+}
+
+.path > .entry:first-child::after {
+  top: 50%;
+}
+
+.path > .entry:last-child::after {
+  bottom: 50%;
+}
+
+.path > .entry:only-child::after {
+  display: none;
+}
+
+.lead-rank {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+.path .lead-rank {
+  position: relative;
+  z-index: 1;
+}
+
+.path .rk {
+  display: inline-grid;
+  place-items: center;
+  width: var(--road-chk-step);
+  height: var(--road-chk-step);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--bg);
+  color: var(--muted);
+  font-size: var(--t-meta-size);
+}
+
+.path > .entry:first-child .rk {
+  border-color: var(--ink-soft);
+  color: var(--ink-hi);
+}
+
+.lead-rank .ic,
+.lead-rank .mono {
+  width: 20px;
+  height: 20px;
+}
+
+/* ---------- supporting lists ---------- */
+.l-palt .entry {
+  --cols: 24px minmax(0, 1fr) 96px 72px 96px;
+}
+
+.l-buy .entry {
+  --cols: minmax(0, 0.9fr) 150px minmax(0, 1.4fr) 140px;
+}
+
+.l-buy .pills {
+  display: flex;
+  gap: var(--sp-1);
+  flex-wrap: nowrap;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.l-buy .pill {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.l-buy .pill .nm {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.l-ref .entry {
+  --cols: minmax(0, 1fr) 72px;
+}
+
+.pref .dash-h {
+  margin-top: var(--sp-3);
+}
+
+/* ---------- phones: the band scrolls sideways, rows fold to two lines ---------- */
+@media (max-width: 600px) {
+  .road-in {
+    min-width: var(--road-phone-w);
+  }
+
+  .l-gate .colh {
+    display: none;
+  }
+
+  .l-gate .entry > .lead-chk,
+  .l-next .entry > .lead-rank {
+    grid-row: 1;
+    grid-column: 1;
+    align-self: start;
+  }
+
+  .l-gate .entry,
+  .l-next .entry {
+    --cols: 52px minmax(0, 1fr) auto !important;
+  }
+
+  .l-next .entry > .go {
+    grid-row: 1;
+    grid-column: 3;
+  }
+
+  .prog .l-gate .sub {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .prog .l-gate .sub > .facts {
+    display: none;
+  }
+}

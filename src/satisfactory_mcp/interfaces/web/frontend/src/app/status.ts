@@ -12,7 +12,7 @@ import { showCircuit, showFactory } from "../map/panel";
 import { showMachine, showPoint } from "../map/map-highlight";
 import { faultCount, faultsOf, ratedWorld, readHeadroomNow } from "../dash/power/readings";
 import { onProgress } from "../dash/progress/feeds";
-import { readyMilestones } from "../dash/progress/milestones";
+import { readyMilestones } from "../dash/progress/summary";
 import { showRef } from "../map/tools/finder";
 import { onSelect, select, selected, selectionRef } from "./selection";
 import { state } from "./state";

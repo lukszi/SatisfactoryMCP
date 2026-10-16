@@ -1,9 +1,7 @@
-/* The six reads the Progress tab draws from, fetched in the live wave, and the one event that
- * says any of them changed. */
+/* The six progress reads Progress, Items and the status strip draw from, fetched in the live
+ * wave, and the one event that says any of them changed. */
 
-import { pendingNotice } from "../../kit/dashkit";
 import { createListeners } from "../../app/listeners";
-import { loadOne } from "../../app/load";
 import { registerFetch } from "../../app/registry";
 import { onSetting, setSetting, settingOn, claimSpoilerNotice } from "../../app/settings";
 import { offer } from "../../kit/toast";
@@ -80,12 +78,6 @@ onSetting(changed);
 if (claimSpoilerNotice()) {
   offer("upcoming milestones, research and locked recipes are now hidden until the save reaches them", "show them", function () {
     setSetting("spoilers", true);
-  });
-}
-
-export function waiting<T>(body: HTMLElement, held: ProgressFeed<T>): void {
-  pendingNotice(body, held.label, null, held.failed, function () {
-    loadOne(held.path);
   });
 }
 

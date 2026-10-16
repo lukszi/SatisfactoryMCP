@@ -12,7 +12,7 @@ import { viewFocus } from "./planner/focus";
 import { bench, onBench } from "./planner/state";
 import { planTitle } from "./planner/plan-index";
 import { onProgress } from "./progress/feeds";
-import { renderProgress } from "./progress/progress";
+import { renderProgress } from "./progress/page";
 import { itemsTitle, renderItems } from "./items/page";
 import { cancelRename, renamingIn } from "./factories/rename";
 import { state } from "../app/state";
@@ -33,7 +33,7 @@ import { drawTopBar } from "../app/shell/topbar";
 import { showSettings } from "../app/settings-dialog/dialog";
 import { renderWorld, worldTitle } from "./world/page";
 import { WORDS } from "../kit/words";
-import { pointButton, setDashHooks } from "./actions";
+import { setDashHooks } from "./actions";
 
 const SAVELESS: Page[] = ["items", "maps", "kit"];
 
@@ -127,7 +127,7 @@ function renderPage(body: HTMLElement, at: Route): void {
   } else if (page === "power") {
     if (at.subject) renderCircuit(body, at.subject);
     else renderPower(body);
-  } else if (page === "progress") renderProgress(body, at.subject, pointButton);
+  } else if (page === "progress") renderProgress(body, at.subject);
   else if (page === "items") renderItems(body, at.subject);
   else if (page === "world") renderWorld(body, at.subject);
   else if (page === "maps") renderMapsPage(body);

@@ -245,3 +245,39 @@ settled. `planner.ts` mounts either, and holds a redraw while a field there has 
   cards) and finds (the World query). A filter shows all, you or chat. Sticky beside the cards;
   under 1100 px and on phones it goes below them, cards one per row.
 - Chat's pins and asks cards sit under the plan cards until they are ported.
+
+## Progress
+
+`dash/progress/` is the Progress page (`#dash=progress[/<section>]`, sections gate, next,
+alternates, buy, reference; a section scrolls to its heading). It advises: how to reach the
+target phase and what to do next. The reads are `/api/progress/gate` and
+`/api/progress/alternates` at the chosen horizon (docs/progress_roadmap.md) and the milestone,
+MAM and phase feeds (`feeds.ts`).
+
+- **Band** (`road.ts`): start and each phase as stops on one rail, the tiers each phase opens
+  under it (done of total, a thin bar; a tier still shut says which phase opens it), "you are
+  here" after the last delivered phase, the target bigger. While spoilers are off it stops at
+  the target and folds the rest into "+N later". On phones it scrolls sideways, opening at the
+  target end.
+- **Gate** (`gate.ts`): one row per owed part with one header row: a tick once held, held of
+  owed with a bar, where it is made (named factories with their surplus, the rest of the world
+  as "elsewhere", or "not made anywhere"), the rate that delivers it in the horizon, the time
+  the rate made now takes to cover it, and the chain's machines. A locked recipe carries a
+  "locked" chip naming its unlock. Inputs sit in the row's expand in the same columns; the first
+  short part opens by default. The heading carries parts short and recipes locked, and the
+  "deliver in" select (10, 20, 50 h).
+- **What to do next**: at most five numbered steps on one line, each with one reason chip and
+  the full reason in its tooltip. Item steps link to the Planner's new-plan card filled with
+  the item and rate (`planner?item=…&rate=…`); unlock steps link to the reference.
+- **Alternates worth getting** (`lists.ts`): grouped offered by a drive on hand (the drive's
+  other option in the chip's tooltip), not on a drive yet, unlocked already; five per group,
+  sorted by machines, power or raw cut. Never a count of drives to choose.
+- **Buy now**: affordable milestones (open tiers) and MAM nodes mixed, tagged by system and
+  tier or tree, each naming what it unlocks; "almost" (short of exactly one item) folded.
+- **Reference**, folded: the tiers (done tiers as one row) and the MAM trees with open nodes,
+  the running node with its elapsed share.
+- **Moved out**: shards and somersloops live in the Items boosts group and a factory's
+  machines. Old addresses redirect (`model.ts` `legacyProgressDash`): milestones and mam to
+  reference, elevator to gate, drives to alternates, shards and sloops to the Power Shard and
+  Somersloop sheets on Items; `progress-<section>` lands on that section.
+- Overview's milestone tile and the status strip's "affordable" count read `summary.ts`.
