@@ -20,6 +20,7 @@ import { lightControls, makeLitLayer, webglReady } from "./litlayer";
 import { mapImageBounds, pyramidTiles } from "./pyramid";
 import { fetchMapRegistry, mapTypeAxes, mapRegistry, onMapRegistry, staleReasons, staleLabel } from "../app/map-types";
 import { boundsOfBbox, map, writeHash } from "./map";
+import { pickCopyMode } from "./copy-mode";
 import { applyRegionDefaultForMode, updateRegionBlend } from "./regions";
 import { BOOT, state } from "../app/state";
 import { showSunControl } from "./suncontrol";
@@ -200,6 +201,7 @@ function modeFailed(spec: ModeSpec, why: string, message: string): void {
   refusals[spec.key] = why;
   if (state.mode === spec.key) showBaseMode("plain", false);
   else showModes(modeChoices(), state.mode || "plain");
+  baseChanged();
   fail(message);
 }
 
@@ -354,6 +356,7 @@ function showBaseMode(key: BaseMode, recordInHash: boolean): void {
   updateRegionBlend();
   showModes(modeChoices(), mode);
   if (recordInHash) writeHash();
+  baseChanged();
 }
 
 /* Which mode a fresh page opens in: the fragment's, if that mode can actually be drawn here,
@@ -405,6 +408,7 @@ function rebuildModes(): void {
       if (state.mode && baseLayer === null && layerFactories[state.mode]) showBaseMode(state.mode, false);
       showModes(modeChoices(), state.mode || "plain");
     }
+    baseChanged();
     Object.keys(readyBefore).forEach(function (id) {
       if (before[id]) return;
       const spec = specFor(id);
@@ -460,8 +464,26 @@ export function loadBaseMap(): Promise<void> {
     });
 }
 
-/** The picture the map shows now, as a new layer in `pane` of another map; null for plain. */
+/** Which picture a mini map shows (`pickCopyMode`; docs/frontend_kit.md, "World"). */
+export function copyMode(): BaseMode | null {
+  const chosen = mapRegistry.body ? mapRegistry.body.default : null;
+  return pickCopyMode(state.mode, chosen, ARTWORK, Object.keys(copyFactories));
+}
+
+/** `copyMode`'s picture as a new layer in `pane` of another map. */
 export function baseCopy(pane: string): L.Layer | null {
-  const make = state.mode ? copyFactories[state.mode] : undefined;
+  const mode = copyMode();
+  const make = mode ? copyFactories[mode] : undefined;
   return make ? make(pane) : null;
+}
+
+const baseWatchers: (() => void)[] = [];
+
+/** Called whenever the main map's mode or the probed pictures change. */
+export function onBaseChange(fn: () => void): void {
+  baseWatchers.push(fn);
+}
+
+function baseChanged(): void {
+  baseWatchers.forEach((fn) => fn());
 }

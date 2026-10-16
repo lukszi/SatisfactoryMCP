@@ -229,10 +229,13 @@ a second click on its slot, × or Esc clears it. Picking does not move the scrol
     (`mode=nearest` from the player, so the server measures) or collected (measured on the page).
 - **Map** (right, sticky, full height; 40vh on top on phones): a real Leaflet map, one instance
   kept for the page's life and moved into each render (`world-map.ts`). `map/mini-map.ts` makes
-  it on the main map's terms: its CRS and frame from `map.ts`, the base picture the main map
-  shows as a plain copy (`baseCopy` in `tiles.ts`: baked light, and a failing tile there changes
-  nothing on the main map), and the biome cells (`regionCells` in `regions.ts`) when the picture
-  is plain. Node and pickup colours and sizes are the main map's (`markers.ts`, `pickups.ts`).
+  it on the main map's terms: its CRS and frame from `map.ts`, a base picture as a plain copy
+  (`baseCopy` in `tiles.ts`: baked light, and a failing tile there changes nothing on the main
+  map), and the biome cells (`regionCells` in `regions.ts`) only when no picture exists at all.
+  The picture (`copyMode`, rule in `copy-mode.ts`) is the main map's, else the default the main
+  map would open on, else the artwork, else any probed one. A main map still unopened (a page
+  loaded straight onto the dashboard) or set to plain still gets a picture: a mini map is for
+  orientation. It follows every mode change and probe (`onBaseChange`), not only its renders. Node and pickup colours and sizes are the main map's (`markers.ts`, `pickups.ts`).
   It draws only the rows listed, plus the player and the factory searched near, and refits only
   when the results change; a legend of glyphs and single words and the zoom buttons are its only
   chrome.
