@@ -34,13 +34,20 @@ export interface PageHead {
   acts?: Hole;
   figs?: Hole;
   note?: Hole;
+  /** The object's own tabs, an underline row on the card's bottom edge. */
+  tabs?: { label: string; href: string; on: boolean }[];
+  tabsLabel?: string;
 }
 
 /** An object page's header card: breadcrumb, title with lead and chips, figures, one note. */
 export function pageHead(o: PageHead): Safe {
   const crumbs = o.crumbs.map((c) => html`<a href="${c[1]}">${c[0]}</a><span class="sep">/</span>`);
   return html`<header class="phead"><nav class="crumbs" aria-label="breadcrumb">${crumbs}<span aria-current="page">${o.name}</span></nav>
-    <div class="title">${o.lead}<h1>${o.name}</h1>${o.chips}${o.acts ? html`<span class="grow"></span><span class="acts">${o.acts}</span>` : ""}</div>${o.figs ? html`<div class="figs">${o.figs}</div>` : ""}${o.note ? note(o.note) : ""}</header>`;
+    <div class="title">${o.lead}<h1>${o.name}</h1>${o.chips}${o.acts ? html`<span class="grow"></span><span class="acts">${o.acts}</span>` : ""}</div>${o.figs ? html`<div class="figs">${o.figs}</div>` : ""}${o.note ? note(o.note) : ""}${o.tabs ? objectTabs(o.tabs, o.tabsLabel || "sections") : ""}</header>`;
+}
+
+function objectTabs(tabs: NonNullable<PageHead["tabs"]>, label: string): Safe {
+  return html`<nav class="otabs" aria-label="${label}">${tabs.map((t) => html`<a href="${t.href}"${t.on ? html` class="on" aria-current="page"` : ""}><span>${t.label}</span></a>`)}</nav>`;
 }
 
 /** Heading and count left; filters, then one sort select right. */

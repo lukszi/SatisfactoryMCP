@@ -131,6 +131,12 @@ a.btn {
   color: var(--ink-hi);
 }
 
+/* holds a missing ◎ button's place, so the actions column stays aligned */
+.btn-gap {
+  display: inline-block;
+  width: 24px;
+}
+
 .btn-map {
   color: var(--ink-soft);
 }
@@ -468,6 +474,44 @@ a.bh:hover .dash-h {
 
 .phead .note {
   margin: var(--sp-1) 0 0;
+}
+
+.phead:has(> .otabs) {
+  padding-bottom: 0;
+}
+
+.otabs {
+  display: flex;
+  overflow-x: auto;
+  margin: var(--sp-2) calc(-1 * var(--sp-3)) 0;
+  padding: 0 var(--sp-2);
+  border-top: 1px solid var(--line);
+  scrollbar-width: none;
+}
+
+.otabs a {
+  flex: none;
+  padding: var(--sp-1) var(--sp-2);
+  border-bottom: 2px solid transparent;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+/* colour on the inner span: the dashboard's link rule would beat it on the anchor */
+.otabs a > span {
+  color: var(--muted);
+}
+
+.otabs a:hover > span {
+  color: var(--ink);
+}
+
+.otabs a.on {
+  border-bottom-color: var(--accent);
+}
+
+.otabs a.on > span {
+  color: var(--ink-hi);
 }
 
 /* ---------- icons ---------- */

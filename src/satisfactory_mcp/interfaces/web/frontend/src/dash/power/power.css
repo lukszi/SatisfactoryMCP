@@ -214,11 +214,6 @@
   background: var(--muted);
 }
 
-.btn-gap {
-  display: inline-block;
-  width: 24px;
-}
-
 /* per-list column templates */
 .l-pcirc .entry {
   --cols: minmax(180px, 1.4fr) minmax(80px, 1fr) 90px 80px 24px;
