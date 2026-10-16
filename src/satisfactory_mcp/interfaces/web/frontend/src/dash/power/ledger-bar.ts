@@ -1,4 +1,4 @@
-/* The compact ledger bar as a DOM element, for the map's side panel and the old Overview tiles;
+/* The compact ledger bar as a DOM element, for the map's side panel;
  * the Power pages draw supply.ts instead. */
 
 import { make } from "../../kit/dom";
