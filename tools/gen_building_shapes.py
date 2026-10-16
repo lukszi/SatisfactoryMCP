@@ -49,6 +49,7 @@ from satisfactory_mcp.core.gamedata.shapes import (
 from satisfactory_mcp.core.jsontypes import JsonObject, JsonValue
 from satisfactory_mcp.core.saveio.extract import registers
 from tools.building_shapes.bands import BandOptions, height_bands
+from tools.building_shapes.regular import Regulariser, RegularOptions
 from tools.building_shapes.silhouette import Ring, silhouette
 
 #: Grid cell, gap bridged between parts, and the vertex budget per outline.
@@ -69,6 +70,11 @@ BAND_OPTIONS = BandOptions(
     min_area=20_000.0,
     max_overlap=0.9,
 )
+
+#: Straight walls, round parts and mirror symmetry, each kept only where it still covers the
+#: raster about as well as the plain trace; the rules each field sets: RegularOptions,
+#: docs/building-shapes.md, "Regular outlines".
+REGULAR_OPTIONS = RegularOptions()
 
 #: Where buildable classes live in the container, and the prefix every one of them carries.
 BUILDABLE_DIR = "/FactoryGame/Buildable/"
@@ -238,9 +244,10 @@ def shape_row(meshes: MeshCache, components: list[Component]) -> tuple[ShapeRow,
     """One class's outline rings (metres, actor frame) and ports."""
     report: ClassReport = {"meshes": [], "failed_meshes": [], "triangles": 0}
     triangles = placed_triangles(meshes, components, report)
-    rings = silhouette(triangles[:, :, :2], CELL_CM, CLOSE_CM, MAX_VERTICES)
-    bands = height_bands(triangles, CELL_CM, CLOSE_CM, BAND_OPTIONS)
     ports = [port for port in map(_port, components) if port is not None]
+    regular = Regulariser(REGULAR_OPTIONS, [(p["x_m"] * 100, p["y_m"] * 100) for p in ports])
+    rings = silhouette(triangles[:, :, :2], CELL_CM, CLOSE_CM, MAX_VERTICES, regular=regular)
+    bands = height_bands(triangles, CELL_CM, CLOSE_CM, BAND_OPTIONS, regular)
     row: ShapeRow = {
         "rings": _metres(rings),
         "bands": [
@@ -284,7 +291,9 @@ def build_meta(
                 f"traced and simplified to at most {MAX_VERTICES} vertices per ring; bands cut "
                 f"the same way from the highest point over each cell, opened over "
                 f"{BAND_OPTIONS.opening:g} cm first, at natural breaks in each class's own "
-                f"heights"
+                f"heights; every ring then given straight walls, round parts and mirror "
+                f"symmetry where that still covers its raster within "
+                f"{REGULAR_OPTIONS.max_loss:g} IoU"
             ),
             "decoder": dict(versions),
         },

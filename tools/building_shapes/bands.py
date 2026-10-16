@@ -11,6 +11,7 @@ from scipy import ndimage
 
 from satisfactory_mcp.core.arrays import BoolMask, F64Grid, I64Grid
 from tools.building_shapes.breaks import natural_breaks
+from tools.building_shapes.regular import Regulariser
 from tools.building_shapes.silhouette import Ring, blobs, disk_mask, top_heights, traced
 
 __all__ = [
@@ -143,7 +144,12 @@ def band_surface(top: F64Grid, radius: int, opening: int) -> F64Grid:
 
 
 def bands_from_tops(
-    top: F64Grid, corner: tuple[float, float], cell: float, close: float, options: BandOptions
+    top: F64Grid,
+    corner: tuple[float, float],
+    cell: float,
+    close: float,
+    options: BandOptions,
+    regular: Regulariser | None = None,
 ) -> list[Band]:
     """The bands of a top-height grid (``top_heights``); see ``height_bands``."""
     covered = np.isfinite(top)
@@ -161,14 +167,20 @@ def bands_from_tops(
         if area < min_cells or area > options.max_overlap * below:
             continue
         budget = options.budgets[tier - 1]
-        rings = traced(grid, outer, cell, budget, options.min_fraction, min_cells)
+        rings = traced(grid, outer, cell, budget, options.min_fraction, min_cells, regular)
         if rings:
             bands.append(Band(tier, floor, rings[: options.max_rings]))
             below = area
     return bands
 
 
-def height_bands(triangles: F64Grid, cell: float, close: float, options: BandOptions) -> list[Band]:
+def height_bands(
+    triangles: F64Grid,
+    cell: float,
+    close: float,
+    options: BandOptions,
+    regular: Regulariser | None = None,
+) -> list[Band]:
     """The parts of ``triangles`` (``(n, 3, 3)``) standing above each of the class's breaks.
 
     Each band is opened by ``options.opening`` first, then closed and traced like the
@@ -177,4 +189,4 @@ def height_bands(triangles: F64Grid, cell: float, close: float, options: BandOpt
     if len(triangles) == 0:
         return []
     top, corner = top_heights(triangles, cell)
-    return bands_from_tops(top, corner, cell, close, options)
+    return bands_from_tops(top, corner, cell, close, options, regular)
