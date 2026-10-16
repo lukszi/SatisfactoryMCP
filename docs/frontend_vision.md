@@ -698,8 +698,11 @@ kind it reached, in `to`. An item consumed inside and made nowhere inside is an 
 
 **Edge rates** in the graph are apportioned from nameplate figures, since the save records no
 per-belt throughput. A consumer group's demand for an item is split across the inside
-producers that reach it, in proportion to their production. Demand no inside producer covers
-becomes an input edge. What a producer has left after that is split evenly across the
+producers that reach it, in proportion to their production. No producer is given more than
+it makes: when several consumers ask for more than their producers make together, each
+producer's output is shared in proportion to what is asked of it, and spare output from a
+producer goes on to the consumers still short. Demand left after that becomes one input edge
+per consumer, so a consumer's in-edges always add up to its demand. What a producer has left after that is split evenly across the
 terminal kinds it reaches. A terminal it reaches with nothing left over gets an edge with no
 rate. Product rates in the Detect list are what the cluster makes; the graph shows the split.
 

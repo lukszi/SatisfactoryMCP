@@ -239,24 +239,66 @@ def _walk_outputs(
     return reach, kinds, used_inside
 
 
+#: Fill rounds per item; each round hands spare supply to the demand still open.
+FILL_ROUNDS = 20
+
+
+def _suppliers(out: FlowGraph, reach: Reach, target: str, item: str) -> list[str]:
+    return [
+        producer
+        for producer in out.groups
+        if producer != target and target in reach.get((producer, item), ())
+    ]
+
+
+def _fill(
+    supply: dict[str, float], demand: dict[str, float], links: dict[str, list[str]]
+) -> dict[tuple[str, str], float]:
+    """Proportional fill of one item: ``(producer, consumer) -> rate``, never above supply."""
+    left, want = dict(supply), dict(demand)
+    flow: dict[tuple[str, str], float] = defaultdict(float)
+    for _ in range(FILL_ROUNDS):
+        asks: dict[tuple[str, str], float] = {}
+        for target, producers in links.items():
+            open_from = [p for p in producers if left[p] > 1e-9]
+            spare = sum(left[p] for p in open_from)
+            if want[target] > 1e-9 and spare > 0:
+                for producer in open_from:
+                    asks[(producer, target)] = want[target] * left[producer] / spare
+        if not asks:
+            break
+        asked: dict[str, float] = defaultdict(float)
+        for (producer, _), rate in asks.items():
+            asked[producer] += rate
+        for (producer, target), rate in asks.items():
+            given = rate * min(1.0, left[producer] / asked[producer])
+            flow[(producer, target)] += given
+            want[target] -= given
+        for producer, rate in asked.items():
+            left[producer] = max(0.0, left[producer] - rate)
+    return flow
+
+
 def _apportion(out: FlowGraph, reach: Reach, kinds: Reach) -> None:
-    """Share each group's demand over the groups that reach it, then its surplus over the
-    terminal kinds it reaches; an unmet demand comes ``in:`` from outside."""
+    """Share each item's supply over the groups it reaches, capped at what is made, then a
+    producer's surplus over the terminal kinds it reaches; unmet demand comes ``in:``."""
     allotted: dict[tuple[str, str], float] = defaultdict(float)
+    flows: dict[str, dict[tuple[str, str], float]] = {}
+    for item in out.consumed:
+        users = [t for t, g in out.groups.items() if item in g.uses]
+        links = {t: _suppliers(out, reach, t, item) for t in users}
+        supply = {p: out.groups[p].makes[item] for ps in links.values() for p in ps}
+        flows[item] = _fill(supply, {t: out.groups[t].uses[item] for t in users}, links)
     for target, group in out.groups.items():
         for item, demand in group.uses.items():
-            suppliers = [
-                producer
-                for producer in out.groups
-                if target in reach.get((producer, item), ()) and producer != target
-            ]
-            made = sum(out.groups[producer].makes[item] for producer in suppliers)
-            for producer in suppliers:
-                share = demand * out.groups[producer].makes[item] / made if made else 0.0
+            got = 0.0
+            for producer in _suppliers(out, reach, target, item):
+                share = flows[item].get((producer, target), 0.0)
                 allotted[(producer, item)] += share
+                got += share
                 out.edges.append(FlowEdge(producer, target, item, round(share, 2)))
-            if made < demand - 1e-6:
-                out.edges.append(FlowEdge(f"in:{item}", target, item, round(demand - made, 2)))
+            if got < demand - 1e-6:
+                out.edges.append(FlowEdge(f"in:{item}", target, item, round(demand - got, 2)))
 
     for (producer, item), reached in kinds.items():
         surplus = out.groups[producer].makes[item] - allotted[(producer, item)]
