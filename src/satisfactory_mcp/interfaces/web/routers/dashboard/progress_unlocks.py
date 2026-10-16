@@ -30,7 +30,8 @@ class MilestoneRow(TypedDict):
     """``status`` is ``Rung.status``: DONE, BLOCKED, short or READY.
 
     ``opens_at`` is the Space Elevator phase that opens a tier the save has not reached yet;
-    ``unlock_names`` names the ``unlocks`` recipes, buildings by their recipe's name.
+    ``unlock_names`` names the ``unlocks`` recipes, buildings by their recipe's name, and
+    ``unlock_icons`` holds each name's icon descriptor (its main product), null when none.
     """
 
     cls: str
@@ -41,6 +42,7 @@ class MilestoneRow(TypedDict):
     short: list[ItemAmount]
     unlocks: int
     unlock_names: list[str]
+    unlock_icons: list[str | None]
     blocked_by: list[str]
     opens_at: int | None
     spoiler: bool
@@ -62,9 +64,21 @@ class MilestonesResponse(TypedDict):
     milestones: list[MilestoneRow]
 
 
+def _firsts(recipes: list[Recipe]) -> list[Recipe]:
+    """The first recipe of each name, in grant order: a building's recipe carries its name."""
+    firsts: dict[str, Recipe] = {}
+    for r in recipes:
+        firsts.setdefault(r.name, r)
+    return list(firsts.values())
+
+
 def _names(recipes: list[Recipe]) -> list[str]:
-    """Recipe names in grant order, each once: a building's recipe carries its name."""
-    return list(dict.fromkeys(r.name for r in recipes))
+    return [r.name for r in _firsts(recipes)]
+
+
+def _icons(recipes: list[Recipe]) -> list[str | None]:
+    """One per ``_names`` entry: the recipe's main product, which is also a building's icon."""
+    return [r.main_product for r in _firsts(recipes)]
 
 
 def _highest_reached_tier(rungs: list[Rung]) -> int:
@@ -89,6 +103,7 @@ def _milestone_row(st: WorldState, rung: Rung, opened: int | None, top: int) -> 
         "short": item_amounts(game, ((m.item, round(m.short_by, 1)) for m in rung.missing)),
         "unlocks": len(granted),
         "unlock_names": _names(granted),
+        "unlock_icons": _icons(granted),
         "blocked_by": list(rung.blocked_by),
         "opens_at": opening_phase(schematic.tier) if shut else None,
         "spoiler": schematic.tier > top,
@@ -158,6 +173,7 @@ class MamRow(TypedDict):
     short: list[ItemAmount]
     unlocks: int
     unlock_names: list[str]
+    unlock_icons: list[str | None]
     blocked_by: list[str]
     spoiler: bool
 
@@ -231,6 +247,7 @@ def progress_mam(
                 ),
                 "unlocks": len(granted),
                 "unlock_names": _names(granted),
+                "unlock_icons": _icons(granted),
                 "blocked_by": list(rung.blocked_by),
                 "spoiler": status == "TREE SHUT",
             }

@@ -4484,6 +4484,8 @@ export interface components {
             unlocks: number;
             /** Unlock Names */
             unlock_names: string[];
+            /** Unlock Icons */
+            unlock_icons: (string | null)[];
             /** Blocked By */
             blocked_by: string[];
             /** Spoiler */
@@ -4884,7 +4886,8 @@ export interface components {
          * @description ``status`` is ``Rung.status``: DONE, BLOCKED, short or READY.
          *
          *     ``opens_at`` is the Space Elevator phase that opens a tier the save has not reached yet;
-         *     ``unlock_names`` names the ``unlocks`` recipes, buildings by their recipe's name.
+         *     ``unlock_names`` names the ``unlocks`` recipes, buildings by their recipe's name, and
+         *     ``unlock_icons`` holds each name's icon descriptor (its main product), null when none.
          */
         MilestoneRow: {
             /** Cls */
@@ -4903,6 +4906,8 @@ export interface components {
             unlocks: number;
             /** Unlock Names */
             unlock_names: string[];
+            /** Unlock Icons */
+            unlock_icons: (string | null)[];
             /** Blocked By */
             blocked_by: string[];
             /** Opens At */

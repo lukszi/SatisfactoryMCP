@@ -6,7 +6,7 @@ import { sortSelect } from "../../kit/ui/controls";
 import { entry, group, list } from "../../kit/ui/entry";
 import { chip, tagChip } from "../../kit/ui/marks";
 import { dashH, emptyLine, fig, icon } from "../../kit/ui/text";
-import { altGroups, ALT_SORTS, mamTrees, type AltSort, type Buy, type TierSeg } from "./model";
+import { altGroups, ALT_SORTS, mamTrees, type AltSort, type Buy, type TierSeg, type Unlock } from "./model";
 import type { SectionParts } from "./gate";
 
 import type { AlternateRow, AlternatesView, MamRow, MilestoneRow } from "../../api/shapes";
@@ -38,16 +38,16 @@ export function alternatesSection(view: AlternatesView | null, pendingLine: Safe
   };
 }
 
-function unlockPills(names: string[]): Safe {
-  if (!names.length) return html`<span class="muted">nothing new</span>`;
-  const shown = names.slice(0, 2).map((n) => html`<span class="pill"><span class="nm">${n}</span></span>`);
-  const rest = names.slice(2);
-  return html`${shown}${rest.length ? chip("+" + rest.length, "muted", rest.join(", ")) : ""}`;
+function unlockPills(unlocks: Unlock[]): Safe {
+  if (!unlocks.length) return html`<span class="muted">nothing new</span>`;
+  const shown = unlocks.slice(0, 2).map((u) => html`<span class="pill" title="${u.name}">${icon(u.icon, u.name)}<span class="nm">${u.name}</span></span>`);
+  const rest = unlocks.slice(2);
+  return html`${shown}${rest.length ? chip("+" + rest.length, "muted", rest.map((u) => u.name).join(", ")) : ""}`;
 }
 
 function buyRow(b: Buy): Safe {
   return entry(
-    { title: b.unlocks.length ? "unlocks " + b.unlocks.join(", ") : "unlocks no recipe or building" },
+    { title: b.unlocks.length ? "unlocks " + b.unlocks.map((u) => u.name).join(", ") : "unlocks no recipe or building" },
     html`<div class="id"><span class="name">${b.name}</span></div><div class="chips">${tagChip(b.system + " · " + b.group)}</div><div class="pills">${unlockPills(b.unlocks)}</div>
     <div class="facts">${b.short ? html`<span>short <em>${formatNumber(b.short.amount)}</em> ${b.short.name}</span>` : ""}</div>`
   );
