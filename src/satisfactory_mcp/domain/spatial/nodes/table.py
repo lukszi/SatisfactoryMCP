@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import NotRequired, cast
 
 from typing_extensions import TypedDict
@@ -20,6 +20,7 @@ __all__ = [
     "SUPPORT_BUILDINGS_FOR_KIND",
     "NodeRecord",
     "NodeTable",
+    "WellCoreRecord",
     "load_nodes",
 ]
 
@@ -59,8 +60,21 @@ class NodeRecord(TypedDict):
     well_core: str | None
 
 
+class WellCoreRecord(TypedDict):
+    """One row of the table's ``well_cores``: a fracking core, which is no node and yields
+    nothing, and the satellites that name it as their ``well_core``. Centimetres."""
+
+    instance: str
+    resource: str
+    x: float
+    y: float
+    z: float
+    satellites: list[str]
+
+
 class _NodeFile(TypedDict):
     nodes: list[NodeRecord]
+    well_cores: NotRequired[list[WellCoreRecord]]
     _meta: NotRequired[JsonObject]
 
 
@@ -69,6 +83,8 @@ class NodeTable:
     nodes: list[NodeRecord]
     #: The file's ``_meta`` block: provenance, and the cross-validation ``skew`` reads.
     meta: JsonObject
+    #: The fracking cores, kept out of ``nodes`` because no extractor can stand on one.
+    well_cores: list[WellCoreRecord] = field(default_factory=list[WellCoreRecord])
 
     def __len__(self) -> int:
         return len(self.nodes)
@@ -102,7 +118,11 @@ def load_nodes() -> NodeTable:
     loaded: JsonValue = json.loads(path.read_text(encoding="utf-8"))
     # Written by tools/gen_resource_nodes.py, which checks the shape before it writes.
     payload = cast(_NodeFile, require_object(loaded))
-    table = NodeTable(nodes=payload["nodes"], meta=payload.get("_meta", {}))
+    table = NodeTable(
+        nodes=payload["nodes"],
+        meta=payload.get("_meta", {}),
+        well_cores=payload.get("well_cores", []),
+    )
     _TABLE.clear()
     _TABLE[key] = table
     return table

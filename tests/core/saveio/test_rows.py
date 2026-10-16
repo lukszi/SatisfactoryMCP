@@ -377,6 +377,7 @@ def test_the_iterators_read_every_column_the_writer_emits(projection):
         ("structures", projection["structures"], "instances", rows.STRUCTURE_ROW_WIDTH),
         ("belts", projection["belts"], "segments", rows.BELT_ROW_WIDTH),
         ("pipes", projection["pipes"], "segments", rows.PIPE_ROW_WIDTH),
+        ("hypertubes", projection["hypertubes"], "segments", rows.HYPERTUBE_ROW_WIDTH),
         # Two more since schema 17, and the wires are the odd one: ``power["wires"]`` is a
         # bare list rather than a ``{classes, rows}`` table, and its rows may be null -- so
         # the widths are taken off the rows that are there. A fixture of nothing but nulls
@@ -404,6 +405,7 @@ def test_the_fixture_carries_both_the_short_and_the_long_form_of_a_route():
     fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
     assert _widths(fixture["belts"], "segments") == {4, 5}
     assert _widths(fixture["pipes"], "segments") == {4, 5}
+    assert _widths(fixture["hypertubes"], "segments") == {4, 5}
 
 
 def test_every_row_of_the_reference_projection_decodes(projection):
@@ -411,7 +413,22 @@ def test_every_row_of_the_reference_projection_decodes(projection):
     assert len(list(rows.iter_structures(projection))) == len(projection["structures"]["instances"])
     assert len(list(rows.iter_belt_segments(projection))) == rows.belt_segment_count(projection)
     assert len(list(rows.iter_pipe_segments(projection))) == rows.pipe_segment_count(projection)
+    assert len(list(rows.iter_hypertube_segments(projection))) == len(
+        projection["hypertubes"]["segments"]
+    )
     assert len(list(rows.iter_power_poles(projection))) == len(
         projection["power"]["poles"]["instances"]
     )
     assert len(list(rows.iter_wires(projection))) == rows.wire_count(projection)
+
+
+def test_a_projection_older_than_schema_24_has_no_hypertubes():
+    assert list(rows.iter_hypertube_segments({"pipes": {"segments": []}})) == []
+
+
+def test_a_hypertube_row_decodes_the_pipe_way():
+    table = {"classes": ["Build_PipeHyper_C"], "segments": [[-1, 0, [[0, 0, 0], [100, 0, 50]], 7]]}
+    (tube,) = rows.iter_hypertube_segments({"hypertubes": table})
+    assert tube.cls == "Build_PipeHyper_C"
+    assert tube.points == [[0.0, 0.0, 0.0], [100.0, 0.0, 50.0]]
+    assert tube.actor_index == 7 and tube.spans is None

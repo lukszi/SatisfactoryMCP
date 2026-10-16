@@ -11,7 +11,15 @@ import sys
 from collections.abc import Callable, Iterable, Sequence
 from typing import TypeAlias
 
-from ..schema import BeltsBlock, PipeNetwork, PipesBlock, Point, RouteRow, SplineSpan
+from ..schema import (
+    BeltsBlock,
+    HypertubesBlock,
+    PipeNetwork,
+    PipesBlock,
+    Point,
+    RouteRow,
+    SplineSpan,
+)
 from .census import CHAIN_NOTES_SHOWN, Drops
 from .interning import Interner
 from .parser import PARSE_ERROR, ParsedObject, SaveValue
@@ -25,13 +33,14 @@ __all__ = [
     "belts",
     "bulge",
     "conveyor_class",
+    "hypertubes",
     "pipes",
     "spans",
 ]
 
 #: ``(actorPosition, chainActor)`` per conveyor chain.
 ChainActor: TypeAlias = tuple[Sequence[float] | None, ParsedObject]
-#: ``(class, instanceName, actorPosition, mSplineData)`` per pipe.
+#: ``(class, instanceName, actorPosition, mSplineData)`` per pipe or hypertube.
 PipeActor: TypeAlias = tuple[str, str, Sequence[float] | None, SaveValue]
 #: ``(mPipeNetworkID, fluidClass, [memberPath, ...])`` per pipe network.
 HeldNetwork: TypeAlias = tuple[SaveValue, str | None, list[str | None]]
@@ -300,34 +309,56 @@ def pipes(
                 network_of[member] = row_index
 
     classes = Interner()
-    segments: list[RouteRow] = []
+    segments = _spline_routes(
+        pipe_actors, lambda instance: network_of.get(instance, -1), classes, actors, drops, "pipe"
+    )
+    return {"classes": classes.names(), "networks": network_rows, "segments": segments}
 
-    for cls, instance, origin, spline in pipe_actors:
+
+def hypertubes(tube_actors: list[PipeActor], actors: Interner, drops: Drops) -> HypertubesBlock:
+    """Every hypertube piece's route, the pipe way: ``-1`` where a pipe has its network."""
+    classes = Interner()
+    segments = _spline_routes(
+        tube_actors, lambda _instance: -1, classes, actors, drops, "hypertube"
+    )
+    return {"classes": classes.names(), "segments": segments}
+
+
+def _spline_routes(
+    spline_actors: list[PipeActor],
+    group_of: Callable[[str], int],
+    classes: Interner,
+    actors: Interner,
+    drops: Drops,
+    noun: str,
+) -> list[RouteRow]:
+    """One route row per actor whose ``mSplineData`` reads to two points or more."""
+    segments: list[RouteRow] = []
+    for cls, instance, origin, spline in spline_actors:
         if not isinstance(spline, list):
-            drops["pipe(s) dropped: mSplineData is not a list of points"] += 1
+            drops[f"{noun}(s) dropped: mSplineData is not a list of points"] += 1
             continue
         origin_xyz = _origin(origin)
         if origin_xyz is None:
-            drops["pipe(s) dropped: the actor position would not read"] += 1
+            drops[f"{noun}(s) dropped: the actor position would not read"] += 1
             continue
         points, tangents = _translated_route(
             spline,
             origin_xyz,
             _pipe_point,
             drops,
-            "pipe point(s) dropped: Location or tangent would not read",
+            f"{noun} point(s) dropped: Location or tangent would not read",
         )
         if len(points) < 2:
-            drops["pipe(s) dropped: fewer than 2 readable spline points"] += 1
+            drops[f"{noun}(s) dropped: fewer than 2 readable spline points"] += 1
             continue
         segments.append(
             [
-                network_of.get(str(instance), -1),
+                group_of(str(instance)),
                 classes.intern(cls),
                 points,
                 actors.index_of(str(instance).rsplit(".", 1)[-1]),
                 *spans(points, tangents),
             ]
         )
-
-    return {"classes": classes.names(), "networks": network_rows, "segments": segments}
+    return segments

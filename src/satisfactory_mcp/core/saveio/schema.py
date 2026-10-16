@@ -27,9 +27,11 @@ __all__ = [
     "GraphTables",
     "HardDrive",
     "HeaderOnly",
+    "HypertubesBlock",
     "InventoriesBlock",
     "ItemStack",
     "MachineRecord",
+    "MapMarkerRecord",
     "MaterialEdge",
     "NodeState",
     "OngoingResearch",
@@ -207,6 +209,14 @@ class PipesBlock(TypedDict):
     segments: list[RouteRow]
 
 
+class HypertubesBlock(TypedDict):
+    """The hypertube pieces, row ``[-1, classIndex, points, actorIndex]`` plus ``spans``: the
+    pipe layout with no network to point at."""
+
+    classes: list[str]
+    segments: list[RouteRow]
+
+
 class PoleTable(TypedDict):
     classes: list[str]
     instances: list[PoleRow]
@@ -330,6 +340,22 @@ class NodeState(TypedDict):
     resources_left: int
 
 
+class MapMarkerRecord(TypedDict):
+    """One marker the player placed on the in-game map (§6.17).
+
+    ``colour`` is the save's ``LinearColor`` as ``[r, g, b, a]``, linear, null where it would
+    not read. ``type`` and ``compass`` are the enum values without their ``Type::`` prefix.
+    """
+
+    name: str
+    pos: Position
+    colour: list[float] | None
+    icon_id: int | None
+    type: str | None
+    category: str
+    compass: str | None
+
+
 class PlayerRecord(TypedDict):
     instance: str
     pos: Position | None
@@ -359,6 +385,8 @@ class Projection(TypedDict):
     structures: StructureTable
     belts: BeltsBlock
     pipes: PipesBlock
+    #: Hypertube pieces as routes (``registers.HYPERTUBE_CLASSES``).
+    hypertubes: HypertubesBlock
     power: PowerBlock
     machines: list[MachineRecord]
     extractors: list[ExtractorRecord]
@@ -368,6 +396,8 @@ class Projection(TypedDict):
     fittings: list[BuildableRecord]
     #: The HUB, the sink, the MAM and the other one-off buildings (``FACILITY_CLASSES``).
     facilities: list[BuildableRecord]
+    #: Hypertube entrances (``registers.HYPERTUBE_ENTRANCE_CLASSES``).
+    hypertube_entrances: list[BuildableRecord]
     storage: list[StorageRecord]
     crates: list[CrateRecord]
     pipe_networks: list[PipeNetworkRecord]
@@ -377,6 +407,7 @@ class Projection(TypedDict):
     #: Resource node path -> what is left of a depletable node.
     node_state: dict[str, NodeState]
     players: list[PlayerRecord]
+    map_markers: list[MapMarkerRecord]
     graph: GraphTables
     warnings: list[str]
     n_objects: int

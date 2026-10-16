@@ -226,3 +226,18 @@ def test_the_served_table_is_exactly_this_files_projection():
         # most the two committed files may disagree by, per axis.
         delta = math.dist((row["x"], row["y"], row["z"]), (src["x"], src["y"], src["z"]))
         assert delta <= math.sqrt(3) / 2 * 0.01 + 1e-9, name
+
+
+def test_the_served_well_cores_are_this_files_cores_with_their_satellites():
+    """``well_cores`` is every fracking core at its own position, listing exactly the
+    satellites whose ``core`` names it."""
+    prefix = "Persistent_Level:PersistentLevel."
+    cores = {r["id"]: r for r in NODES if r["class"] == "BP_FrackingCore_C"}
+    served = {c["instance"]: c for c in SERVED["well_cores"]}
+    assert set(served) == {prefix + name for name in cores}
+    for name, src in cores.items():
+        row = served[prefix + name]
+        assert row["resource"] == src["resource"]
+        assert row["satellites"] == sorted(prefix + r["id"] for r in NODES if r.get("core") == name)
+        delta = math.dist((row["x"], row["y"], row["z"]), (src["x"], src["y"], src["z"]))
+        assert delta <= math.sqrt(3) / 2 * 0.01 + 1e-9, name

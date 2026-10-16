@@ -24,7 +24,7 @@ from ..schema import (
     Projection,
     Uptime,
 )
-from . import census, inventories, power, progression, routes, structures
+from . import census, inventories, markers, power, progression, routes, structures
 from .census import Drops
 from .interning import Interner
 from .inventories import Contents, CrateActor, StorageActor
@@ -60,6 +60,8 @@ from .registers import (
     FITTING_HINTS,
     FLUID_BUFFER_CLASSES,
     GENERATOR_HINTS,
+    HYPERTUBE_CLASSES,
+    HYPERTUBE_ENTRANCE_CLASSES,
     MANUFACTURER_HINTS,
     PIPE_CLASSES,
     POWER_POLE_CLASSES,
@@ -116,6 +118,7 @@ def _empty_projection(path: str) -> Projection:
         "structures": {"classes": [], "instances": []},
         "belts": {"classes": [], "segments": []},  # §6.16
         "pipes": {"classes": [], "networks": [], "segments": []},  # §6.16
+        "hypertubes": {"classes": [], "segments": []},  # §6.16
         "power": {"poles": {"classes": [], "instances": []}, "wires": []},  # §6.12
         "machines": [],
         "extractors": [],
@@ -123,6 +126,7 @@ def _empty_projection(path: str) -> Projection:
         "attachments": [],
         "fittings": [],
         "facilities": [],
+        "hypertube_entrances": [],
         "storage": [],
         "crates": [],  # §6.13
         "pipe_networks": [],
@@ -133,6 +137,7 @@ def _empty_projection(path: str) -> Projection:
         "node_state": {},
         # Char_Player_C's transform; BP_PlayerState_C sits at the origin and is not a position.
         "players": [],
+        "map_markers": [],  # §6.17
         # Interned, because repeated instanceNames would be megabytes.
         "graph": {"actors": [], "roles": [], "material": [], "power": []},
         "warnings": [],
@@ -172,6 +177,8 @@ class _ProjectionWalk:
     #: Per pipe, and per network: a pipe's fluid comes off a network written after it.
     pipe_actors: list[PipeActor] = field(default_factory=list[PipeActor])
     pipe_networks: list[HeldNetwork] = field(default_factory=list[HeldNetwork])
+    #: Per hypertube piece, in the pipe's tuple.
+    tube_actors: list[PipeActor] = field(default_factory=list[PipeActor])
     #: Per container or buffer, and owner -> contents per ``StorageInventory``, a component
     #: written after its owner.
     storage_actors: list[StorageActor] = field(default_factory=list[StorageActor])
@@ -382,6 +389,11 @@ class _ProjectionWalk:
             )
         )
 
+    def on_map_manager(self, seen: _Object) -> None:
+        self.out["map_markers"] = markers.map_markers(
+            seen.properties.get("mMapMarkers"), self.drops
+        )
+
     def on_player(self, seen: _Object) -> None:
         self.out["players"].append(
             {
@@ -426,6 +438,7 @@ class _ProjectionWalk:
             or cls in PIPE_CLASSES
             or cls in STORAGE_CLASSES
             or cls in FLUID_BUFFER_CLASSES
+            or cls in HYPERTUBE_CLASSES
         )
         if cls in POWER_POLE_CLASSES:
             self.pole_actors.append(
@@ -433,6 +446,10 @@ class _ProjectionWalk:
             )
         if cls in PIPE_CLASSES:
             self.pipe_actors.append(
+                (cls, instance, getattr(header, "position", None), properties.get("mSplineData"))
+            )
+        if cls in HYPERTUBE_CLASSES:
+            self.tube_actors.append(
                 (cls, instance, getattr(header, "position", None), properties.get("mSplineData"))
             )
         if cls in STORAGE_CLASSES or cls in FLUID_BUFFER_CLASSES:
@@ -498,6 +515,8 @@ class _ProjectionWalk:
             self.out["fittings"].append(record)
         elif cls in FACILITY_CLASSES:
             self.out["facilities"].append(record)
+        elif cls in HYPERTUBE_ENTRANCE_CLASSES:
+            self.out["hypertube_entrances"].append(record)
         elif not held:
             # Ordinary for a wall; the point of the census for a class that runs a recipe.
             self.unfiled[str(seen.instance)] = cls
@@ -535,6 +554,7 @@ class _ProjectionWalk:
         out["building_counts"] = dict(sorted(self.building_counts.items()))
         out["belts"] = routes.belts(self.chain_actors, self.actors, self.drops)
         out["pipes"] = routes.pipes(self.pipe_actors, self.pipe_networks, self.actors, self.drops)
+        out["hypertubes"] = routes.hypertubes(self.tube_actors, self.actors, self.drops)
         out["storage"] = inventories.storage(
             self.storage_actors, self.storage_inventories, self.pipe_networks
         )
@@ -562,6 +582,7 @@ _CLASS_HANDLERS: dict[str, Callable[[_ProjectionWalk, _Object], None]] = {
     "FGLightweightBuildableSubsystem": _ProjectionWalk.on_lightweight_subsystem,
     "FGPipeNetwork": _ProjectionWalk.on_pipe_network,
     "Char_Player_C": _ProjectionWalk.on_player,
+    "FGMapManager": _ProjectionWalk.on_map_manager,
 }
 
 

@@ -99,6 +99,19 @@
   display: none;
 }
 
+/* An in-game map marker's name: the pin label's card without its selection border. */
+.map-marker-label {
+  background: var(--panel);
+  border: 1px solid var(--panel);
+  color: var(--ink);
+  box-shadow: none;
+  padding: 0 4px;
+}
+
+.map-marker-label::before {
+  display: none;
+}
+
 .popup-more summary {
   margin-top: var(--sp-1);
   color: var(--accent);

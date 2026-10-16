@@ -92,8 +92,8 @@ def test_every_dismissed_class_stays_quiet(cls):
 
 
 def test_a_dismissed_class_does_not_silence_its_neighbours():
-    (note,) = unfiled_notes({"a": "Build_PipeHyperStart_C", "b": "Build_NewThing_C"}, {"a", "b"})
-    assert "Build_PipeHyperStart_C" not in note
+    (note,) = unfiled_notes({"a": "BP_PortableMiner_C", "b": "Build_NewThing_C"}, {"a", "b"})
+    assert "BP_PortableMiner_C" not in note
     assert "Build_NewThing_C" in note
 
 

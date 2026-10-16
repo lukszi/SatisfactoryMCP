@@ -23,7 +23,7 @@ from .factories import (
     factory_plan,
     trace,
 )
-from .layers import belts_pipes, crates, floors, placements, power_lines, storage
+from .layers import belts_pipes, crates, floors, map_markers, placements, power_lines, storage
 from .plans import activity, plan_index, plan_site, plan_solve, plan_track, planlog
 from .world import (
     collectibles,
@@ -82,4 +82,5 @@ ALL_ROUTERS: tuple[APIRouter, ...] = (
     advice.router,
     maps.router,
     factory_plan.router,
+    map_markers.router,
 )

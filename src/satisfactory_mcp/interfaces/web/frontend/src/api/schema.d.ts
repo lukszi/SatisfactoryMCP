@@ -353,6 +353,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/hypertubes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Hypertubes
+         * @description Every hypertube piece, as the polyline it was built along, and the entrances.
+         */
+        get: operations["hypertubes_api_hypertubes_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/storage": {
         parameters: {
             query?: never;
@@ -1924,6 +1944,26 @@ export interface paths {
          * @description Store a new plan at v1 that reproduces one named factory; every call makes a new one.
          */
         post: operations["plan_from_built_factory_api_factories_plan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/map-markers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Map Markers
+         * @description Every marker the player placed on the in-game map, in the save's own order.
+         */
+        get: operations["map_markers_api_map_markers_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3875,6 +3915,56 @@ export interface components {
             not_fed: number;
         };
         /**
+         * HypertubeRow
+         * @description One hypertube piece, as the polyline it was built along.
+         *
+         *     ``row`` is the piece's position in the raw segments table; ``cls``/``name`` are null past
+         *     the legend's end.
+         */
+        HypertubeRow: {
+            /** Row */
+            row: number;
+            /** Cls */
+            cls: string | null;
+            /** Name */
+            name: string | null;
+            /** Points M */
+            points_m: [
+                number,
+                number,
+                number
+            ][];
+            /** Curve M */
+            curve_m: ([
+                [
+                    number,
+                    number,
+                    number
+                ],
+                [
+                    number,
+                    number,
+                    number
+                ]
+            ] | null)[] | null;
+        };
+        /**
+         * HypertubesResponse
+         * @description What ``/api/hypertubes`` sends on a 200. An error is a 4xx with ``{"error": ...}``.
+         */
+        HypertubesResponse: {
+            /** Hypertubes */
+            hypertubes: components["schemas"]["HypertubeRow"][];
+            /** Count */
+            count: number;
+            /** Entrances */
+            entrances: components["schemas"]["AttachmentRow"][];
+            /** Shapes */
+            shapes: {
+                [key: string]: components["schemas"]["BuildingShape"];
+            };
+        };
+        /**
          * InspectAt
          * @description The coordinate that was asked about, rounded to the decimetre it was answered at.
          */
@@ -4353,6 +4443,45 @@ export interface components {
             job: components["schemas"]["MapJobBody"];
         };
         /**
+         * MapMarkerRow
+         * @description One in-game map marker.
+         *
+         *     ``colour`` is the marker's own colour as ``#rrggbb`` sRGB, converted from the save's linear
+         *     value, and null where the save's would not read. ``icon_id`` is the game's icon library id,
+         *     ``type`` the representation (``RT_MapMarker`` for a marker the player placed) and
+         *     ``compass`` how far away it shows on the compass (``CVD_Near``, ``CVD_Mid``, ``CVD_Far``).
+         */
+        MapMarkerRow: {
+            /** Name */
+            name: string;
+            /** X M */
+            x_m: number | null;
+            /** Y M */
+            y_m: number | null;
+            /** Z M */
+            z_m: number | null;
+            /** Colour */
+            colour: string | null;
+            /** Icon Id */
+            icon_id: number | null;
+            /** Type */
+            type: string | null;
+            /** Category */
+            category: string;
+            /** Compass */
+            compass: string | null;
+        };
+        /**
+         * MapMarkersResponse
+         * @description What ``/api/map-markers`` sends on a 200. An error is a 4xx with ``{"error": ...}``.
+         */
+        MapMarkersResponse: {
+            /** Markers */
+            markers: components["schemas"]["MapMarkerRow"][];
+            /** Count */
+            count: number;
+        };
+        /**
          * MapPatchBody
          * @description ``label`` "" clears it; ``version`` is the list version the page holds.
          */
@@ -4740,6 +4869,9 @@ export interface components {
          *     ``reachable`` is false for a node no unlocked extractor can work (the text surface's
          *     ``LOCKED``), and null, never true, when the save could not be read. ``spoiler`` is an
          *     unoccupied node with ``reachable`` false, which the page draws faded.
+         *
+         *     ``well`` is the ``name`` of the fracking core a well satellite belongs to (a row of
+         *     ``wells``), and null on every other kind.
          */
         NodeRow: {
             /** Id */
@@ -4771,6 +4903,8 @@ export interface components {
             region: components["schemas"]["Region"] | null;
             /** Spoiler */
             spoiler: boolean;
+            /** Well */
+            well: string | null;
         };
         /**
          * NodesResponse
@@ -4782,6 +4916,8 @@ export interface components {
         NodesResponse: {
             /** Nodes */
             nodes: components["schemas"]["NodeRow"][];
+            /** Wells */
+            wells: components["schemas"]["WellCoreRow"][];
             /** Resource */
             resource: string | null;
             /** Occupied */
@@ -7972,6 +8108,39 @@ export interface components {
             /** Sea Level M */
             sea_level_m: number | null;
         };
+        /**
+         * WellCoreRow
+         * @description One resource well's fracking core: drawn, never extracted from.
+         *
+         *     ``kind`` is always ``well_core``. ``satellites`` are the ``name``s of the node rows that
+         *     tap this core, in table order. ``occupied`` says a Pressurizer stands on the core, with
+         *     ``occupant_name`` naming it; both read as not occupied when the save could not be read.
+         */
+        WellCoreRow: {
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Kind */
+            kind: string;
+            /** Resource */
+            resource: string;
+            /** Resource Name */
+            resource_name: string;
+            /** X M */
+            x_m: number;
+            /** Y M */
+            y_m: number;
+            /** Z M */
+            z_m: number;
+            /** Satellites */
+            satellites: string[];
+            /** Occupied */
+            occupied: boolean;
+            /** Occupant Name */
+            occupant_name: string | null;
+            region: components["schemas"]["Region"] | null;
+        };
         /** WireRow */
         WireRow: {
             /** A M */
@@ -8471,6 +8640,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PipesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    hypertubes_api_hypertubes_get: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HypertubesResponse"];
                 };
             };
             /** @description Validation Error */
@@ -11493,6 +11694,38 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    map_markers_api_map_markers_get: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MapMarkersResponse"];
+                };
             };
             /** @description Validation Error */
             422: {

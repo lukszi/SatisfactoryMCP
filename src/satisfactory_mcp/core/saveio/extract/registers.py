@@ -44,6 +44,13 @@ PIPE_CLASSES = (
     "Build_PipelineMK2_NoIndicator_C",
 )
 
+#: The hypertube pieces, which carry an ``mSplineData`` the pipe way and move the player.
+HYPERTUBE_CLASSES = ("Build_PipeHyper_C",)
+
+#: Where a hypertube run starts: filed so the map can draw it, and powered, which is why its
+#: productivity monitor once had it dismissed below.
+HYPERTUBE_ENTRANCE_CLASSES = ("Build_PipeHyperStart_C",)
+
 MANUFACTURER_HINTS = (
     "ConstructorMk1",
     "SmelterMk1",
@@ -136,13 +143,11 @@ FLUID_BUFFER_CLASSES = (
 #: Classes carrying a factory building's evidence (a productivity monitor or a machine
 #: buffer) that deliberately get no record. **Edit this list** when the unfiled-class census
 #: names a class: adding it here claims its record is not wanted, a hint list claims it is.
-#: Across 18 saves (save versions 25 to 60) these and the pump, the HUB, the Space Elevator and
-#: the AWESOME Shop were the only such classes; those four are filed now, as a fitting and as
-#: facilities.
+#: Across 18 saves (save versions 25 to 60) this and the pump, the HUB, the Space Elevator,
+#: the AWESOME Shop and the hypertube entrance were the only such classes; those five are
+#: filed now, as a fitting, as facilities and as ``hypertube_entrances``.
 DISMISSED_FACTORY_CLASSES = frozenset(
     {
-        # A hypertube entrance. It moves the player, which is not production.
-        "Build_PipeHyperStart_C",
         # The Portable Miner extracts, but has no ``Build_`` class or descriptor, so nothing
         # downstream could cost, size or draw it.
         "BP_PortableMiner_C",
