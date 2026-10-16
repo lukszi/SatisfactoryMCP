@@ -155,3 +155,30 @@ def test_without_a_save_no_node_is_a_spoiler(game):
     with client_over(failing_state_loader, game) as c:
         rows = c.get("/api/nodes").json()["nodes"]
     assert not any(r["spoiler"] for r in rows)
+
+
+def test_well_cores_come_with_their_satellites(client):
+    """Every resource well is one core and the satellites that tap it: the core is sent once
+    under ``wells``, and each satellite names its core back, so the page can draw the spokes
+    and neither side has to be inferred from distance."""
+    body = client.get("/api/nodes").json()
+    wells = body["wells"]
+    sats = {r["name"]: r for r in body["nodes"] if r["kind"] == "well_sat"}
+    assert len(wells) == 17
+    assert len(sats) == 118
+    assert all(w["kind"] == "well_core" for w in wells)
+    linked = [name for w in wells for name in w["satellites"]]
+    assert sorted(linked) == sorted(sats), "every satellite belongs to exactly one core"
+    for well in wells:
+        for name in well["satellites"]:
+            assert sats[name]["well"] == well["name"]
+            assert sats[name]["resource"] == well["resource"]
+    assert {w["resource_name"] for w in wells} == {"Water", "Nitrogen Gas", "Crude Oil"}
+    assert all(r["well"] is None for r in body["nodes"] if r["kind"] != "well_sat")
+
+
+def test_wells_filter_with_their_resource(client):
+    body = client.get("/api/nodes", params={"resource": "Desc_NitrogenGas_C"}).json()
+    assert body["wells"] and {w["resource"] for w in body["wells"]} == {"Desc_NitrogenGas_C"}
+    assert sum(len(w["satellites"]) for w in body["wells"]) == 45
+    assert client.get("/api/nodes", params={"resource": "Desc_OreIron_C"}).json()["wells"] == []

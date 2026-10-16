@@ -126,6 +126,12 @@ stat-compared every 3 s. `settings` carries data too: the tail stats the shared 
 - **A failed save is not a failed answer.** The table needs no `.sav`, so a world whose save
   will not load still gets its geography; it loses the occupancy join and the unlock set, and
   `save_error` says so with `occupied` and every `reachable` null beside it.
+- **Resource wells** come as `wells`: one row per fracking core (`kind` `well_core`), with its
+  position, resource and the `name`s of its `satellites`, and `occupied` when a Pressurizer
+  stands on it. A core is no node row because nothing extracts from it; each satellite row
+  names its core back in `well`. The link is the game's own `mCore`, read into
+  `data/resource_nodes.json` (`well_cores`) by `tools/gen_resource_nodes.py`, not a guess
+  from distance.
 
 ## Placements
 

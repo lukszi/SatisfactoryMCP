@@ -43,7 +43,7 @@
   },
   "excluded": {
    "BP_ResourceDeposit_C": "hand-mineable only, no extractor can be placed; the world table emits no deposit rows in the first place",
-   "BP_FrackingCore_C": "produces nothing itself; referenced as well_core on satellites"
+   "BP_FrackingCore_C": "produces nothing itself, so it is no node row; listed under well_cores with its satellites, and referenced as well_core on each satellite"
   },
   "geyser_note": "Desc_Geyser_C is a synthetic label. A geyser is not an item in Docs.json -- it is a placement target for the Geothermal Generator.",
   "join_key": "instance (matches save actor instanceName exactly)",
@@ -6141,6 +6141,279 @@
    "y": -145468.75,
    "z": 8397.13,
    "well_core": null
+  }
+ ],
+ "well_cores": [
+  {
+   "instance": "Persistent_Level:PersistentLevel.BP_FrackingCore10",
+   "resource": "Desc_Water_C",
+   "x": 316663.25,
+   "y": -290557.25,
+   "z": 1067.47,
+   "satellites": [
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite103_8",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite58",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite64",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite65",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite66",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite67",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite68"
+   ]
+  },
+  {
+   "instance": "Persistent_Level:PersistentLevel.BP_FrackingCore11",
+   "resource": "Desc_Water_C",
+   "x": 185709.8,
+   "y": -57262.83,
+   "z": 5396.36,
+   "satellites": [
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite102",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite69",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite70",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite71",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite72",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite73",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite74"
+   ]
+  },
+  {
+   "instance": "Persistent_Level:PersistentLevel.BP_FrackingCore12",
+   "resource": "Desc_Water_C",
+   "x": 240512.97,
+   "y": -69723.08,
+   "z": 5520.3,
+   "satellites": [
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite75",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite76",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite77",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite78",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite79",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite80"
+   ]
+  },
+  {
+   "instance": "Persistent_Level:PersistentLevel.BP_FrackingCore13",
+   "resource": "Desc_Water_C",
+   "x": 99209.8,
+   "y": 83713.03,
+   "z": 10073.36,
+   "satellites": [
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite81",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite82",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite83",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite84",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite85",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite86"
+   ]
+  },
+  {
+   "instance": "Persistent_Level:PersistentLevel.BP_FrackingCore14",
+   "resource": "Desc_Water_C",
+   "x": 104339.23,
+   "y": 145802.75,
+   "z": 5427.71,
+   "satellites": [
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite87",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite88",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite89",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite90",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite91",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite92",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite93",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite94"
+   ]
+  },
+  {
+   "instance": "Persistent_Level:PersistentLevel.BP_FrackingCore15",
+   "resource": "Desc_Water_C",
+   "x": 6932.23,
+   "y": 187184.75,
+   "z": -10649.29,
+   "satellites": [
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite100",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite101",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite95",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite96",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite97",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite98",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite99"
+   ]
+  },
+  {
+   "instance": "Persistent_Level:PersistentLevel.BP_FrackingCore17",
+   "resource": "Desc_Water_C",
+   "x": -19414.2,
+   "y": 173196.03,
+   "z": -197.64,
+   "satellites": [
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite108",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite109",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite110",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite111",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite112",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite113",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite121"
+   ]
+  },
+  {
+   "instance": "Persistent_Level:PersistentLevel.BP_FrackingCore18",
+   "resource": "Desc_Water_C",
+   "x": -108264.2,
+   "y": 73536.03,
+   "z": 3002.36,
+   "satellites": [
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite114_7",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite115",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite116",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite117",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite118",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite119",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite120"
+   ]
+  },
+  {
+   "instance": "Persistent_Level:PersistentLevel.BP_FrackingCore2",
+   "resource": "Desc_NitrogenGas_C",
+   "x": 215923.58,
+   "y": 135917.88,
+   "z": -438.27,
+   "satellites": [
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite10",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite11",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite12",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite13",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite6",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite7",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite8",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite9"
+   ]
+  },
+  {
+   "instance": "Persistent_Level:PersistentLevel.BP_FrackingCore3",
+   "resource": "Desc_NitrogenGas_C",
+   "x": 223618.36,
+   "y": -311503.09,
+   "z": 7674.11,
+   "satellites": [
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite14",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite15",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite16",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite17",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite19",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite20",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite23_5"
+   ]
+  },
+  {
+   "instance": "Persistent_Level:PersistentLevel.BP_FrackingCore4",
+   "resource": "Desc_NitrogenGas_C",
+   "x": -251395.03,
+   "y": -187070.86,
+   "z": -1668.12,
+   "satellites": [
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite21",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite22",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite24",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite25",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite26",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite27",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite51_1"
+   ]
+  },
+  {
+   "instance": "Persistent_Level:PersistentLevel.BP_FrackingCore5",
+   "resource": "Desc_NitrogenGas_C",
+   "x": -143896.03,
+   "y": 122197.14,
+   "z": 15133.88,
+   "satellites": [
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite28",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite29",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite30",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite31",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite32",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite33",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite34"
+   ]
+  },
+  {
+   "instance": "Persistent_Level:PersistentLevel.BP_FrackingCore6",
+   "resource": "Desc_NitrogenGas_C",
+   "x": 84979.12,
+   "y": 104525.4,
+   "z": 10067.89,
+   "satellites": [
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite35",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite36",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite37",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite38",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite39",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite40",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite41",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite42",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite43",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite44"
+   ]
+  },
+  {
+   "instance": "Persistent_Level:PersistentLevel.BP_FrackingCore6_UAID_40B076DF2F79D3DF01_1961476789",
+   "resource": "Desc_LiquidOil_C",
+   "x": -261572.1,
+   "y": 74704.96,
+   "z": -1344.51,
+   "satellites": [
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite61_UAID_40B076DF2F79D7DF01_1933830510",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite61_UAID_40B076DF2F79D7DF01_2053713511",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite61_UAID_40B076DF2F79D8DF01_1587984689",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite61_UAID_40B076DF2F79D8DF01_1704280690",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite61_UAID_40B076DF2F79D8DF01_1999134691",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite61_UAID_40B076DF2F79D9DF01_1230935868"
+   ]
+  },
+  {
+   "instance": "Persistent_Level:PersistentLevel.BP_FrackingCore7",
+   "resource": "Desc_LiquidOil_C",
+   "x": 268155.62,
+   "y": 112797.59,
+   "z": -173.05,
+   "satellites": [
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite45",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite46",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite47",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite48",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite49",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite50"
+   ]
+  },
+  {
+   "instance": "Persistent_Level:PersistentLevel.BP_FrackingCore9",
+   "resource": "Desc_LiquidOil_C",
+   "x": -40180.13,
+   "y": -7911.54,
+   "z": 24980.66,
+   "satellites": [
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite57",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite59",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite60",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite61",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite62",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite63"
+   ]
+  },
+  {
+   "instance": "Persistent_Level:PersistentLevel.BP_FrackingCore_8",
+   "resource": "Desc_NitrogenGas_C",
+   "x": 128310.0,
+   "y": 256759.0,
+   "z": 269.0,
+   "satellites": [
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite18_3",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite2",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite3",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite4",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite5",
+    "Persistent_Level:PersistentLevel.BP_FrackingSatellite_2"
+   ]
   }
  ]
 }
