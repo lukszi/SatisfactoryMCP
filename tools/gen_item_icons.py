@@ -70,6 +70,21 @@ ICON_FIELD = "mSmallIcon"
 #: restricting to ``FGItemDescriptor`` would miss the biomass and the nuclear fuel rods.
 FORM_FIELD = "mForm"
 
+#: Items a save holds that the docs dump never describes, with the icon the game cooks
+#: beside each class's own package; docs/DEVELOPING.md says how they were found.
+UNDOCUMENTED_ICONS: dict[str, str] = {
+    name: f"Texture2D /Game/FactoryGame/{path}.{path.rsplit('/', 1)[1]}"
+    for name, path in {
+        "Desc_HardDrive_C": "Resource/Environment/CrashSites/UI/HardDrive_256",
+        "Desc_ResourceSinkCoupon_C": (
+            "Resource/Parts/ResourceSinkCoupon/UI/IconDesc_Ficsit_Coupon_256"
+        ),
+        "Desc_BoomBox_C": "Equipment/BoomBox/UI/IconDesc_Boombox_256",
+        "BP_EquipmentDescriptorCup_C": "Equipment/Cup/UI/IconDesc_CoffeeCup_256",
+        "BP_EquipmentDescriptorCupGold_C": "Equipment/GoldenCup/UI/IconDesc_CupGold_256",
+    }.items()
+}
+
 #: BC3 blocks; the other format is raw BGRA texels. Measured: there is no third, and no BC7.
 BC3_FORMAT = "PF_DXT5"
 PIXEL_FORMATS = (BC3_FORMAT, "PF_B8G8R8A8")
@@ -235,14 +250,15 @@ def container_stem(icon: str) -> str | None:
 
 def icon_classes(dump: DocsDump) -> list[tuple[str, str]]:
     """``[(class name, icon asset path), ...]`` from a loaded docs dump, sorted so a manifest
-    diff is readable. Classes with no icon keep an empty path and are counted by the caller."""
-    out: list[tuple[str, str]] = []
+    diff is readable. Classes with no icon keep an empty path and are counted by the caller.
+    :data:`UNDOCUMENTED_ICONS` fills in classes the dump lacks and never overrides one it has."""
+    found: dict[str, str] = {}
     for classes in dump.by_native.values():
         for entry in classes:
             if FORM_FIELD not in entry or "ClassName" not in entry:
                 continue
-            out.append((str(entry["ClassName"]), str(entry.get(ICON_FIELD) or "").strip()))
-    return sorted(out)
+            found[str(entry["ClassName"])] = str(entry.get(ICON_FIELD) or "").strip()
+    return sorted({**UNDOCUMENTED_ICONS, **found}.items())
 
 
 def path_index(store: IoStore) -> dict[str, str]:
