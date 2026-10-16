@@ -270,6 +270,15 @@ function read(key: string): boolean | string | number | undefined {
   return found ? found.fallback : undefined;
 }
 
+/** The current value, the setting's fallback when it was never set. */
+export function settingValue(key: string): boolean | string | number | undefined {
+  return read(key);
+}
+
+export function isChanged(setting: Setting): boolean {
+  return read(setting.key) !== setting.fallback;
+}
+
 export function settingOn(key: string): boolean {
   return read(key) === true;
 }

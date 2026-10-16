@@ -1,0 +1,64 @@
+/* The maps page: per-list column templates and the map-type thumbnail. */
+
+.l-job2 .entry {
+  --cols: minmax(0, 1fr) auto;
+}
+
+.l-mt .entry {
+  --cols: 56px minmax(0, 1fr) 64px;
+}
+
+.l-inp .entry {
+  --cols: 100px minmax(0, 1fr) 180px;
+}
+
+.l-inp .acts .ctx {
+  min-width: 0;
+}
+
+.thumb {
+  width: 56px;
+  height: 40px;
+  padding: 0;
+  overflow: hidden;
+  background: var(--thumb-terrain);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  cursor: pointer;
+}
+
+.thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.thumb.none {
+  background: var(--bg-deep);
+  cursor: default;
+}
+
+.confirm,
+.rename {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+  align-items: center;
+}
+
+.maps-page .fold .form {
+  margin-top: var(--sp-2);
+}
+
+.maps-page > .l-mt,
+.maps-page > .l-inp,
+.maps-page #maps-jobs .list {
+  margin-bottom: var(--sp-3);
+}
+
+@media (max-width: 600px) {
+  .l-mt .entry {
+    --cols: 56px minmax(0, 1fr) auto !important;
+  }
+}

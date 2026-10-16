@@ -1,42 +1,4 @@
-/* The rules for dashkit.ts's primitives: buttons, level-2 tabs, table extras, states and chips. */
-
-.btn {
-  padding: 0 var(--sp-1);
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  background: transparent;
-  color: var(--accent);
-  font: inherit;
-  font-size: var(--fs-s);
-  line-height: 18px;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-a.btn {
-  display: inline-block;
-  text-decoration: none;
-}
-
-.btn:hover {
-  border-color: var(--accent);
-  color: var(--accent-hi);
-}
-
-.btn:disabled {
-  border-color: var(--line);
-  color: var(--dim);
-  cursor: default;
-}
-
-.btn[aria-pressed="true"] {
-  border-color: var(--accent);
-  color: var(--accent-hi);
-}
-
-.btn-map {
-  color: var(--ink-soft);
-}
+/* The rules for dashkit.ts's primitives: level-2 tabs, table extras and states; buttons and chips are kit/styles/kit.css. */
 
 .subtabs {
   display: inline-flex;
@@ -155,51 +117,6 @@ a.btn {
 
 .dk-error {
   color: var(--bad);
-}
-
-.chip {
-  display: inline-block;
-  padding: 0 var(--sp-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-chip);
-  font-size: var(--fs-s);
-  letter-spacing: 0.06em;
-  line-height: 16px;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-.chip-ok {
-  border-color: color-mix(in srgb, var(--ok) 60%, transparent);
-  color: var(--ok);
-}
-
-.chip-bad {
-  border-color: color-mix(in srgb, var(--bad) 60%, transparent);
-  color: var(--bad);
-}
-
-.chip-blocked {
-  border-color: color-mix(in srgb, var(--blocked) 60%, transparent);
-  color: var(--blocked);
-}
-
-.chip-remove {
-  border-color: color-mix(in srgb, var(--remove) 60%, transparent);
-  color: var(--remove);
-}
-
-.chip-mid {
-  color: var(--mid);
-}
-
-.chip-muted {
-  color: var(--muted);
-}
-
-.chip-id {
-  letter-spacing: 0;
-  text-transform: none;
 }
 
 .dk-field-error {

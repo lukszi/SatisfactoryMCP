@@ -1,0 +1,443 @@
+/* The shell: one top bar, the job strip under it, and on phones the bottom bar with its sheet.
+   The map and the dashboard sit below whatever strips are showing. */
+
+body.job-on {
+  --jobstrip-h: 24px;
+}
+
+.hdr {
+  position: relative;
+  z-index: var(--z-chrome);
+  display: flex;
+  gap: var(--sp-3);
+  align-items: center;
+  height: var(--hdr-h);
+  padding: 0 var(--sp-3);
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+.brand {
+  flex: none;
+  color: var(--ink-soft);
+  font-weight: var(--t-name-w);
+  white-space: nowrap;
+}
+
+.tabs {
+  display: flex;
+  flex: 0 1 auto;
+  align-self: stretch;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.tabs a {
+  display: flex;
+  flex: none;
+  align-items: center;
+  padding: 0 var(--sp-2);
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.tabs a[hidden] {
+  display: none;
+}
+
+.tabs a:hover {
+  color: var(--ink);
+}
+
+.tabs a.on {
+  border-bottom-color: var(--accent);
+  color: var(--ink-hi);
+}
+
+.tabs a:focus-visible {
+  outline-offset: -2px;
+}
+
+.tabs-more {
+  flex: none;
+  padding: 0 var(--sp-2);
+  border: 0;
+  background: none;
+  color: var(--muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.tabs-more:hover,
+.tabs-more[aria-expanded="true"] {
+  color: var(--ink);
+}
+
+.tabs-more[hidden] {
+  display: none;
+}
+
+.hbtn {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  height: 24px;
+}
+
+.hbtn svg {
+  display: block;
+}
+
+.hbtn.on {
+  background: var(--line);
+  color: var(--ink-hi);
+}
+
+#search-btn {
+  display: none;
+}
+
+.search {
+  position: relative;
+  flex: none;
+  width: 210px;
+}
+
+.search input {
+  width: 100%;
+  padding-right: var(--sp-5);
+}
+
+.search input:focus + .khint,
+.search input:not(:placeholder-shown) + .khint {
+  display: none;
+}
+
+.jump-list {
+  position: absolute;
+  top: calc(100% + var(--sp-1));
+  right: 0;
+  z-index: var(--z-dropdown);
+  width: 360px;
+  max-width: calc(100vw - var(--sp-5));
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: var(--sp-1) 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: var(--overlay-shadow);
+}
+
+.jump-list[hidden] {
+  display: none;
+}
+
+.jgrp {
+  padding: var(--sp-1) var(--sp-3) var(--sp-0);
+  color: var(--muted);
+  font-size: var(--t-group-size);
+  font-weight: var(--t-group-w);
+  letter-spacing: var(--t-group-track);
+  text-transform: var(--t-group-case);
+}
+
+.jopt {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  gap: var(--sp-2);
+  align-items: center;
+  padding: var(--sp-1) var(--sp-3);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.jopt .ic,
+.jopt .mono {
+  width: 20px;
+  height: 20px;
+}
+
+.jopt .jn {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jopt .jc {
+  max-width: 150px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: var(--t-meta-size);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jopt:hover,
+.jopt.on {
+  background: var(--hover);
+  color: var(--accent-hi);
+}
+
+.jopt.on {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.jnone {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  color: var(--muted);
+}
+
+.hdr .save {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dim);
+  font-size: var(--t-meta-size);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hdr select {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 120px;
+  font-size: var(--t-meta-size);
+}
+
+.live {
+  display: inline-flex;
+  flex: none;
+  gap: var(--sp-1);
+  align-items: center;
+  color: var(--muted);
+  font-size: var(--t-meta-size);
+  white-space: nowrap;
+}
+
+.live .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--r-round);
+  background: var(--off);
+}
+
+.live.on .dot {
+  background: var(--ok);
+}
+
+.live.hit .dot {
+  background: var(--flash);
+}
+
+.live.lost {
+  color: var(--bad);
+}
+
+.live-text {
+  display: none;
+}
+
+.live.lost .live-text {
+  display: inline;
+}
+
+.jobstrip {
+  position: relative;
+  z-index: var(--z-chrome);
+  display: flex;
+  gap: var(--sp-2);
+  align-items: center;
+  height: var(--jobstrip-h);
+  padding: 0 var(--sp-3);
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--t-meta-size);
+}
+
+.jobstrip[hidden] {
+  display: none;
+}
+
+.jobstrip a {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-soft);
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.jobstrip a:hover {
+  color: var(--accent-hi);
+}
+
+.jobstrip .btn.icon {
+  margin-left: auto;
+  border-color: transparent;
+}
+
+.jobstrip > .jobbar {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+}
+
+#map {
+  height: calc(100% - var(--hdr-h) - var(--strip-h) - var(--jobstrip-h));
+  background: var(--sea);
+}
+
+#dash-body {
+  max-width: var(--page-w);
+  margin: 0 auto;
+}
+
+.items-switch {
+  margin-bottom: var(--sp-3);
+}
+
+.bnav {
+  display: none;
+}
+
+/* ---------- phones: brand, search icon, gear on top; sections in the bottom bar ---------- */
+@media (max-width: 600px) {
+  .hdr {
+    gap: var(--sp-2);
+    padding: 0 var(--sp-2);
+  }
+
+  .hdr .save,
+  .tabs,
+  .tabs-more,
+  .search,
+  .live {
+    display: none;
+  }
+
+  #search-btn {
+    display: inline-grid;
+    width: 32px;
+    height: 32px;
+    margin-left: auto;
+  }
+
+  #gear {
+    width: 32px;
+    height: 32px;
+  }
+
+  .hdr select {
+    max-width: 96px;
+  }
+
+  .hdr.searching > :not(.search),
+  .hdr.searching > #search-btn,
+  .hdr.searching > #gear {
+    display: none;
+  }
+
+  .hdr.searching .search {
+    display: block;
+    flex: 1;
+    width: auto;
+  }
+
+  .khint {
+    display: none;
+  }
+
+  .jump-list {
+    position: fixed;
+    top: var(--hdr-h);
+    right: 0;
+    left: 0;
+    width: auto;
+    max-width: none;
+  }
+
+  .bnav {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: var(--z-chrome);
+    display: block;
+    background: var(--panel);
+    border-top: 1px solid var(--line);
+  }
+
+  .bnav-row {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .bnav-row > a,
+  .bnav-row > button {
+    display: grid;
+    place-items: center;
+    min-height: var(--bnav-h);
+    padding: 0 var(--sp-0);
+    border: 0;
+    border-top: 2px solid transparent;
+    background: none;
+    color: var(--muted);
+    font: inherit;
+    font-size: var(--t-meta-size);
+    text-decoration: none;
+    cursor: pointer;
+  }
+
+  .bnav-row > .on {
+    border-top-color: var(--accent);
+    color: var(--ink-hi);
+  }
+
+  .sheet {
+    position: absolute;
+    right: 0;
+    bottom: 100%;
+    left: 0;
+    display: grid;
+    padding: var(--sp-1) 0;
+    background: var(--panel);
+    border-top: 1px solid var(--line);
+    box-shadow: var(--overlay-shadow);
+  }
+
+  .sheet[hidden] {
+    display: none;
+  }
+
+  .sheet a {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+    padding: var(--sp-2) var(--sp-4);
+    border-left: 2px solid transparent;
+    color: var(--ink);
+    text-decoration: none;
+  }
+
+  .sheet a.on {
+    border-left-color: var(--accent);
+    color: var(--ink-hi);
+  }
+
+  #map {
+    height: calc(100% - var(--hdr-h) - var(--strip-h) - var(--jobstrip-h) - var(--bnav-h));
+  }
+
+  #dash {
+    bottom: var(--bnav-h);
+    padding-right: var(--sp-3);
+    padding-left: var(--sp-3);
+  }
+}

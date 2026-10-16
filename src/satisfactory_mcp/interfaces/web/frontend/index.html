@@ -18,25 +18,24 @@
     -->
   </head>
   <body>
-    <header id="bar">
-      <button type="button" id="rail-open" aria-controls="rail" aria-expanded="false" aria-label="sections" title="sections"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" stroke-width="1.6"/></svg></button>
-      <strong>Satisfactory</strong>
-      <nav id="views" aria-label="views">
-        <a href="#" data-view="map" class="view-link">Map</a>
-        <a href="#" data-view="dash" class="view-link">Dashboard</a>
-      </nav>
+    <header id="bar" class="hdr">
+      <span class="brand">Satisfactory</span>
+      <nav id="tabs" class="tabs" aria-label="sections"></nav>
+      <button type="button" id="tabs-more" class="tabs-more" aria-haspopup="menu" aria-expanded="false" hidden>more ▾</button>
+      <div class="search" id="search" role="search">
+        <input type="search" id="jump" role="combobox" aria-expanded="false" aria-controls="jump-list" aria-autocomplete="list" aria-label="jump to a factory, plan, circuit, item or recipe" placeholder="jump to…" autocomplete="off" spellcheck="false" />
+        <kbd class="khint" aria-hidden="true">/</kbd>
+        <div id="jump-list" class="jump-list" role="listbox" aria-label="matches" hidden></div>
+      </div>
+      <button type="button" id="search-btn" class="btn icon hbtn" aria-label="search" title="search (/ or Ctrl+K)"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="4.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M10.5 10.5 14 14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
       <select id="world" title="which world to read"></select>
       <select id="save" title="which save of this world to read; 'newest save' follows the game as it writes"></select>
-      <span id="summary" class="muted">loading&hellip;</span>
-      <div id="search" role="search">
-        <button type="button" id="search-open" aria-label="search items, recipes and factories" title="search ( / )"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M10 10l4 4" stroke="currentColor" stroke-width="1.6"/></svg></button>
-        <input id="search-q" type="search" autocomplete="off" placeholder="search items, recipes, factories  ( / )" aria-label="search items, recipes and factories" />
-        <div id="search-hits" role="listbox" hidden></div>
-      </div>
+      <span id="summary" class="save">loading&hellip;</span>
       <span id="live" class="live" role="status"><span class="dot" aria-hidden="true"></span><span class="live-text">connecting&hellip;</span></span>
+      <button type="button" id="gear" class="btn icon hbtn" aria-label="settings" title="settings"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="2"/><circle cx="8" cy="8" r="4.3"/><path d="M8 1.2v2.4M8 12.4v2.4M1.2 8h2.4M12.4 8h2.4M3.2 3.2l1.7 1.7M11.1 11.1l1.7 1.7M3.2 12.8l1.7-1.7M11.1 4.9l1.7-1.7"/></g></svg></button>
     </header>
+    <div id="jobstrip" class="jobstrip" hidden></div>
     <section id="status" aria-label="status"></section>
-    <nav id="rail" aria-label="sections"></nav>
     <aside id="panel" aria-label="factories and power">
       <div class="panel-tabs">
         <div class="panel-tablist" role="tablist" aria-label="side panel">
@@ -49,9 +48,12 @@
     </aside>
     <div id="map"></div>
     <main id="dash" hidden>
-      <nav id="dash-nav" aria-label="dashboard sections"></nav>
       <div id="dash-body"></div>
     </main>
+    <nav id="bnav" class="bnav" aria-label="sections, phone">
+      <div id="sheet" class="sheet" hidden></div>
+      <div id="bnav-row" class="bnav-row"></div>
+    </nav>
     <!-- The encodings no checkbox can explain, because they are inside a layer rather than a
          layer of their own. Docked into the layer control at load (layercontrol/control.ts), so it folds
          with it. Kept in step by hand with PURITY_RADIUS and the fillOpacity lines in markers.ts
@@ -72,6 +74,26 @@
         <svg class="legend-sw" viewBox="0 0 20 12" aria-hidden="true"><circle class="sw-line" cx="10" cy="6" r="4"/><circle class="sw-fill" cx="10" cy="6" r="1.6"/></svg><span class="legend-term">pole ring</span><span>power tower</span>
       </div>
     </details>
+    <dialog id="settings" class="sdlg" aria-labelledby="sd-title">
+      <div class="sd-head">
+        <h2 id="sd-title">settings</h2>
+        <div class="sd-find">
+          <input type="search" id="sd-q" placeholder="find a setting" aria-label="find a setting" aria-controls="sd-pane" autocomplete="off" spellcheck="false" />
+          <kbd class="khint" aria-hidden="true">/</kbd>
+        </div>
+        <button type="button" id="sd-x" class="btn icon" aria-label="close settings" title="close (Esc)">×</button>
+      </div>
+      <div class="sd-body">
+        <nav id="sd-nav" class="sd-nav" aria-label="setting sections"></nav>
+        <label class="sd-sel"><span class="sr">section</span><select id="sd-sel"></select></label>
+        <div id="sd-pane" class="sd-pane"></div>
+      </div>
+      <p id="sd-status" class="sr" role="status"></p>
+      <div class="sd-foot">
+        <p class="note">kept in this browser; those chat uses too, every tab and chat share</p>
+        <button type="button" id="sd-reset-all" class="btn">reset all to defaults</button>
+      </div>
+    </dialog>
     <div id="err"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

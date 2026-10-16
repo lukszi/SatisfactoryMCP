@@ -1,10 +1,13 @@
-/* The dashboard shell: the tabs and the routing on the fragment's `dash=` key. What the tabs
- * ask back of it goes through dash/actions.ts. See docs/frontend_vision.md §8. */
+/* The dashboard shell: routing on the fragment's `dash=` key (app/shell/router.ts) into the
+ * pages, and the top bar that follows it. What the pages ask back goes through
+ * dash/actions.ts. See docs/frontend_kit.md. */
 
 import { onAdvice } from "../chat/advice";
-import { empty, link } from "../kit/dashkit";
+import { empty } from "../kit/dashkit";
 import { el, make } from "../kit/dom";
 import { keepFocus } from "../kit/focus";
+import { html, mount } from "../kit/html";
+import { seg } from "../kit/ui/controls";
 import { renderInventory } from "./inventory";
 import { hashFor } from "../map/map";
 import { onVitals, vitals } from "../app/vitals";
@@ -16,7 +19,6 @@ import { onProgress } from "./progress/feeds";
 import { renderProgress } from "./progress/progress";
 import { renderRecipes } from "./recipes/recipes";
 import { cancelRename, renamingIn } from "./factories/rename";
-import { onSetting } from "../app/settings";
 import { state } from "../app/state";
 import { renderFactories } from "./factories/list";
 import { renderFactory } from "./factories/page";
@@ -25,62 +27,39 @@ import { factoryAddress } from "./factories/address";
 import { renderOverview } from "./overview";
 import { renderCircuit, renderPower } from "./power-tab";
 import { circuitName } from "./power-ledger";
-import { renderSettingsTab } from "./settings-tab";
+import { renderMapsPage } from "./maps/maps-page";
+import { renderKitGallery } from "./kit-gallery/gallery";
 import { onMapRegistry } from "../app/map-types";
 import { dashParts } from "../app/nav";
-import { drawRail } from "../app/rail";
 import { select } from "../app/selection";
+import { redirectFor, routeOf, TOP_TABS, type Page, type Route } from "../app/shell/router";
+import { drawTopBar } from "../app/shell/topbar";
+import { showSettings } from "../app/settings-dialog/dialog";
 import { renderWorld, worldTitle } from "./world/world";
 import { WORDS } from "../kit/words";
-import { leaveDashThen, pointButton, setDashHooks } from "./actions";
+import { pointButton, setDashHooks } from "./actions";
 
-type Tab =
-  | "overview"
-  | "factories"
-  | "power"
-  | "progress"
-  | "inventory"
-  | "world"
-  | "recipes"
-  | "planner"
-  | "settings";
+const SAVELESS: Page[] = ["recipes", "maps", "kit"];
 
-const TABS: [Tab, string][] = [
-  ["overview", "Overview"],
-  ["factories", "Factories"],
-  ["power", "Power"],
-  ["progress", "Progress"],
-  ["inventory", "Inventory"],
-  ["world", "World"],
-  ["recipes", "Recipes"],
-  ["planner", "Planner"],
-  ["settings", "Settings"],
-];
-
-const SAVELESS: Tab[] = ["recipes", "settings"];
+const PAGE_TITLE: Partial<Record<Page, string>> = { inventory: "Items", recipes: "Items", maps: "map types", kit: "kit" };
 
 /* A redraw skipped while a factory name was being edited. */
 let missed = false;
 
-let lastDash = "overview";
-
 let shownEpoch = 0;
 
-function address(): { tab: Tab; subject: string } {
-  const parts = dashParts();
-  let tab: Tab = "overview";
-  TABS.forEach(function (entry) {
-    if (entry[0] === parts.tab) tab = entry[0];
-  });
-  return { tab: tab, subject: parts.subject };
+function address(): Route {
+  return routeOf(state.dash);
 }
 
-function tabLabel(tab: Tab): string {
-  let label = "";
-  TABS.forEach(function (entry) {
-    if (entry[0] === tab) label = entry[1];
-  });
-  return label;
+function pageLabel(at: Route): string {
+  return (
+    PAGE_TITLE[at.page] ||
+    TOP_TABS.filter(function (t) {
+      return t.id === at.top;
+    })[0]?.label ||
+    ""
+  );
 }
 
 function knownFactory(name: string): boolean {
@@ -90,18 +69,18 @@ function knownFactory(name: string): boolean {
   });
 }
 
-function subjectName(tab: Tab, subject: string): string {
-  if (tab === "factories") return factoryAddress(subject, knownFactory).name;
-  if (tab === "world") return worldTitle(subject);
-  if (tab === "planner") {
-    const key = dashParts("planner/" + subject).rest[0] || "";
+function subjectName(at: Route): string {
+  if (at.page === "factories") return factoryAddress(at.subject, knownFactory).name;
+  if (at.page === "world") return worldTitle(at.subject);
+  if (at.page === "planner") {
+    const key = dashParts("planner/" + at.subject).rest[0] || "";
     if (!key) return "";
     return planTitle(key) || (bench.key === key && bench.plan ? bench.plan.name : "");
   }
-  if (tab !== "power" || !subject) return "";
+  if (at.page !== "power" || !at.subject) return "";
   const circuits = vitals().circuits;
-  const row = circuits ? circuits.circuits[+subject - 1] : undefined;
-  return row ? circuitName(row) : "circuit " + subject;
+  const row = circuits ? circuits.circuits[+at.subject - 1] : undefined;
+  return row ? circuitName(row) : "circuit " + at.subject;
 }
 
 function retitle(): void {
@@ -109,8 +88,8 @@ function retitle(): void {
   if (!state.dash) parts.unshift("Map");
   else {
     const at = address();
-    parts.unshift(tabLabel(at.tab));
-    const name = subjectName(at.tab, at.subject);
+    parts.unshift(pageLabel(at));
+    const name = subjectName(at);
     if (name) parts.unshift(name);
   }
   document.title = parts.join(" · ");
@@ -130,46 +109,51 @@ function forgetVitals(): void {
   v.circuitsError = "";
 }
 
-function follow(tab: Tab, subject: string): void {
-  if (!subject) return;
+function follow(at: Route): void {
+  if (!at.subject) return;
   const v = vitals();
-  if (tab === "factories" && v.health) {
-    const name = factoryAddress(subject, knownFactory).name;
+  if (at.page === "factories" && v.health) {
+    const name = factoryAddress(at.subject, knownFactory).name;
     if (knownFactory(name)) select({ kind: "factory", key: name, label: name });
-  } else if (tab === "power" && v.circuits) {
-    const row = v.circuits.circuits[+subject - 1];
+  } else if (at.page === "power" && v.circuits) {
+    const row = v.circuits.circuits[+at.subject - 1];
     if (row) select({ kind: "circuit", key: String(row.index), label: circuitName(row) });
   }
 }
 
-function renderNav(tab: Tab): void {
-  const nav = el("dash-nav");
-  nav.textContent = "";
-  TABS.forEach(function (entry) {
-    const anchor = link(entry[0], entry[1], "dash-tab" + (entry[0] === tab ? " on" : ""));
-    if (entry[0] === tab) anchor.setAttribute("aria-current", "page");
-    nav.appendChild(anchor);
-  });
+/* Items is the inventory and recipes pages until it has its own; this keeps both a click away. */
+function itemsSwitch(body: HTMLElement, page: Page): void {
+  const holder = make("div", "items-switch");
+  const items = [
+    { value: "inventory", label: "held", href: hashFor("inventory") },
+    { value: "recipes", label: "recipes", href: hashFor("recipes") },
+  ];
+  mount(holder, html`${seg("items", items, page, "items view")}`);
+  body.appendChild(holder);
 }
 
-function renderTab(body: HTMLElement, tab: Tab, subject: string): void {
-  if (tab === "overview") renderOverview(body);
-  else if (tab === "factories") {
-    if (subject) renderFactory(body, subject);
+function renderPage(body: HTMLElement, at: Route): void {
+  const page = at.page;
+  if (page === "inventory" || page === "recipes") itemsSwitch(body, page);
+  if (page === "overview") renderOverview(body);
+  else if (page === "factories") {
+    if (at.subject) renderFactory(body, at.subject);
     else renderFactories(body);
-  } else if (tab === "power") {
-    if (subject) renderCircuit(body, subject);
+  } else if (page === "power") {
+    if (at.subject) renderCircuit(body, at.subject);
     else renderPower(body);
-  } else if (tab === "progress") renderProgress(body, subject, pointButton);
-  else if (tab === "inventory") renderInventory(body);
-  else if (tab === "world") renderWorld(body);
-  else if (tab === "recipes") renderRecipes(body, subject, render);
-  else renderSettingsTab(body, subject);
+  } else if (page === "progress") renderProgress(body, at.subject, pointButton);
+  else if (page === "inventory") renderInventory(body);
+  else if (page === "world") renderWorld(body);
+  else if (page === "recipes") renderRecipes(body, at.subject, render);
+  else if (page === "maps") renderMapsPage(body);
+  else if (page === "kit") renderKitGallery(body);
 }
 
 function render(): void {
   forgetVitals();
-  relink();
+  const at = address();
+  drawTopBar(at.top);
   retitle();
   viewFocus();
   if (!state.dash) return;
@@ -178,41 +162,24 @@ function render(): void {
     return;
   }
   missed = false;
-  const at = address();
-  follow(at.tab, at.subject);
-  renderNav(at.tab);
+  follow(at);
   const body = el("dash-body");
-  if (state.noSaves && SAVELESS.indexOf(at.tab) < 0) {
+  if (state.noSaves && SAVELESS.indexOf(at.page) < 0) {
     body.textContent = "";
-    empty(body, WORDS.noSaves, "save a game, or set SATISFACTORY_SAVES if the saves live elsewhere; Recipes and Settings still work");
+    empty(body, WORDS.noSaves, "save a game, or set SATISFACTORY_SAVES if the saves live elsewhere; Items and settings still work");
     return;
   }
-  if (at.tab === "planner") {
+  if (at.page === "planner") {
     renderPlanner(body, at.subject);
     return;
   }
   const scroll = el("dash").scrollTop;
   keepFocus(body, function () {
     body.textContent = "";
-    renderTab(body, at.tab, at.subject);
-    if (!body.querySelector("h1")) body.insertBefore(make("h1", "dk-hidden", tabLabel(at.tab)), body.firstChild);
+    renderPage(body, at);
+    if (!body.querySelector("h1")) body.insertBefore(make("h1", "dk-hidden", pageLabel(at)), body.firstChild);
   });
   el("dash").scrollTop = scroll;
-}
-
-function relink(): void {
-  const on = !!state.dash;
-  if (on) lastDash = state.dash;
-  drawRail(TABS, on ? address().tab : "");
-  const views = el("views").querySelectorAll<HTMLAnchorElement>("[data-view]");
-  Array.prototype.forEach.call(views, function (anchor: HTMLAnchorElement) {
-    const dash = anchor.getAttribute("data-view") === "dash";
-    const mine = dash === on;
-    anchor.className = "view-link" + (mine ? " on" : "");
-    anchor.setAttribute("href", hashFor(dash ? lastDash : ""));
-    if (mine) anchor.setAttribute("aria-current", "page");
-    else anchor.removeAttribute("aria-current");
-  });
 }
 
 function show(): void {
@@ -232,40 +199,35 @@ function mirrorBusy(): void {
   render();
 }
 
+/* An old address lands where it lives now; `#dash=settings` opens the dialog over the page
+ * that was showing. */
+function settle(raw: string): string {
+  const to = redirectFor(raw);
+  if (!to) return raw;
+  if (to.settings !== undefined) setTimeout(showSettings, 0, to.settings);
+  return to.dash === null ? state.dash : to.dash;
+}
+
 export function applyDash(raw: string): void {
-  if (raw === state.dash) return;
+  const next = settle(raw);
+  if (next === state.dash) return;
   cancelRename();
-  const before = address().tab + "/" + address().subject;
-  state.dash = raw;
-  if (address().tab + "/" + address().subject !== before) el("dash").scrollTop = 0;
+  const before = address().page + "/" + address().subject;
+  state.dash = next;
+  if (address().page + "/" + address().subject !== before) el("dash").scrollTop = 0;
   show();
 }
 
 function wire(): void {
-  const views = el("views").querySelectorAll<HTMLAnchorElement>("[data-view]");
-  Array.prototype.forEach.call(views, function (anchor: HTMLAnchorElement) {
-    const dash = anchor.getAttribute("data-view") === "dash";
-    anchor.onclick = function (event) {
-      if (dash) {
-        anchor.setAttribute("href", hashFor(state.dash || lastDash));
-        return;
-      }
-      event.preventDefault();
-      if (state.dash) leaveDashThen(function () {});
-    };
-  });
   new MutationObserver(mirrorBusy).observe(el("map"), { attributes: true, attributeFilter: ["class"] });
   onVitals(render);
   onProgress(render);
   onAdvice(function () {
-    const tab = address().tab;
-    if (state.dash && (tab === "overview" || tab === "factories")) render();
-  });
-  onSetting(function () {
-    if (state.dash && address().tab === "settings") render();
+    const page = address().page;
+    if (state.dash && (page === "overview" || page === "factories")) render();
   });
   onMapRegistry(function (listed) {
-    if (listed && state.dash && address().tab === "settings") render();
+    if (listed && state.dash && address().page === "maps") render();
   });
   wireDetect();
 }
@@ -278,4 +240,9 @@ setDashHooks({
   },
 });
 wire();
+if (redirectFor(state.dash)) {
+  const boot = state.dash;
+  state.dash = "overview";
+  state.dash = settle(boot);
+}
 show();

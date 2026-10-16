@@ -1,19 +1,23 @@
-/* The maps job card: the running job with its progress and log, the queue, and the last job
- * that finished in the past hour. */
+/* The maps page's jobs list: the running job with its bar and log, the queue, and the last
+ * job that finished in the past hour. Progress events redraw this list in place. */
 
 import { get, send } from "../../api/client";
-import { button, chip } from "../../kit/dashkit";
-import { make } from "../../kit/dom";
+import { html, mount, type Safe } from "../../kit/html";
+import { btn } from "../../kit/ui/controls";
+import { acts, entry, list, nameLine } from "../../kit/ui/entry";
+import { chip, jobBar } from "../../kit/ui/marks";
+import { dashH } from "../../kit/ui/text";
 import { bytes, duration, timeOfDay } from "../../kit/format";
 import { fetchMapRegistry, mapRegistry } from "../../app/map-types";
-import { confirmingOn, inlineConfirm, openConfirm, refused, write } from "./maps-actions";
+import { jobName, jobPercent, jobTimeLeft } from "../../app/shell/jobstrip";
+import { closeConfirm, confirmingOn, openConfirm, refused, write } from "./maps-actions";
 
 import type { MapJobBody, MapJobDetailResponse, MapJobResponse } from "../../api/shapes";
 
 const logs: Record<string, string[]> = {};
 const logOpen: Record<string, boolean> = {};
 
-function jobOptionsText(job: MapJobBody): string {
+export function jobOptionsText(job: MapJobBody): string {
   const options = job.options as Record<string, unknown>;
   if (job.preset === "render") {
     const parts = ["render", (options.size as number) + " px"];
@@ -29,170 +33,121 @@ function jobOptionsText(job: MapJobBody): string {
   return job.preset + " input";
 }
 
-function jobTitle(job: MapJobBody): string {
-  return job.produces.length ? job.produces.join(", ") : jobOptionsText(job);
+function confirmLine(key: string, question: string, yes: string, no: string): Safe {
+  return html`<span class="confirm" role="group">${question} ${btn(yes, { data: { act: "confirm", key: key } })} ${btn(no, { data: { act: "keep" } })}</span>`;
 }
 
-/* A null fraction is a stage with no measure: the bar sweeps instead. */
-function progressBar(fraction: number | null): HTMLElement {
-  const track = make("div", "maps-bar" + (fraction === null ? " maps-bar-busy" : ""));
-  track.setAttribute("role", "progressbar");
-  track.setAttribute("aria-valuemin", "0");
-  track.setAttribute("aria-valuemax", "100");
-  if (fraction !== null) track.setAttribute("aria-valuenow", String(Math.round(fraction * 100)));
-  const fill = make("div", "maps-bar-fill");
-  fill.style.width = fraction === null ? "30%" : Math.round(fraction * 100) + "%";
-  track.appendChild(fill);
-  return track;
+function logBlock(job: MapJobBody, label: string): Safe {
+  const open = !!logOpen[job.id];
+  const pre = open ? html`<pre class="logpre" id="${"log-" + job.id}">${(logs[job.id] || ["…"]).slice(-20).join("\n")}</pre>` : "";
+  return html`${btn(label + (open ? " ▾" : " ▸"), { data: { act: "log", job: job.id } })}${pre}`;
 }
 
-function cancelJob(job: MapJobBody): void {
-  send<MapJobResponse>("DELETE", "/api/maps/jobs/{job}", undefined, job.id)
+function runningEntry(job: MapJobBody): Safe {
+  const key = "cancel:" + job.id;
+  const stop = confirmingOn(key)
+    ? confirmLine(key, "cancel? partial output is deleted", "yes, cancel", "keep running")
+    : btn("cancel", { title: "stop this job; what it wrote so far is deleted", data: { act: "ask", key: key } });
+  const words = [jobPercent(job), job.stage_words, jobTimeLeft(job)].filter(Boolean).join(" · ");
+  const started = job.started ? " · started " + timeOfDay(job.started) : "";
+  return entry(
+    {},
+    html`<div class="id">${nameLine("generating " + jobName(job), jobOptionsText(job) + started)}</div>${acts(stop)}
+    <div class="full">${jobBar(job.pct === null ? null : job.pct * 100, "generating " + jobName(job))}<p class="note jobmeta">${words}${job.last_line ? " · " + job.last_line : ""}</p>${logBlock(job, "log (last lines)")}</div>`
+  );
+}
+
+function queuedEntry(job: MapJobBody): Safe {
+  return entry({}, html`<div class="id">${nameLine(html`<span class="muted">queued</span> ${jobName(job)}`, jobOptionsText(job))}</div>${acts(btn("remove", { title: "take this job off the queue", data: { act: "cancel", job: job.id } }))}`);
+}
+
+/* A finished job that replaces another type offers to make it the default and drop the old. */
+function replaceOffer(job: MapJobBody): Safe {
+  const body = mapRegistry.body;
+  const made = job.produces[0];
+  const target = body?.types.filter((t) => t.id === made)[0]?.replaces;
+  if (!body || !made) return html``;
+  const gone = target ? body.types.filter((t) => t.id === target)[0] : undefined;
+  const key = "replace:" + job.id;
+  if (confirmingOn(key)) return confirmLine(key, "make " + made + " the default and delete " + target + (gone ? " (" + bytes(gone.bytes) + ")" : "") + "?", "yes", "not now");
+  const swap = gone ? btn("make default and delete " + target, { title: "frees " + bytes(gone.bytes), data: { act: "ask", key: key } }) : "";
+  return html`${btn("make default", { data: { act: "default", id: made } })}${swap}`;
+}
+
+function finishedEntry(job: MapJobBody): Safe {
+  const took = job.started && job.ended ? duration(job.ended - job.started) : "";
+  const state = job.status === "done" ? chip("done" + (took ? " in " + took : ""), "ok") : chip(job.status, job.status === "failed" ? "bad" : "muted");
+  const failed = job.status === "failed";
+  const extra = failed ? html`<div class="full">${job.error_line ? html`<p class="note tone-bad">${job.error_line}</p>` : ""}${logBlock(job, "show log")}</div>` : "";
+  return entry({ tone: failed ? "bad" : "" }, html`<div class="id">${nameLine(html`${state} ${jobName(job)}`, jobOptionsText(job))}</div>${acts(job.status === "done" ? replaceOffer(job) : "")}${extra}`);
+}
+
+export function jobsMarkup(): Safe {
+  const body = mapRegistry.body;
+  if (!body) return html``;
+  const active = body.jobs.filter((job) => job.status === "running" || job.status === "queued");
+  const recent = body.jobs.filter((job) => job.status !== "running" && job.status !== "queued" && job.ended && Date.now() / 1000 - job.ended < 3600)[0];
+  const rows = active.map((job) => (job.status === "running" ? runningEntry(job) : queuedEntry(job)));
+  if (recent) rows.push(finishedEntry(recent));
+  if (!rows.length) return html``;
+  return html`${dashH("jobs", rows.length, "h3")}${list("job2", "stacked", rows, "nolead")}`;
+}
+
+function fetchLog(id: string, host: HTMLElement): void {
+  get<MapJobDetailResponse>("/api/maps/jobs/{job}", id)
+    .then(function (reply) {
+      logs[id] = reply.log_tail;
+      const pre = host.querySelector("#log-" + CSS.escape(id));
+      if (pre) pre.textContent = reply.log_tail.slice(-20).join("\n") || "(no output yet)";
+    })
+    .catch(function () {
+      const pre = host.querySelector("#log-" + CSS.escape(id));
+      if (pre) pre.textContent = "the log could not be read";
+    });
+}
+
+function cancelJob(id: string): void {
+  send<MapJobResponse>("DELETE", "/api/maps/jobs/{job}", undefined, id)
     .then(function () {
       fetchMapRegistry();
     })
     .catch(refused("the job was not cancelled"));
 }
 
-function showLog(job: MapJobBody, box: HTMLElement): void {
-  const pre = make("pre", "maps-log");
-  pre.textContent = (logs[job.id] || ["…"]).slice(-20).join("\n");
-  box.appendChild(pre);
-  get<MapJobDetailResponse>("/api/maps/jobs/{job}", job.id)
-    .then(function (reply) {
-      logs[job.id] = reply.log_tail;
-      pre.textContent = reply.log_tail.slice(-20).join("\n") || "(no output yet)";
-    })
-    .catch(function () {
-      pre.textContent = "the log could not be read";
-    });
-}
-
-function logFold(job: MapJobBody, parent: HTMLElement, label: string): void {
-  const fold = make("details", "maps-fold");
-  fold.open = !!logOpen[job.id];
-  fold.appendChild(make("summary", "", label));
-  fold.ontoggle = function () {
-    logOpen[job.id] = fold.open;
-    if (fold.open) showLog(job, fold);
-  };
-  if (fold.open) showLog(job, fold);
-  parent.appendChild(fold);
-}
-
-function progressWords(job: MapJobBody): string {
-  const words = [job.pct === null ? "" : Math.round(job.pct * 100) + "%", job.stage_words];
-  if (job.eta_s !== null) words.push("about " + duration(job.eta_s) + " left");
-  else if (job.estimate_s && job.elapsed_s !== null) words.push(duration(job.elapsed_s) + " of about " + duration(job.estimate_s));
-  return words
-    .filter(function (word) {
-      return !!word;
-    })
-    .join(" · ");
-}
-
-function runningJob(job: MapJobBody, card: HTMLElement): void {
-  const head = make("div", "maps-job-head");
-  head.appendChild(make("strong", "", "generating "));
-  head.appendChild(make("span", "maps-job-what", jobTitle(job)));
-  const key = "cancel:" + job.id;
-  if (!confirmingOn(key))
-    head.appendChild(
-      button("cancel", function () {
-        openConfirm(key);
-      }, { title: "stop this job; what it wrote so far is deleted" })
-    );
-  card.appendChild(head);
-  if (confirmingOn(key)) {
-    inlineConfirm(card, "cancel? partial output is deleted", "yes, cancel", "keep running", function () {
-      cancelJob(job);
-    });
-  }
-  card.appendChild(make("div", "dash-sub", jobOptionsText(job) + (job.started ? " · started " + timeOfDay(job.started) : "")));
-  const line = make("div", "maps-progress");
-  line.appendChild(progressBar(job.pct));
-  line.appendChild(make("span", "maps-progress-words", progressWords(job)));
-  card.appendChild(line);
-  if (job.last_line) card.appendChild(make("div", "maps-last-line", job.last_line));
-  logFold(job, card, "log (last lines)");
-}
-
-function queuedJob(job: MapJobBody, card: HTMLElement): void {
-  const row = make("div", "maps-job-queued");
-  row.appendChild(make("span", "", "queued: " + jobTitle(job) + " · " + jobOptionsText(job)));
-  row.appendChild(
-    button("remove", function () {
-      cancelJob(job);
-    }, { title: "take this job off the queue" })
-  );
-  card.appendChild(row);
-}
-
-/* A finished job that replaces another type offers to make it the default and drop the old. */
-function replaceOffer(job: MapJobBody, card: HTMLElement): void {
+/** Confirmed replace: make the new map the default, then delete the old one. */
+function replaceNow(jobId: string): void {
   const body = mapRegistry.body;
-  const made = job.produces[0];
-  const old = body?.types.filter(function (type) {
-    return type.id === made;
-  })[0];
-  const target = old?.replaces;
-  if (!body || !made || !target) return;
-  const gone = body.types.filter(function (type) {
-    return type.id === target;
-  })[0];
-  const key = "replace:" + job.id;
-  const line = make("div", "maps-job-offer");
-  if (confirmingOn(key)) {
-    inlineConfirm(line, "make " + made + " the default and delete " + target + (gone ? " (" + bytes(gone.bytes) + ")" : "") + "?", "yes", "not now", function () {
-      write("PUT", "/api/maps/default", { id: made })
-        .then(function () {
-          return write("DELETE", "/api/maps/{ident}", undefined, target || "");
-        })
-        .catch(refused("the switch did not complete"));
-    });
-  } else {
-    line.appendChild(
-      button("make default", function () {
-        write("PUT", "/api/maps/default", { id: made }).catch(refused("the default map was not changed"));
-      })
-    );
-    if (gone)
-      line.appendChild(
-        button("make default and delete " + target, function () {
-          openConfirm(key);
-        }, { title: "frees " + bytes(gone.bytes) })
-      );
-  }
-  card.appendChild(line);
+  const job = body?.jobs.filter((j) => j.id === jobId)[0];
+  const made = job?.produces[0];
+  const target = body?.types.filter((t) => t.id === made)[0]?.replaces;
+  if (!made || !target) return;
+  write("PUT", "/api/maps/default", { id: made })
+    .then(function () {
+      return write("DELETE", "/api/maps/{ident}", undefined, target);
+    })
+    .catch(refused("the switch did not complete"));
 }
 
-function finishedJob(job: MapJobBody, card: HTMLElement): void {
-  const head = make("div", "maps-job-head");
-  const took = job.started && job.ended ? duration(job.ended - job.started) : "";
-  if (job.status === "done") head.appendChild(chip("done" + (took ? " in " + took : ""), "ok"));
-  else if (job.status === "failed") head.appendChild(chip("failed", "bad"));
-  else head.appendChild(chip(job.status, "muted"));
-  head.appendChild(make("span", "maps-job-what", " " + jobTitle(job) + " · " + jobOptionsText(job)));
-  card.appendChild(head);
-  if (job.status === "failed" && job.error_line) card.appendChild(make("div", "maps-last-line", job.error_line));
-  if (job.status === "done") replaceOffer(job, card);
-  if (job.status === "failed") logFold(job, card, "show log");
-}
-
-export function drawJobs(card: HTMLElement): void {
-  card.textContent = "";
-  const body = mapRegistry.body;
-  if (!body) return;
-  const active = body.jobs.filter(function (job) {
-    return job.status === "running" || job.status === "queued";
-  });
-  const recent = body.jobs.filter(function (job) {
-    return job.status !== "running" && job.status !== "queued" && job.ended && Date.now() / 1000 - job.ended < 3600;
-  })[0];
-  card.hidden = !active.length && !recent;
-  active.forEach(function (job) {
-    if (job.status === "running") runningJob(job, card);
-    else queuedJob(job, card);
-  });
-  if (recent) finishedJob(recent, card);
+/** The jobs list's buttons; false when the click was not one of them. */
+export function jobAction(button: HTMLElement, host: HTMLElement, redraw: () => void): boolean {
+  const act = button.dataset.act;
+  const key = button.dataset.key || "";
+  if (act === "log") {
+    const id = button.dataset.job!;
+    logOpen[id] = !logOpen[id];
+    mount(host, jobsMarkup());
+    if (logOpen[id]) fetchLog(id, host);
+  } else if (act === "ask") openConfirm(key);
+  else if (act === "keep") {
+    closeConfirm();
+    redraw();
+  } else if (act === "confirm" && (key.indexOf("cancel:") === 0 || key.indexOf("replace:") === 0)) {
+    closeConfirm();
+    if (key.indexOf("cancel:") === 0) cancelJob(key.slice(7));
+    else replaceNow(key.slice(8));
+    redraw();
+  } else if (act === "cancel") cancelJob(button.dataset.job!);
+  else if (act === "default") write("PUT", "/api/maps/default", { id: button.dataset.id }).catch(refused("the default map was not changed"));
+  else return false;
+  return true;
 }

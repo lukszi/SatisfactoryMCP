@@ -1,193 +1,142 @@
-/* The map types card: one row per registered map, with its freshness and what can be done
- * to it. */
+/* The map types: one card per registered map with its freshness and what can be done to it. */
 
-import { button, checkbox, chip, empty, idChip } from "../../kit/dashkit";
-import { make } from "../../kit/dom";
+import { html, type Safe } from "../../kit/html";
+import { btn, busyBtn, moreBtn } from "../../kit/ui/controls";
+import { acts, entry, list, metric } from "../../kit/ui/entry";
+import { chip } from "../../kit/ui/marks";
+import { dashH, emptyLine } from "../../kit/ui/text";
 import { bytes, isoDate } from "../../kit/format";
-import { mapTypeAxes, mapRegistry, staleReasons, staleLabel } from "../../app/map-types";
+import { mapRegistry, mapTypeAxes, staleLabel, staleReasons } from "../../app/map-types";
+import { jobPercent } from "../../app/shell/jobstrip";
 import { requestBaseMode } from "../../map/tiles";
 import { leaveDashThen } from "../actions";
-import { confirmingOn, inlineConfirm, openConfirm, redraw, refused, submit, submitRender, write } from "./maps-actions";
+import { closeConfirm, confirmingOn, openConfirm, redraw, refused, submit, submitRender, write } from "./maps-actions";
 
 import type { MapsResponse, MapTypeBody } from "../../api/shapes";
 
 /* The id whose label is being edited; "" when none is. */
 let renaming = "";
 
+function stateChips(row: MapTypeBody): Safe {
+  const stale = staleLabel(row);
+  return html`${row.default ? chip("default", "ok") : ""}${row.status !== "ready" ? chip(row.status, row.status === "failed" ? "bad" : "mid") : ""}${stale ? chip(stale, "mid", staleReasons(row)) : ""}${row.freshness.rerender ? chip("re-render available", "muted", row.freshness.rerender.text) : ""}${row.freshness.restyle ? chip("newer palette") : ""}${chip(row.id, "id", row.dir)}`;
+}
+
+function thumb(row: MapTypeBody): Safe {
+  if (row.status !== "ready") return html`<button class="thumb none" type="button" disabled aria-label="${"no picture of " + row.title + " yet"}"></button>`;
+  return html`<button class="thumb" type="button" data-act="open" data-id="${row.id}" aria-label="${"open the map on " + row.title}" title="${"open the map on " + row.title}"><img src="${"/api/maptiles/" + encodeURIComponent(row.id) + "/0/0/0"}" alt="" loading="lazy"></button>`;
+}
+
+function nameCell(row: MapTypeBody): Safe {
+  const name = renaming === row.id
+    ? html`<span class="rename"><input type="text" id="rename-input" maxlength="80" value="${row.label || ""}" placeholder="empty: named by its style" aria-label="${"label for " + row.id}">${btn("save", { data: { act: "rename-save", id: row.id } })}</span>`
+    : html`<span class="name" title="${row.title}">${row.title}</span>`;
+  const ctx = mapTypeAxes(row) + " · built " + isoDate(row.created);
+  return html`<div class="id">${name}<div class="ctx" title="${staleReasons(row) || ctx}">${stateChips(row)} ${ctx}</div></div>`;
+}
+
+function rerenderable(row: MapTypeBody, body: MapsResponse): boolean {
+  const drawn = row.kind === "artwork" || body.styles.some((style) => style.layer === row.layer);
+  return drawn && !!(row.freshness.rerender || row.freshness.restyle || row.freshness.stale.length);
+}
+
+function actions(row: MapTypeBody, body: MapsResponse): Safe {
+  const key = "delete:" + row.id;
+  if (confirmingOn(key)) return acts(html`<span class="ctx">delete ${row.id}? ${bytes(row.bytes)}</span>${btn("delete", { data: { act: "confirm", key: key } })}${btn("keep", { data: { act: "keep" } })}`, true);
+  const setDefault = row.default || row.status !== "ready" ? "" : btn("set as default", { extra: "hide-phone", data: { act: "default", id: row.id } });
+  const again = rerenderable(row, body)
+    ? busyBtn(row.freshness.stale.length ? "regenerate" : "re-render", {
+        extra: "hide-phone",
+        disabled: !body.can_generate.ok,
+        title: !body.can_generate.ok ? body.can_generate.reason || "" : row.freshness.rerender ? row.freshness.rerender.text : "queue a new map; this one stays until it is deleted",
+      })
+    : "";
+  const menu = ["rename", row.in_switcher ? "hide from switcher" : "show in switcher"].concat(row.default ? [] : ["delete"]);
+  return acts(html`${setDefault}${again ? html`<span data-act="rerender" data-id="${row.id}">${again}</span>` : ""}${moreBtn(row.id, row.default ? menu : ["set as default"].concat(menu))}`, true);
+}
+
+function typeEntry(row: MapTypeBody, body: MapsResponse): Safe {
+  const running = body.jobs.filter((job) => job.status === "running" && job.produces.indexOf(row.id) >= 0)[0];
+  const figure = running ? metric(jobPercent(running) || "…", "rendered") : row.bytes ? metric((row.bytes / 1e9).toFixed(1), "GB") : metric("–", "", "none");
+  const tone = confirmingOn("delete:" + row.id) ? "removing" : row.status === "failed" ? "bad" : row.freshness.stale.length ? "mid" : "";
+  return entry({ tone: tone, key: row.id }, html`${thumb(row)}${nameCell(row)}${figure}${actions(row, body)}`);
+}
+
+export function typesMarkup(body: MapsResponse): Safe {
+  if (!body.types.length) return html`${dashH("map types", 0, "h3")}${emptyLine("no map types yet", "generate one above, or put a pyramid under data/local and press add")}`;
+  return html`${dashH("map types", body.types.length, "h3")}${list("mt", "grid", body.types.map((row) => typeEntry(row, body)))}`;
+}
+
 /* A re-render that needs the heightfield, or the missing paint input, queues it first, and
  * nothing if that is refused; an otherwise current map restyles from a kept raster cache. */
-function rerender(row: MapTypeBody): void {
+function rerender(row: MapTypeBody): Promise<boolean> {
   const pending = row.freshness.rerender;
+  const body = mapRegistry.body;
   let chain: Promise<boolean> = Promise.resolve(true);
   if (pending && pending.needs.indexOf("heightfield") >= 0) chain = submit("heightmap", {}, "", null);
-  const body = mapRegistry.body;
   const size = row.size_px || 32768;
-  const options =
-    row.kind === "artwork"
-      ? { enhance: !!body && body.can_generate.vulkan }
-      : {
-          layers: [row.layer],
-          size: size,
-          recipe: "current",
-          top: true,
-          light: !!row.axes.light,
-          restyle: !pending && !row.freshness.stale.length && row.freshness.restyle && !!body && body.cached_sizes.indexOf(size) >= 0,
-        };
-  chain.then(function (ok) {
+  const restyle = !pending && !row.freshness.stale.length && row.freshness.restyle && !!body && body.cached_sizes.indexOf(size) >= 0;
+  const options = row.kind === "artwork" ? { enhance: !!body && body.can_generate.vulkan } : { layers: [row.layer], size: size, recipe: "current", top: true, light: !!row.axes.light, restyle: restyle };
+  return chain.then(function (ok) {
     if (!ok) return false;
     if (row.kind === "artwork") return submit("artwork", options, row.label || "", row.id);
     return body ? submitRender(body, options, row.label || "", row.id) : submit("render", options, row.label || "", row.id);
   });
 }
 
-function labelEditor(row: MapTypeBody, body: MapsResponse, title: HTMLElement): void {
-  const input = make("input", "dash-input");
-  input.type = "text";
-  input.maxLength = 80;
-  input.value = row.label || "";
-  input.placeholder = "empty: named by its style";
-  input.setAttribute("aria-label", "label for " + row.id);
-  const save = function () {
-    renaming = "";
-    write("PATCH", "/api/maps/{ident}", { label: input.value, version: body.version }, row.id).catch(refused("the label was not saved"));
-  };
-  input.onkeydown = function (event) {
-    if (event.key === "Enter") save();
-    if (event.key === "Escape") {
-      renaming = "";
-      redraw();
-    }
-  };
-  title.appendChild(input);
-  title.appendChild(button("save", save));
-  setTimeout(function () {
-    input.focus();
-  }, 0);
+function rowOf(id: string | undefined): MapTypeBody | undefined {
+  return mapRegistry.body?.types.filter((t) => t.id === id)[0];
 }
 
-function nameCell(row: MapTypeBody, body: MapsResponse): HTMLElement {
-  const cell = make("div", "maps-name");
-  const title = make("div", "maps-title");
-  if (renaming === row.id) labelEditor(row, body, title);
-  else title.appendChild(make("strong", "", row.title));
-  title.appendChild(idChip(row.id, row.dir));
-  if (row.default) title.appendChild(chip("default", "ok"));
-  if (row.status !== "ready") title.appendChild(chip(row.status, row.status === "failed" ? "bad" : "muted"));
-  cell.appendChild(title);
-  cell.appendChild(make("div", "dash-sub", mapTypeAxes(row) + " · data/local/" + row.dir.replace(/^\.$/, "")));
-  return cell;
+function setDefault(id: string): void {
+  write("PUT", "/api/maps/default", { id: id, version: mapRegistry.body?.version }).catch(refused("the default map was not changed"));
 }
 
-function freshnessCell(row: MapTypeBody): HTMLElement {
-  const cell = make("div", "maps-fresh");
-  const stale = staleLabel(row);
-  if (stale) {
-    const amber = chip(stale, "muted", staleReasons(row));
-    amber.classList.add("maps-stale");
-    cell.appendChild(amber);
-  }
-  if (row.freshness.rerender) cell.appendChild(chip("re-render available", "muted", row.freshness.rerender.text));
-  if (row.freshness.restyle) cell.appendChild(chip("newer palette", "muted"));
-  if (stale) cell.appendChild(make("div", "dash-sub", staleReasons(row)));
-  if (row.freshness.incomplete) cell.title = "provenance incomplete: this map was drawn before its sidecar recorded every input";
-  return cell;
+/** A ⋯ menu choice on a map type card. */
+export function typeMenu(label: string, id: string): void {
+  const row = rowOf(id);
+  const version = mapRegistry.body?.version;
+  if (!row) return;
+  if (label === "set as default") setDefault(id);
+  else if (label === "rename") {
+    renaming = id;
+    redraw();
+    setTimeout(() => document.getElementById("rename-input")?.focus(), 0);
+  } else if (label === "delete") openConfirm("delete:" + id);
+  else write("PATCH", "/api/maps/{ident}", { in_switcher: label === "show in switcher", version: version }, id).catch(refused("the switcher was not changed"));
 }
 
-function rerenderTitle(row: MapTypeBody, body: MapsResponse): string {
-  if (!body.can_generate.ok) return body.can_generate.reason || "";
-  const pending = row.freshness.rerender;
-  return pending ? pending.text : "queue a new map; this one stays until you delete it";
+function saveLabel(id: string): void {
+  const input = document.getElementById("rename-input") as HTMLInputElement | null;
+  renaming = "";
+  write("PATCH", "/api/maps/{ident}", { label: input ? input.value : "", version: mapRegistry.body?.version }, id).catch(refused("the label was not saved"));
 }
 
-function actionsCell(row: MapTypeBody, body: MapsResponse): HTMLElement {
-  const cell = make("div", "maps-actions");
-  const key = "delete:" + row.id;
-  if (confirmingOn(key)) {
-    inlineConfirm(cell, "delete " + row.id + "? " + bytes(row.bytes), "delete", "keep", function () {
-      write("DELETE", "/api/maps/{ident}", undefined, row.id, "version=" + body.version).catch(refused(row.id + " was not deleted"));
+/** The type cards' buttons; returns the work for a busy button, true for other handled clicks. */
+export function typeAction(target: HTMLElement): Promise<boolean> | boolean {
+  const act = target.dataset.act;
+  const id = target.dataset.id || "";
+  if (act === "open")
+    leaveDashThen(function () {
+      requestBaseMode(id, true);
     });
-    return cell;
-  }
-  cell.appendChild(
-    button("set as default", function () {
-      write("PUT", "/api/maps/default", { id: row.id, version: body.version }).catch(refused("the default map was not changed"));
-    }, { disabled: row.default || row.status !== "ready", title: row.default ? "this is the default" : "open fresh pages on this map" })
-  );
-  const drawn = row.kind === "artwork" || body.styles.some(function (style) {
-    return style.layer === row.layer;
-  });
-  if (drawn && (row.freshness.rerender || row.freshness.restyle || row.freshness.stale.length)) {
-    cell.appendChild(
-      button(row.freshness.stale.length ? "regenerate" : "re-render", function () {
-        rerender(row);
-      }, {
-        disabled: !body.can_generate.ok,
-        title: rerenderTitle(row, body),
-      })
-    );
-  }
-  cell.appendChild(
-    button("rename", function () {
-      renaming = row.id;
-      redraw();
-    }, { label: "rename " + row.id })
-  );
-  cell.appendChild(
-    checkbox("in switcher", row.in_switcher, function (on) {
-      write("PATCH", "/api/maps/{ident}", { in_switcher: on, version: body.version }, row.id).catch(refused("the switcher was not changed"));
-    })
-  );
-  cell.appendChild(
-    button("delete", function () {
-      openConfirm(key);
-    }, { disabled: row.default, title: row.default ? "pick another default first" : "moves its files to the trash, then deletes them", label: "delete " + row.id })
-  );
-  return cell;
+  else if (act === "default") setDefault(id);
+  else if (act === "rerender") return rowOf(id) ? rerender(rowOf(id)!) : false;
+  else if (act === "rename-save") saveLabel(id);
+  else if (act === "confirm" && (target.dataset.key || "").indexOf("delete:") === 0) {
+    closeConfirm();
+    write("DELETE", "/api/maps/{ident}", undefined, (target.dataset.key || "").slice(7), "version=" + mapRegistry.body?.version).catch(refused("the map was not deleted"));
+  } else return false;
+  return true;
 }
 
-function thumb(row: MapTypeBody): HTMLElement {
-  const open = make("button", "maps-thumb");
-  open.type = "button";
-  open.title = "open the map on " + row.title;
-  open.setAttribute("aria-label", "open the map on " + row.title);
-  if (row.status === "ready") {
-    const img = make("img");
-    img.loading = "lazy";
-    img.alt = "";
-    img.src = "/api/maptiles/" + encodeURIComponent(row.id) + "/0/0/0";
-    open.appendChild(img);
-    open.onclick = function () {
-      leaveDashThen(function () {
-        requestBaseMode(row.id, true);
-      });
-    };
-  } else open.disabled = true;
-  return open;
-}
-
-export function renderTypes(parent: HTMLElement, body: MapsResponse): void {
-  const card = make("section", "dash-card");
-  card.appendChild(make("h2", "dash-h", "map types"));
-  if (!body.types.length) {
-    empty(card, "no map types yet", "generate one above, or put a pyramid under data/local and press add");
-    parent.appendChild(card);
-    return;
+export function renameKeys(event: KeyboardEvent): void {
+  const input = event.target as HTMLElement;
+  if (input.id !== "rename-input") return;
+  if (event.key === "Enter") saveLabel(renaming);
+  else if (event.key === "Escape") {
+    event.stopPropagation();
+    renaming = "";
+    redraw();
   }
-  const list = make("div", "maps-list");
-  list.setAttribute("role", "list");
-  body.types.forEach(function (row) {
-    const item = make("div", "maps-row" + (row.freshness.stale.length ? " stale" : ""));
-    item.setAttribute("role", "listitem");
-    item.appendChild(thumb(row));
-    item.appendChild(nameCell(row, body));
-    const meta = make("div", "maps-meta");
-    meta.appendChild(make("span", "", "built " + isoDate(row.created)));
-    meta.appendChild(make("span", "", bytes(row.bytes)));
-    item.appendChild(meta);
-    item.appendChild(freshnessCell(row));
-    item.appendChild(actionsCell(row, body));
-    list.appendChild(item);
-  });
-  card.appendChild(list);
-  parent.appendChild(card);
 }
