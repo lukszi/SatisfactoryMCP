@@ -125,6 +125,7 @@
   --jobstrip-h: 0px;
   --bnav-h: 48px;
   --page-w: 1280px;
+  --page-w-wide: 1640px;
   --content-max: var(--page-w);
 
   /* dialog and forms */

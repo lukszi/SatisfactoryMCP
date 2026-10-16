@@ -33,7 +33,7 @@ phones are one `max-width: 600px` media query per stylesheet.
 
 | module | parts |
 |---|---|
-| `kit/ui/text.ts` | `pageHead` (object-page header: breadcrumb, title, chips, figures, note), `dashH` (heading · n), `blockHead` + `fig` / `figSub` (at most two headline figures), `toolrow`, `note`, `emptyLine`, `icon` (game icon or monogram; a failed load becomes the monogram) |
+| `kit/ui/text.ts` | `pageHead` (object-page header: breadcrumb, title, chips, figures, note, the object's own tabs), `dashH` (heading · n), `blockHead` + `fig` / `figSub` (at most two headline figures), `toolrow`, `note`, `emptyLine`, `icon` (game icon or monogram; a failed load becomes the monogram) |
 | `kit/ui/entry.ts` | `list(name, mode)` — the list's column template is `.l-<name> .entry { --cols: … }` in the page's CSS — `entry`, `identity`, `nameLine`, `metric`, `facts`, `chips`, `acts`, `chevron` + `expandBody` + `wireExpand`, `group` |
 | `kit/ui/marks.ts` | `chip` / `tagChip`, `pill` / `flow`, `bar` / `mixBar`, `jobBar`, `slotTile` |
 | `kit/ui/controls.ts` | `btn`, `busyBtn`, `glyphBtn`, `moreBtn`, `seg`, `selectBox`, `sortSelect`, `filterField`, `filterChip`, `switchBox`, `check` |
@@ -89,3 +89,48 @@ from `/api/power/circuits` (circuit pages also read factory health for the facto
 - `readings.ts` reads a ledger for every surface (the header, the map's side panel, the
   planner); `ledger-bar.ts` is the compact DOM bar the side panel and the old Overview tiles
   still use.
+
+## Factories
+
+`dash/factories/` is the Factories page (`#dash=factories`) and a factory's page
+(`#dash=factories/<name>[/<aspect>][?floor=<n|all>]`).
+
+- **List** (`list.ts`, `clusters.ts`): the unnamed clusters first, compact (name field, what
+  they make, machine count, ◎, name, ⋯ graph / skip); then the named factories as equal-height
+  cards (status edge, icon, name, "N machines" with power chips, need-action count or uptime,
+  drawing now and if all run, the state mix bar on the card's bottom edge, an expand with the
+  worst machines). The sort select (need action, name, uptime, drawing now) groups into "need
+  action" and "running" when sorting by need action.
+- **Icon** (`icon-choice.ts`): the main product the health read names (`product_icon`: of the
+  surpluses a recipe makes, the highest sink value, then the larger surplus; an extraction-only
+  factory shows its main resource; a tie or nothing is no icon, an empty slot, never letters;
+  `domain/factories/product.py`). "change icon" in ⋯ picks any item or none; the choice is kept
+  in this browser only (localStorage, per world) and follows a rename made here.
+- **Page** (`page.ts`, `ctx.ts`): the header carries need action (x of machines) and uptime as
+  figures and the aspect tabs. The plan sits left (sticky; on top on phones), the aspect right;
+  flows takes the whole width. `ctx.ts` joins the reads once per render: the factory's rows of
+  `/api/machines` (label owner, or listed by `/api/factories/aspects`), grouped by building and
+  recipe; its floors from `/api/floors?factory=label:<name>` (bands holding its machines, merged
+  over platforms by ordinal, top down); the floor shown (asked in the address, else the floor
+  with most machines needing action, ties to the largest deck; "all" below two floors).
+- **Plan** (`plan.ts`, `plan-geometry.ts`): machines as their outlines and height bands
+  (`shapes`, band veils from `map/drawn/outline-geometry.ts`), decks from the bands'
+  `deck_rows` into `/api/structures`, belts from `/api/belts` by the chains `/api/floors` files
+  on each floor (or, without floors, those crossing the machines' box). The page is turned by the
+  most common deck yaw modulo 90 so the grid is square. A floor shows its deck, belts and
+  machines, with the floor below as a dashed ghost. Outlines take a status colour only when the
+  machine needs action. Outline styles are inline in the symbols, because stylesheet rules do
+  not reach `<use>` copies; custom properties do.
+- **Linking**: plan marks carry keys (`g<group> m<id> fl<floor> s<site> st-<state>`), rows one
+  of them in `data-hl`; hovering either lights the other, a click picks (again or Esc clears).
+  On overview and flows a machine click opens machines with its group picked; a floor row shows
+  that floor. The pick lives for the page session.
+- **Flows** (`flows.ts`, `graph.ts`): the production graph from `/api/factories/graph` on the
+  shared canvas in its card style (`NodeStyle "card"` in `prodgraph/draw.ts`: building disc,
+  recipe and ×n beside it, the measured ring round the disc, line width in four rate steps), at
+  1:1 and scrolled rather than fitted; the balance per item below, grouped by verdict. A floor
+  shown elsewhere is only noted. Hovering a balance row or a line lights that item.
+- **Machines** per recipe (count, worst state, clock as "100% clock", shards and sloops from the
+  progress reads when any are held) or per machine (state, clock, uptime; six per group, then
+  "more"). Power is the draw rows of the supply block and the circuit links. Nodes, links,
+  floors and sites are compact lists; floors and sites light theirs on the plan.

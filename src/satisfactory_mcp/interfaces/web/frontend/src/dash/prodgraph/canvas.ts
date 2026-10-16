@@ -11,7 +11,7 @@ import { computeLayout, orderOf, placeNodes } from "./layout";
 import { elkGraph } from "./layout-input";
 
 import type { FrameView } from "../frame-fit";
-import type { NodeMarks } from "./draw";
+import type { NodeMarks, NodeStyle } from "./draw";
 import type { LiveGraph } from "./interact";
 import type { Layout, LayoutIn } from "./layout-input";
 import type { ProdGraph, ProdNode } from "./model";
@@ -45,10 +45,11 @@ export interface Canvas {
   zoom: FrameView;
   host: CanvasHost | null;
   orders: Record<string, Record<string, number>>;
+  style: NodeStyle;
 }
 
-export function newCanvas(): Canvas {
-  return { view: null, serial: 0, sig: "", base: null, pending: "", drawn: "", live: null, wrap: null, x: 0, y: 0, zoom: { zoom: 1 }, host: null, orders: {} };
+export function newCanvas(style?: NodeStyle): Canvas {
+  return { view: null, serial: 0, sig: "", base: null, pending: "", drawn: "", live: null, wrap: null, x: 0, y: 0, zoom: { zoom: 1 }, host: null, orders: {}, style: style || "disc" };
 }
 
 /** Everything the layout depends on but the previous order. */
@@ -104,11 +105,17 @@ function wrapper(c: Canvas): HTMLElement {
 function draw(c: Canvas, view: ProdGraph, input: LayoutIn, key: string, marks: NodeMarks): void {
   const host = c.host!;
   const layout = placeNodes(input, c.base!, host.positions());
-  const handle = drawGraphSvg(view, layout, marks, function () {
-    redrawAll(c);
-  });
+  const handle = drawGraphSvg(
+    view,
+    layout,
+    marks,
+    function () {
+      redrawAll(c);
+    },
+    c.style
+  );
   const live: LiveGraph = { handle: handle, view: view, input: input, layout: layout };
-  const frame = zoomableFrame(handle.root, layout.width, layout.height, { fitAll: true, view: c.zoom });
+  const frame = zoomableFrame(handle.root, layout.width, layout.height, { fitAll: c.style !== "card", view: c.zoom });
   wrapper(c).replaceChildren(frame);
   wireNodes(live, c.wrap!, {
     pick: function (node) {
@@ -149,7 +156,7 @@ function layOut(c: Canvas, input: LayoutIn, sig: string): void {
 export function canvasFrame(c: Canvas, host: CanvasHost, flashMs?: number): HTMLElement {
   c.host = host;
   const view = c.view!;
-  const input = layoutInput(view, c.orders[host.key] || {});
+  const input = layoutInput(view, c.orders[host.key] || {}, c.style);
   const sig = shapeKey(input);
   const marks = host.marks();
   const key = drawKey(c, marks);

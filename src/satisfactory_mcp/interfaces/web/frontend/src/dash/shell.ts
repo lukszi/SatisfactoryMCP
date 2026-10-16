@@ -22,7 +22,7 @@ import { cancelRename, renamingIn } from "./factories/rename";
 import { state } from "../app/state";
 import { renderFactories } from "./factories/list";
 import { renderFactory } from "./factories/page";
-import { wireDetect } from "./factories/detect";
+import { wireDetect } from "./factories/clusters";
 import { factoryAddress } from "./factories/address";
 import { renderOverview } from "./overview";
 import { renderCircuit, renderPower } from "./power/page";

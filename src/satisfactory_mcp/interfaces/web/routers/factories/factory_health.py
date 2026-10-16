@@ -14,6 +14,7 @@ from typing_extensions import TypedDict
 
 from .....domain.factories import candidates
 from .....domain.factories.health import ACTIONABLE, OK, STATES, MachineHealth
+from .....domain.factories.product import main_product
 from .....domain.factories.sweep import FactorySweep, sweep
 from .....domain.factories.views import StateCount
 from .....domain.world.state import WorldState
@@ -41,7 +42,9 @@ class MachineIssue(TypedDict):
 class FactoryHealthRow(TypedDict):
     """``review`` is ``LabelStore.review``'s status, null when every anchor still stands.
     ``worst`` is the machines not fine, paused included; ``worst_actionable`` only those in
-    an ``actionable_states`` state, of which there are ``actionable`` in all."""
+    an ``actionable_states`` state, of which there are ``actionable`` in all.
+    ``product`` / ``product_icon`` are the main product's name and item class (the
+    factory's default icon), null when no single product stands out."""
 
     name: str
     centroid_m: tuple[float, float]
@@ -60,6 +63,8 @@ class FactoryHealthRow(TypedDict):
     worst: list[MachineIssue]
     worst_actionable: list[MachineIssue]
     attention: int
+    product: str | None
+    product_icon: str | None
 
 
 class FactoryHealthResponse(TypedDict):
@@ -95,6 +100,7 @@ def _factory_row(
     mean = report.mean_uptime
     worst = report.worst(WORST_PER_FACTORY)
     worst_actionable = swept.worst_actionable(WORST_PER_FACTORY)
+    product = main_product(view, st.game)
     return {
         "name": label.name,
         "centroid_m": point_m(label.centroid),
@@ -117,6 +123,8 @@ def _factory_row(
         "worst": [_issue_row(st, placed, machine) for machine in worst],
         "worst_actionable": [_issue_row(st, placed, machine) for machine in worst_actionable],
         "attention": sum(1 for machine in report.machines if machine.state not in OK),
+        "product": st.game.item_name(product) if product else None,
+        "product_icon": product,
     }
 
 

@@ -3352,6 +3352,8 @@ export interface components {
          * @description ``review`` is ``LabelStore.review``'s status, null when every anchor still stands.
          *     ``worst`` is the machines not fine, paused included; ``worst_actionable`` only those in
          *     an ``actionable_states`` state, of which there are ``actionable`` in all.
+         *     ``product`` / ``product_icon`` are the main product's name and item class (the
+         *     factory's default icon), null when no single product stands out.
          */
         FactoryHealthRow: {
             /** Name */
@@ -3396,6 +3398,10 @@ export interface components {
             worst_actionable: components["schemas"]["MachineIssue"][];
             /** Attention */
             attention: number;
+            /** Product */
+            product: string | null;
+            /** Product Icon */
+            product_icon: string | null;
         };
         /** FactoryHit */
         FactoryHit: {

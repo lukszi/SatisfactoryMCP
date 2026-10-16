@@ -20,6 +20,10 @@ export interface NodeMarks {
   tones?: Record<string, string>;
 }
 
+/** "disc": a round process node with its label below (plans); "card": a card with the building
+ *  in a disc and the recipe beside it (built factories), drawn at 1:1 rather than fitted. */
+export type NodeStyle = "disc" | "card";
+
 export interface GraphHandle {
   root: SVGSVGElement;
   nodes: Record<string, SVGGElement>;
@@ -35,6 +39,24 @@ const ICON = 20;
 const LABEL_PAD = 4;
 const GLYPH = "M-9,8 L-9,-1 L-4,2 L-4,-2 L1,1 L1,-8 L6,-8 L6,8 Z";
 const BOLT = "M2,-9 L-6,2 L-1,2 L-3,9 L6,-3 L1,-3 Z";
+const CARD_H = 44;
+const CARD_DISC = 15;
+/* Line width steps by rate, per minute; the class names the step (w1 thinnest). */
+const RATE_STEPS = [60, 240, 780];
+
+export function rateStep(perMin: number): string {
+  let step = 1;
+  RATE_STEPS.forEach(function (limit) {
+    if (perMin > limit) step++;
+  });
+  return "w" + step;
+}
+
+function cardLines(node: ProdNode): [string, string] {
+  const name = node.recipeName || node.label;
+  const clock = node.clock === null ? "" : " · " + pct(node.clock, 1);
+  return [name, "×" + count(node.built) + " " + (node.building || "machine") + clock];
+}
 
 export function processTitle(node: ProdNode): string {
   return "×" + count(node.built) + " " + (node.building || "machine");
@@ -71,8 +93,13 @@ export function itemLines(node: ProdNode, view: ProdGraph): [string, string] {
   return [name, amount];
 }
 
-export function layoutInput(view: ProdGraph, order: Record<string, number>): LayoutIn {
+export function layoutInput(view: ProdGraph, order: Record<string, number>, style?: NodeStyle): LayoutIn {
   const nodes: LayoutNodeIn[] = view.nodes.map(function (n) {
+    if (n.kind === "process" && style === "card") {
+      const [a, b] = cardLines(n);
+      const w = 2 * CARD_DISC + 26 + Math.max(measure(a, TITLE_FONT), measure(b, SMALL_FONT));
+      return { id: n.id, rank: n.rank, w: Math.ceil(w), h: CARD_H, portY: CARD_H / 2, below: null };
+    }
     if (n.kind === "process") {
       const w = Math.max(measure(processTitle(n), TITLE_FONT), measure(processSub(n), SMALL_FONT)) + 2 * LABEL_PAD;
       return { id: n.id, rank: n.rank, w: DISC, h: DISC, portY: DISC / 2, below: { w: w, h: 2 * LINE } };
@@ -131,6 +158,25 @@ function drawProcess(group: SVGGElement, node: ProdNode, box: Rect, redraw: () =
   group.appendChild(svgText("pg-sub", c, top + 2 * LINE - 3, processSub(node)));
 }
 
+function drawCard(group: SVGGElement, node: ProdNode, box: Rect, redraw: () => void): void {
+  const c = CARD_H / 2;
+  group.appendChild(svg("rect", { class: "pg-card", width: box.w, height: box.h, rx: 4 }));
+  group.appendChild(svg("circle", { class: "pg-disc", cx: c, cy: c, r: CARD_DISC }));
+  if (node.productivity !== null) {
+    const d = ringPath(c, c, CARD_DISC, measuredRing(node.productivity).fraction);
+    if (d) group.appendChild(svg("path", { class: "pg-ring tone-" + measuredRing(node.productivity).tone, d: d }));
+  }
+  glyphOrIcon(group, node, redraw, c, c, 20);
+  const [a, b] = cardLines(node);
+  const x = 2 * CARD_DISC + 12;
+  const title = svgText("pg-title", x, c - 3, a);
+  title.setAttribute("text-anchor", "start");
+  const sub = svgText("pg-sub", x, c + LINE - 3, b);
+  sub.setAttribute("text-anchor", "start");
+  group.appendChild(title);
+  group.appendChild(sub);
+}
+
 function drawItem(group: SVGGElement, node: ProdNode, box: Rect, view: ProdGraph, redraw: () => void): void {
   group.appendChild(svg("rect", { class: "pg-box", width: box.w, height: box.h, rx: 6 }));
   glyphOrIcon(group, node, redraw, 6 + ICON / 2, box.h / 2, ICON);
@@ -162,12 +208,14 @@ function drawBadges(group: SVGGElement, words: string[], centre: number): void {
   });
 }
 
-function drawNode(node: ProdNode, box: Rect, view: ProdGraph, marks: NodeMarks, redraw: () => void): SVGGElement {
+function drawNode(node: ProdNode, box: Rect, view: ProdGraph, marks: NodeMarks, redraw: () => void, style?: NodeStyle): SVGGElement {
   const flash = marks.flash.indexOf(node.id) >= 0 ? " flash" : "";
   const tone = marks.tones && marks.tones[node.id] ? " state-" + marks.tones[node.id] : "";
   const group = svg("g", { class: "pg-node kind-" + node.kind + flash + tone, transform: "translate(" + box.x + "," + box.y + ")", "data-node": node.id, tabindex: 0, role: "button" });
+  if (node.itemName) group.setAttribute("data-item", node.itemName);
   if (node.kind === "process") {
-    drawProcess(group, node, box, redraw);
+    if (style === "card") drawCard(group, node, box, redraw);
+    else drawProcess(group, node, box, redraw);
     const badges = marks.badges[node.id];
     if (badges && badges.length) drawBadges(group, badges, box.w / 2);
     group.setAttribute("aria-label", processTitle(node) + ", " + processSub(node));
@@ -179,7 +227,7 @@ function drawNode(node: ProdNode, box: Rect, view: ProdGraph, marks: NodeMarks, 
 }
 
 export function drawLabel(layer: SVGGElement, edge: ProdEdge, place: Rect): SVGGElement {
-  const g = svg("g", { class: "pg-label grp-" + edge.group, "data-edge": edge.id });
+  const g = svg("g", { class: "pg-label grp-" + edge.group, "data-edge": edge.id, "data-item": edge.itemName });
   g.appendChild(svg("rect", { x: place.x, y: place.y, width: place.w, height: place.h, rx: 3 }));
   g.appendChild(svgText("pg-label-text", place.x + place.w / 2, place.y + place.h - 4, edgeLabel(edge)));
   layer.appendChild(g);
@@ -217,7 +265,7 @@ export function placeNode(handle: GraphHandle, id: string, box: Rect): void {
   if (g) g.setAttribute("transform", "translate(" + box.x + "," + box.y + ")");
 }
 
-export function drawGraphSvg(view: ProdGraph, layout: Layout, marks: NodeMarks, redraw: () => void): GraphHandle {
+export function drawGraphSvg(view: ProdGraph, layout: Layout, marks: NodeMarks, redraw: () => void, style?: NodeStyle): GraphHandle {
   const root = svg("svg", { class: "graph pg", viewBox: "0 0 " + layout.width + " " + layout.height, role: "group", "aria-label": "production graph" });
   const defs = svg("defs", {});
   arrowMarkers(defs);
@@ -234,7 +282,7 @@ export function drawGraphSvg(view: ProdGraph, layout: Layout, marks: NodeMarks, 
   view.edges.forEach(function (e) {
     const route = layout.routes[e.id];
     if (!route) return;
-    const path = svg("path", { class: "pg-edge grp-" + e.group, d: hopped[e.id] || pathData(route.points), "marker-end": "url(#pg-arrow-" + e.group + ")", "data-edge": e.id });
+    const path = svg("path", { class: "pg-edge grp-" + e.group + " " + rateStep(e.perMin), d: hopped[e.id] || pathData(route.points), "marker-end": "url(#pg-arrow-" + e.group + ")", "data-edge": e.id, "data-item": e.itemName });
     const title = svg("title", {});
     title.textContent = edgeLabel(e);
     path.appendChild(title);
@@ -245,7 +293,7 @@ export function drawGraphSvg(view: ProdGraph, layout: Layout, marks: NodeMarks, 
   view.nodes.forEach(function (n) {
     const box = layout.boxes[n.id];
     if (!box) return;
-    const g = drawNode(n, box, view, marks, redraw);
+    const g = drawNode(n, box, view, marks, redraw, style);
     nodeLayer.appendChild(g);
     handle.nodes[n.id] = g;
   });
