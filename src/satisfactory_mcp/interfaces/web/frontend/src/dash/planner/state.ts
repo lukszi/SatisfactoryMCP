@@ -185,6 +185,7 @@ export function displayName(id: string): string {
 }
 
 let itemNames: string[] = [];
+const itemClasses: Record<string, string> = {};
 let itemsAsked = false;
 
 export function loadItems(): void {
@@ -193,6 +194,7 @@ export function loadItems(): void {
   get<ItemsResponse>("/api/gamedata/items?limit=1000")
     .then(function (data) {
       itemNames = data.items.map(function (item) {
+        itemClasses[item.name] = item.cls;
         return item.name;
       });
       changed();
@@ -211,6 +213,11 @@ export function itemList(): HTMLDataListElement {
     list.appendChild(option);
   });
   return list;
+}
+
+/** An item's class for its icon, null while the items are not loaded or the name is unknown. */
+export function itemClass(name: string): string | null {
+  return itemClasses[name] || null;
 }
 
 export function knownItem(text: string): string | null {
