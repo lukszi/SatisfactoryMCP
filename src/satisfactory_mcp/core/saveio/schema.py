@@ -364,6 +364,10 @@ class Projection(TypedDict):
     extractors: list[ExtractorRecord]
     generators: list[GeneratorRecord]
     attachments: list[AttachmentRecord]
+    #: Pipe junctions, pumps and valves (``registers.FITTING_HINTS``).
+    fittings: list[BuildableRecord]
+    #: The HUB, the sink, the MAM and the other one-off buildings (``FACILITY_CLASSES``).
+    facilities: list[BuildableRecord]
     storage: list[StorageRecord]
     crates: list[CrateRecord]
     pipe_networks: list[PipeNetworkRecord]

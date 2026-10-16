@@ -56,6 +56,8 @@ from .registers import (
     ATTACHMENT_HINTS,
     CRATE_CLASSES,
     EXTRACTOR_HINTS,
+    FACILITY_CLASSES,
+    FITTING_HINTS,
     FLUID_BUFFER_CLASSES,
     GENERATOR_HINTS,
     MANUFACTURER_HINTS,
@@ -119,6 +121,8 @@ def _empty_projection(path: str) -> Projection:
         "extractors": [],
         "generators": [],
         "attachments": [],
+        "fittings": [],
+        "facilities": [],
         "storage": [],
         "crates": [],  # §6.13
         "pipe_networks": [],
@@ -490,6 +494,10 @@ class _ProjectionWalk:
             self.out["generators"].append(generator)
         elif any(hint in cls for hint in ATTACHMENT_HINTS):
             self.out["attachments"].append(record)
+        elif any(hint in cls for hint in FITTING_HINTS):
+            self.out["fittings"].append(record)
+        elif cls in FACILITY_CLASSES:
+            self.out["facilities"].append(record)
         elif not held:
             # Ordinary for a wall; the point of the census for a class that runs a recipe.
             self.unfiled[str(seen.instance)] = cls

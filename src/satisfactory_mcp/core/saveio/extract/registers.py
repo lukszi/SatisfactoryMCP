@@ -136,19 +136,13 @@ FLUID_BUFFER_CLASSES = (
 #: Classes carrying a factory building's evidence (a productivity monitor or a machine
 #: buffer) that deliberately get no record. **Edit this list** when the unfiled-class census
 #: names a class: adding it here claims its record is not wanted, a hint list claims it is.
-#: Across 18 saves (save versions 25 to 60) these were the only such classes.
+#: Across 18 saves (save versions 25 to 60) these and the pump, the HUB, the Space Elevator and
+#: the AWESOME Shop were the only such classes; those four are filed now, as a fitting and as
+#: facilities.
 DISMISSED_FACTORY_CLASSES = frozenset(
     {
-        # Moves fluid along a pipe the ``pipes`` layer already draws, and runs no recipe.
-        "Build_PipelinePump_C",
         # A hypertube entrance. It moves the player, which is not production.
         "Build_PipeHyperStart_C",
-        # The HUB. Its milestone intake is ``progression``'s business.
-        "Build_TradingPost_C",
-        # Its intake is already reported against the phase, by ``progression``.
-        "Build_SpaceElevator_C",
-        # The AWESOME Shop. Its inventory is a catalogue, not stock the player owns.
-        "Build_ResourceSinkShop_C",
         # The Portable Miner extracts, but has no ``Build_`` class or descriptor, so nothing
         # downstream could cost, size or draw it.
         "BP_PortableMiner_C",

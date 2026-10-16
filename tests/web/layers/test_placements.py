@@ -26,7 +26,7 @@ def _rows(body: dict[str, Any]) -> list[dict[str, Any]]:
 
 def test_machines_split_by_kind_and_name_their_buildings(client, state):
     body = client.get("/api/machines").json()
-    assert set(body) == {"machines", "extractors", "generators", "shapes"}
+    assert set(body) == {"machines", "extractors", "generators", "facilities", "shapes"}
     for kind in KINDS:
         assert len(body[kind]) == len(state.projection[kind])
     row = body["machines"][0]
@@ -334,10 +334,27 @@ def test_shapes_come_once_per_class_and_cover_every_drawn_machine(client):
     either measured from the meshes or the clearance boxes at their own offset."""
     body = client.get("/api/machines").json()
     shapes = body["shapes"]
-    classes = {row["cls"] for row in _rows(body)}
+    classes = {row["cls"] for row in _rows(body) + body["facilities"]}
     assert set(shapes) <= classes
     for cls, shape in shapes.items():
         assert shape["source"] in ("mesh", "clearance"), cls
         assert shape["rings"] and all(len(ring) >= 3 for ring in shape["rings"]), cls
         for port in shape["ports"]:
             assert port["kind"] in ("belt", "pipe") and port["flow"] in ("in", "out", "any")
+        for band in shape["bands"]:
+            assert band["tier"] in (1, 2) and band["z_m"] >= 2.0, cls
+
+
+def test_facilities_are_drawn_beside_the_machines_without_a_state(client, state):
+    """The HUB, the sink, the MAM and the like: placed, outlined, and never counted as a
+    machine, so no health verdict or recipe rides on them."""
+    body = client.get("/api/machines").json()
+    facilities = body["facilities"]
+    assert len(facilities) == len(state.projection["facilities"])
+    classes = {row["cls"] for row in facilities}
+    assert {"Build_TradingPost_C", "Build_ResourceSink_C", "Build_Mam_C"} <= classes
+    assert not classes & {row["cls"] for row in _rows(body)}
+    row = facilities[0]
+    assert "state" not in row and "recipe" not in row
+    assert set(row) >= {"instance_leaf", "cls", "name", "x_m", "y_m", "z_m", "yaw", "h_m"}
+    assert classes <= set(body["shapes"])

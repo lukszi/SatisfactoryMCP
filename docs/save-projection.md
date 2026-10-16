@@ -1218,6 +1218,7 @@ pickle then disagrees with the code rather than merely being thinner.
 | 20 | adds a belt segment's actor index at column 3, moving the tangents to column 4 (§6.15) |
 | 21 | CORRECTS what the parser saw: large saves read to the end, every lightweight piece arrives, `_RepSizeNoCull` chains decode |
 | 22 | CORRECTS a false "possibly incomplete" note on saves whose older levels carry the previous build's changelist |
+| 23 | adds `fittings` (pipe junctions, pumps, valves) and `facilities` (the HUB, sink, MAM and other one-off buildings), so the map can draw them |
 
 ---
 

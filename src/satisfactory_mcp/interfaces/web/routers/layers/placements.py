@@ -20,9 +20,11 @@ from .....core.saveio.schema import BuildableRecord
 from .....domain.factories import health
 from .....domain.world.state import WorldState
 from ...serial import (
+    PlacementFields,
     building_footprint,
     building_shapes,
     cm_to_m,
+    object_rows,
     placement_fields,
     require_world,
     yaw_deg,
@@ -76,6 +78,14 @@ class PlacementRow(TypedDict):
     factory: str | None
 
 
+class FacilityRow(PlacementFields):
+    """A one-off building that is neither a machine nor storage: the HUB, the AWESOME Sink and
+    Shop, the MAM, the Space Elevator, a workshop. Drawn, with no recipe and no state.
+    ``h_m`` is null with ``w_m``/``l_m``."""
+
+    h_m: float | None
+
+
 class MachinesResponse(TypedDict):
     """What ``/api/machines`` sends on a 200. An error is a 4xx with ``{"error": ...}``.
 
@@ -85,6 +95,7 @@ class MachinesResponse(TypedDict):
     machines: list[PlacementRow]
     extractors: list[PlacementRow]
     generators: list[PlacementRow]
+    facilities: list[FacilityRow]
     shapes: dict[str, BuildingShape]
 
 
@@ -163,12 +174,22 @@ def machines(
         return [_record_row(st, row, verdicts, owners) for row in projection.get(kind, ())]
 
     out: dict[MachineKind, list[PlacementRow]] = {kind: rows(kind) for kind in MACHINE_KINDS}
-    classes = (row["cls"] for kind in MACHINE_KINDS for row in out[kind])
+    facilities = [_facility_row(st, row) for row in object_rows(projection.get("facilities"))]
+    classes = [row["cls"] for kind in MACHINE_KINDS for row in out[kind]]
     return {
         "machines": out["machines"],
         "extractors": out["extractors"],
         "generators": out["generators"],
-        "shapes": building_shapes(st.game, classes),
+        "facilities": facilities,
+        "shapes": building_shapes(st.game, classes + [row["cls"] for row in facilities]),
+    }
+
+
+def _facility_row(st: WorldState, row: BuildableRecord) -> FacilityRow:
+    footprint = building_footprint(st.game, row.get("cls") or "")
+    return {
+        **placement_fields(st.game, row),
+        "h_m": round(footprint.height_m, 1) if footprint else None,
     }
 
 

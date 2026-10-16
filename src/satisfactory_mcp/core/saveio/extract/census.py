@@ -42,6 +42,8 @@ _PLACED_RECORD_KEYS: Final = (
     "extractors",
     "generators",
     "attachments",
+    "fittings",
+    "facilities",
     "storage",
     "crates",
 )

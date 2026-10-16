@@ -78,7 +78,8 @@ class BeltRow(TypedDict):
 
 
 class AttachmentRow(PlacementFields):
-    """A splitter or a merger: a piece of the belt network, drawn by the belt layer.
+    """A piece a run passes through: a splitter or a merger on ``/api/belts``, a pipe
+    junction, pump or valve on ``/api/pipes``. Drawn by that run's layer.
 
     ``cls`` and ``name`` are not nullable: an attachment is an actor record. The coordinates
     are null where the transform did not decode, ``yaw`` where the projection predates schema
@@ -213,6 +214,10 @@ class PipesResponse(TypedDict):
     count: int
     networks: int
     directed: int
+    #: Junctions, pumps and valves: the pipe run's attachments, the same row shape.
+    fittings: list[AttachmentRow]
+    #: Each fitting class's outline and ports, once (docs/web-wire.md).
+    shapes: dict[str, BuildingShape]
 
 
 def _pipe_class(st: WorldState, cls: str | None) -> PipeClass:
@@ -272,9 +277,14 @@ def pipes(request: Request, save: str | None = None, world: str | None = None) -
         if seg.class_index not in resolved:
             resolved[seg.class_index] = _pipe_class(st, seg.cls)
         rows.append(_pipe_row(st, seg, networks, flows, resolved[seg.class_index]))
+    fittings = [
+        placement_fields(st.game, row) for row in object_rows(st.projection.get("fittings"))
+    ]
     return {
         "pipes": rows,
         "count": len(rows),
         "networks": len({r["network"] for r in rows if r["network"] is not None}),
         "directed": sum(1 for r in rows if r["direction"] != "unknown"),
+        "fittings": fittings,
+        "shapes": building_shapes(st.game, (f["cls"] for f in fittings)),
     }
