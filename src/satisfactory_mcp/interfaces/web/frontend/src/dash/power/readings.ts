@@ -69,10 +69,6 @@ function unmeasured(rated: Rated): boolean {
   return rated.ledger.monitored === 0;
 }
 
-export function unratedTitle(rated: Rated): string {
-  return "game data cannot rate " + rated.unmodellable.join(", ") + ", so this circuit's output is unknown";
-}
-
 export function headroom(value: number): string {
   return mw(value, { signed: true });
 }

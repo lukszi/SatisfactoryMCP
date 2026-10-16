@@ -3,7 +3,8 @@
  * dash/actions.ts. See docs/frontend_kit.md. */
 
 import { onAdvice } from "../chat/advice";
-import { empty } from "../kit/dashkit";
+import { mount } from "../kit/html";
+import { emptyLine } from "../kit/ui/text";
 import { el, make } from "../kit/dom";
 import { keepFocus } from "../kit/focus";
 import { onVitals, vitals } from "../app/vitals";
@@ -38,9 +39,6 @@ import { setDashHooks } from "./actions";
 const SAVELESS: Page[] = ["items", "maps", "kit"];
 
 const PAGE_TITLE: Partial<Record<Page, string>> = { maps: "map types", kit: "kit" };
-
-/* A redraw skipped while a factory name was being edited. */
-let missed = false;
 
 let shownEpoch = 0;
 
@@ -141,16 +139,11 @@ function render(): void {
   retitle();
   viewFocus();
   if (!state.dash) return;
-  if (renamingIn(el("dash"))) {
-    missed = true;
-    return;
-  }
-  missed = false;
+  if (renamingIn(el("dash"))) return;
   follow(at);
   const body = el("dash-body");
   if (state.noSaves && SAVELESS.indexOf(at.page) < 0) {
-    body.textContent = "";
-    empty(body, WORDS.noSaves, "save a game, or set SATISFACTORY_SAVES if the saves live elsewhere; Items and settings still work");
+    mount(body, emptyLine(WORDS.noSaves, "save a game, or set SATISFACTORY_SAVES if the saves live elsewhere; Items and settings still work"));
     return;
   }
   if (at.page === "planner") {
@@ -219,9 +212,6 @@ function wire(): void {
 setDashHooks({
   render: render,
   show: show,
-  renderIfDeferred: function () {
-    if (missed) render();
-  },
 });
 wire();
 if (redirectFor(state.dash)) {

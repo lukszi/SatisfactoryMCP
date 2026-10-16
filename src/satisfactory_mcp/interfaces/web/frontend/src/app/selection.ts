@@ -69,10 +69,6 @@ export function selected(): Selection | null {
   return current;
 }
 
-export function isSelected(kind: SelectionKind, key: string): boolean {
-  return !!current && current.kind === kind && current.key === key;
-}
-
 /** A machine's leaf, from a leaf or a full instance path. */
 export function machineLeaf(instance: string): string {
   return instance.slice(instance.lastIndexOf(".") + 1);
