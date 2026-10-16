@@ -70,11 +70,11 @@ land elsewhere. A bare first word is a shorthand (`#maps` is `#dash=maps`).
 
 ## Overview
 
-`dash/overview/` is the Overview (`#dash=overview`, and where an unknown `dash=` lands): four
+`dash/overview/` is the Overview (`#dash=overview`, and where an unknown `dash=` lands): five
 glanceable blocks, each clicking through to the page with the detail. Headline figures sit in
 the block heading at heading size; no list runs past three rows. Desktop has two independent
-column stacks (factories and progress left, about two thirds; power and do next right);
-phones get one column in the order do next, factories, power, progress, factory cells
+column stacks (factories and map left, about two thirds; power, do next and progress right);
+phones get one column in the order do next, factories, power, progress, map, factory cells
 two across. The order is the DOM order on both, picked at render by a 600 px media query.
 
 - **Factories**: machines and need action in the heading; one cell per named factory, worst
@@ -92,9 +92,12 @@ two across. The order is the DOM order on both, picked at render by a 600 px med
   `/api/progress/gate` at the default horizon (the same read the Progress page makes), the
   first next step, and the plans as machines built of planned (`/api/plan/built`, plans whose
   figure counts machines at their current version).
-- The map block left the Overview: at that size it said nothing the main map does not. The
-  "worth a look" advice card left too; it stays on a factory's page. The old tiles (`dashkit`
-  `tile`) and tables are gone.
+- **Map**: a real Leaflet map from `map/mini-map.ts` (`overview-map.ts`), kept across renders
+  and refitted only when the factories or the player move. One dot per named factory at its
+  centroid, coloured only when it needs action, the player from `/api/world/here`. It does not
+  pan or zoom; a dot opens the factory, anywhere else opens the main map there.
+- The "worth a look" advice card left the Overview; it stays on a factory's page. The old
+  tiles (`dashkit` `tile`) and tables are gone.
 
 ## Power
 
