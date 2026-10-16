@@ -12,6 +12,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, fields
 from typing import TYPE_CHECKING, TypeAlias, TypeGuard, TypeVar, cast
 
+from ....core.gamedata.constants import ICON_CHOICE_RE
 from ....core.jsontypes import is_object_list
 from .views import PlanArgsBody
 
@@ -35,6 +36,7 @@ __all__ = [
     "PlanLogError",
     "canonical_power",
     "checked_headroom",
+    "checked_icon",
     "checked_map_key",
     "checked_map_value",
     "checked_member",
@@ -51,7 +53,7 @@ _POWER_SPELLINGS = frozenset({"mw", "power", "__mw__"})
 _POWER_FIELDS = frozenset({"exports", "export_minimums"})
 FLOAT_SETS = frozenset({"clocks", "extractor_clocks"})
 #: Settable fields of the plan itself rather than of its arguments.
-PLAN_SCALARS = ("notes", "factory", "headroom_mw")
+PLAN_SCALARS = ("notes", "factory", "headroom_mw", "icon")
 HEADROOM_MAX_MW = 1_000_000.0
 PAYBACK_MAX_H = 100.0
 PRICE_MAX = 100_000.0
@@ -133,6 +135,15 @@ def _factory(name: str, value: object) -> str:
     if text.startswith("/") and text not in FACTORY_SENTINELS:
         raise InvalidOp(f"{name} is a factory name, {' or '.join(FACTORY_SENTINELS)}, not {text!r}")
     return text
+
+
+def checked_icon(name: str, value: object) -> str | None:
+    """A chosen icon: a descriptor class, "" for a chosen blank, None for no choice."""
+    if value is None:
+        return None
+    if not isinstance(value, str) or not ICON_CHOICE_RE.match(value):
+        raise InvalidOp(f"{name} is a descriptor class such as Desc_IronPlate_C, not {value!r}")
+    return value
 
 
 def _flag(name: str, value: object) -> bool:
@@ -219,6 +230,7 @@ SCALAR_CHECK: dict[str, Check] = {
     "notes": checked_text,
     "factory": _factory,
     "headroom_mw": checked_headroom,
+    "icon": checked_icon,
     "payback_hours": _hours,
     "overclock_last": _switch,
     "power_price": _price,

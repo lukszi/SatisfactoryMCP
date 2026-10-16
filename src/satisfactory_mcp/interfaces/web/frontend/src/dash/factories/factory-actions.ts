@@ -38,7 +38,6 @@ function rename(name: string, button: HTMLElement): void {
   if (!health || !host) return;
   editName(host, name, health.labels_version, function (reply) {
     if (reply) {
-      factoryIcons.move(reply.was, reply.name);
       const at = factoryAddress(state.dash.slice("factories/".length));
       if (state.dash.indexOf("factories/") === 0 && at.name === name) replaceDash(factoryDash(reply.name, at.aspect, at.floor));
     }
@@ -148,7 +147,7 @@ export function openIconPicker(name: string, opener: HTMLElement, store?: IconSt
     p.dialog,
     html`<div class="ichead"><b>icon for “${name}”</b><input type="search" id="icq" placeholder="search items" aria-label="search items"><button type="button" class="btn icon" data-close="1" aria-label="close">×</button></div>
       <div class="icgrid" role="group" aria-label="items"></div>
-      <div class="icfoot">${btn("use default", { data: { icon: "*default" }, disabled: chosen === undefined })}${btn("no icon", { data: { icon: "*none" } })}<span class="note">kept in this browser</span></div>`
+      <div class="icfoot">${btn("use default", { data: { icon: "*default" }, disabled: chosen === undefined })}${btn("no icon", { data: { icon: "*none" } })}<span class="note">kept for this world</span></div>`
   );
   fillGrid("");
   p.box.open(opener);

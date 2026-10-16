@@ -47,7 +47,8 @@ class FactoryHealthRow(TypedDict):
     ``worst`` is the machines not fine, paused included; ``worst_actionable`` only those in
     an ``actionable_states`` state, of which there are ``actionable`` in all.
     ``product`` / ``product_icon`` are the main product's name and item class (the
-    factory's default icon), null when no single product stands out."""
+    factory's default icon), null when no single product stands out. ``icon`` is the one
+    chosen on the page: a descriptor class, "" for a chosen blank, null for no choice."""
 
     name: str
     centroid_m: tuple[float, float]
@@ -68,6 +69,7 @@ class FactoryHealthRow(TypedDict):
     attention: int
     product: str | None
     product_icon: str | None
+    icon: str | None
 
 
 class FactoryHealthResponse(TypedDict):
@@ -130,6 +132,7 @@ def _factory_row(
         "attention": sum(1 for machine in report.machines if machine.state not in OK),
         "product": st.game.item_name(product) if product else None,
         "product_icon": product,
+        "icon": label.icon,
     }
 
 

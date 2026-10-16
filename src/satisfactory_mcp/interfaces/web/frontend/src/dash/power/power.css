@@ -224,7 +224,7 @@
 }
 
 .l-ofac .entry {
-  --cols: minmax(0, 1fr) 96px 24px;
+  --cols: 24px minmax(0, 1fr) 96px 24px;
 }
 
 .metric.sm b {

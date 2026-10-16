@@ -93,6 +93,8 @@ class Label:
     signature: dict[str, int] = field(default_factory=dict[str, int])
     created: str = ""
     last_matched: str = ""
+    #: The icon chosen for it: a descriptor class, "" for a chosen blank, None for no choice.
+    icon: str | None = None
 
     def recall(self, machines: set[str]) -> float:
         if not self.anchors:
@@ -100,7 +102,7 @@ class Label:
         return len(set(self.anchors) & machines) / len(self.anchors)
 
     def to_json(self) -> LabelDoc:
-        return {
+        doc: LabelDoc = {
             "id": self.id,
             "name": self.name,
             "anchors": self.anchors,
@@ -110,6 +112,9 @@ class Label:
             "created": self.created,
             "last_matched": self.last_matched,
         }
+        if self.icon is not None:
+            doc["icon"] = self.icon
+        return doc
 
     @staticmethod
     def from_json(raw: LabelDoc) -> Label:
@@ -123,6 +128,7 @@ class Label:
             signature=dict(raw.get("signature", {})),
             created=raw.get("created", ""),
             last_matched=raw.get("last_matched", ""),
+            icon=raw.get("icon"),
         )
 
 

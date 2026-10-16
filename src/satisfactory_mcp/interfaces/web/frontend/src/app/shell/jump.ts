@@ -9,6 +9,9 @@ import { friendlyError } from "../../kit/toast";
 import { counted, RECIPE_KIND } from "../../kit/words";
 import { circuitName } from "../../dash/power/readings";
 import { loadList, planIndex } from "../../dash/planner/plan-index";
+import { planIcon } from "../../dash/planner/plans/model";
+import { itemClass, loadItems } from "../../dash/planner/state";
+import { factoryLead, iconLead } from "../../dash/factories/icon-choice";
 import { itemsDash } from "../../dash/items/address";
 import { itemDash } from "../../dash/items/stock";
 import { go } from "../nav";
@@ -49,7 +52,7 @@ export function rank<T extends { name: string }>(rows: T[], q: string): T[] {
 function localHits(q: string): Hit[] {
   const plans = planIndex.data ? planIndex.data.index : [];
   const planHits = rank(plans, q).map(function (p): Hit {
-    return { kind: "plans", name: p.name, ctx: p.objective + " · v" + p.rev, dash: "planner/" + p.key, lead: html`<i class="ic"></i>` };
+    return { kind: "plans", name: p.name, ctx: p.objective + " · v" + p.rev, dash: "planner/" + p.key, lead: iconLead(planIcon(p, itemClass), "") };
   });
   const circuits = (vitals().circuits?.circuits || []).map((row) => ({ name: circuitName(row), n: row.index + 1 }));
   const circuitHits = rank(circuits, q).map(function (c): Hit {
@@ -60,8 +63,10 @@ function localHits(q: string): Hit[] {
 
 function serverHits(data: SearchResponse): Hit[] {
   const out: Hit[] = [];
+  const health = vitals().health?.factories || [];
   data.factories.slice(0, PER_KIND).forEach(function (f) {
-    out.push({ kind: "factories", name: f.name, ctx: counted(f.machines, "machine"), dash: "factories/" + f.name, lead: html`<i class="ic"></i>` });
+    const row = health.filter((r) => r.name === f.name)[0];
+    out.push({ kind: "factories", name: f.name, ctx: counted(f.machines, "machine"), dash: "factories/" + f.name, lead: row ? factoryLead(row) : iconLead(null, "") });
   });
   data.items.slice(0, PER_KIND).forEach(function (i) {
     out.push({ kind: "items", name: i.name, ctx: "", dash: itemDash(i.cls, i.name), lead: icon(i.cls, i.name) });
@@ -110,6 +115,7 @@ function run(): void {
   if (!q) return closeList();
   const ticket = latest("jump");
   if (!planIndex.data && !planIndex.error) loadList();
+  loadItems();
   get<SearchResponse>(`/api/search?q=${encodeURIComponent(text)}&${spoilerQuery()}`)
     .then(function (data) {
       if (!ticket.fresh()) return;

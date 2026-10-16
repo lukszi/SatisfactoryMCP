@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { activityLines, builtOf, byDay, dayLabel, exportItems, factoryOf, productItem, sortPlans, statusOf } from "../../src/dash/planner/plans/model";
+import { activityLines, builtOf, byDay, dayLabel, exportItems, factoryOf, planIcon, productItem, sortPlans, statusOf } from "../../src/dash/planner/plans/model";
 
 import type { ActivityRow, PlanBuiltRow, PlanIndexRow } from "../../src/api/shapes";
 
@@ -16,6 +16,7 @@ function plan(over: Partial<PlanIndexRow>): PlanIndexRow {
     sited: false,
     factory: "",
     plan_id: "id",
+    icon: null,
     last: { rev: 3, ts: 100, actor: { kind: "page", client: "", pid: 0, display: "" }, text: "created" },
     status: [],
     recorded: true,
@@ -41,6 +42,10 @@ describe("plan cards", () => {
     expect(productItem(row)).toBe("Motor");
     expect(productItem(plan({ target_item: "Fuel" }))).toBe("Fuel");
     expect(productItem(plan({ exports: ["MW"] }))).toBeNull();
+    const cls = (name: string) => (name === "Fuel" ? "Desc_Fuel_C" : null);
+    expect(planIcon(plan({ target_item: "Fuel" }), cls)).toBe("Desc_Fuel_C");
+    expect(planIcon(plan({ target_item: "Fuel", icon: "Desc_Rotor_C" }), cls)).toBe("Desc_Rotor_C");
+    expect(planIcon(plan({ target_item: "Fuel", icon: "" }), cls)).toBeNull();
   });
 
   it("links only a named factory", () => {

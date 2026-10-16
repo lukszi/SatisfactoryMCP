@@ -133,8 +133,12 @@ from `/api/power/circuits` (circuit pages also read factory health for the facto
 - **Icon** (`icon-choice.ts`): the main product the health read names (`product_icon`: of the
   surpluses a recipe makes, the highest sink value, then the larger surplus; an extraction-only
   factory shows its main resource; a tie or nothing is no icon, an empty slot, never letters;
-  `domain/factories/product.py`). "change icon" in ⋯ picks any item or none; the choice is kept
-  in this browser only (localStorage, per world) and follows a rename made here.
+  `domain/factories/product.py`). "change icon" in ⋯ picks any item or none; the choice is the
+  label's `icon` in the world's label file (`POST /api/labels/icon`, the health row's `icon`),
+  so it follows every rename and shows wherever the factory does: overview cells, the list and
+  page, a circuit's factories and the jump search. A choice an older page kept in this
+  browser's localStorage moves to the server once, unless the label already has one
+  (`local-icons.ts`).
 - **Page** (`page.ts`, `ctx.ts`): the header carries need action (x of machines) and uptime as
   figures and the aspect tabs. The plan sits left (sticky; on top on phones), the aspect right;
   flows takes the whole width. `ctx.ts` joins the reads once per render: the factory's rows of
@@ -263,9 +267,10 @@ settled. `planner.ts` mounts either, and holds a redraw while a field there has 
   setting), else "no site", "which factory?" (to Track) or why it does not solve. At most one
   status chip: the first of `status` (all of them in the tooltip), else "done", uncoloured.
   Sort: last change, name, built (unplaced last).
-- **Icon**: the first export's item, unless "change icon" in ⋯ chose one; the choice is kept in
-  this browser only, per world and plan key (`iconStore` in `factories/icon-choice.ts`, the same
-  picker as factories). The other ⋯ actions: rename in place, duplicate (opens the copy), pin,
+- **Icon**: the first export's item, unless "change icon" in ⋯ chose one; the choice is plan
+  state (`set icon`, so it is a version and undo takes it back; the index row's `icon`), with
+  the same picker as factories. The jump search shows it too. A choice an older page kept in
+  this browser moves to the plan once, as for factories. The other ⋯ actions: rename in place, duplicate (opens the copy), pin,
   forget. Renames and forgets go against the version the list read; if the plan moved on
   meanwhile the write is refused and the list says to try again.
 - **Activity** (`timeline.ts`): `/api/activity` (last 50), newest first, grouped by day in the

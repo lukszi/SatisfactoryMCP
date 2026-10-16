@@ -12,7 +12,7 @@ import { dashH, emptyLine, toolrow } from "../../../kit/ui/text";
 import { renderChatSolveCard } from "../chat-card";
 import { loadList, planIndex } from "../plan-index";
 import { changed, itemList, loadItems } from "../state";
-import { focusRename, newPlanCard, planCard, wireCards } from "./cards";
+import { adoptLocalPlanIcons, focusRename, newPlanCard, planCard, wireCards } from "./cards";
 import { SORTS, sortPlans, type PlanSort } from "./model";
 import { timeline, wireTimeline } from "./timeline";
 
@@ -33,6 +33,7 @@ export function renderPlansPage(parent: HTMLElement): void {
     planIndex.data = null;
     loadList();
   }
+  if (planIndex.world === state.world) adoptLocalPlanIcons();
   loadItems();
   const root = document.createElement("div");
   root.className = "plans";

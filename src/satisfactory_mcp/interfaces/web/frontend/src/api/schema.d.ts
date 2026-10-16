@@ -933,6 +933,26 @@ export interface paths {
         patch: operations["rename_label_api_labels__name__patch"];
         trace?: never;
     };
+    "/api/labels/icon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set Label Icon
+         * @description Choose the icon a named factory shows. Not versioned: an icon never conflicts.
+         */
+        post: operations["set_label_icon_api_labels_icon_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/labels/amend": {
         parameters: {
             query?: never;
@@ -3454,7 +3474,8 @@ export interface components {
          *     ``worst`` is the machines not fine, paused included; ``worst_actionable`` only those in
          *     an ``actionable_states`` state, of which there are ``actionable`` in all.
          *     ``product`` / ``product_icon`` are the main product's name and item class (the
-         *     factory's default icon), null when no single product stands out.
+         *     factory's default icon), null when no single product stands out. ``icon`` is the one
+         *     chosen on the page: a descriptor class, "" for a chosen blank, null for no choice.
          */
         FactoryHealthRow: {
             /** Name */
@@ -3503,6 +3524,8 @@ export interface components {
             product: string | null;
             /** Product Icon */
             product_icon: string | null;
+            /** Icon */
+            icon: string | null;
         };
         /** FactoryHit */
         FactoryHit: {
@@ -4177,6 +4200,25 @@ export interface components {
             shapes: {
                 [key: string]: components["schemas"]["BuildingShape"];
             };
+        };
+        /**
+         * IconBody
+         * @description ``icon`` is a descriptor class, "" for a chosen blank, or null to forget the choice.
+         */
+        IconBody: {
+            /** Name */
+            name: string;
+            /** Icon */
+            icon: string | null;
+        };
+        /** IconSetResponse */
+        IconSetResponse: {
+            /** Name */
+            name: string;
+            /** Icon */
+            icon: string | null;
+            /** Version */
+            version: number;
         };
         /**
          * InspectAt
@@ -5920,6 +5962,7 @@ export interface components {
          *
          *     ``status`` is what moved under it (``manage.plan_status``): "world moved", "field N->M",
          *     "broken: ..."; empty with ``recorded`` false means the field was never checked.
+         *     ``icon`` is the one chosen on the page ("" a chosen blank), null for no choice.
          */
         PlanIndexRow: {
             /** Key */
@@ -5944,6 +5987,8 @@ export interface components {
             factory: string;
             /** Plan Id */
             plan_id: string;
+            /** Icon */
+            icon: string | null;
             last: components["schemas"]["PlanLast"];
             /** Status */
             status: string[];
@@ -9908,6 +9953,69 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RenamedResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelRefusedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_label_icon_api_labels_icon_post: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IconBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IconSetResponse"];
                 };
             };
             /** @description Bad Request */

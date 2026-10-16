@@ -10,10 +10,11 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from ...core.filelock import LockTimeout
+from ...core.gamedata.constants import ICON_CHOICE_RE
 from ..planning.stored.plan_args import PlanLogError
 from ..planning.stored.planlog import Actor, PlanLog
 from .candidates import Candidate
-from .labels import Label, LabelStore, UnknownLabel
+from .labels import Label, LabelError, LabelStore, UnknownLabel
 
 __all__ = [
     "Amendment",
@@ -24,6 +25,7 @@ __all__ = [
     "preview_amendment",
     "rename",
     "repoint_plans",
+    "set_icon",
 ]
 
 
@@ -75,6 +77,18 @@ def forget(
     with LabelStore.editing(world_id, session, expect) as store:
         label = _pick(store, name, exact)
         store.labels.remove(label)
+    return label, store.version
+
+
+def set_icon(
+    world_id: str, session: str, name: str, icon: str | None, expect: int | None = None
+) -> tuple[Label, int]:
+    """Choose a label's icon: a descriptor class, "" for none, None to forget the choice."""
+    if icon is not None and not ICON_CHOICE_RE.match(icon):
+        raise LabelError(f"{icon!r} is not a descriptor class such as Desc_IronPlate_C")
+    with LabelStore.editing(world_id, session, expect) as store:
+        label = _pick(store, name, exact=True)
+        label.icon = icon
     return label, store.version
 
 

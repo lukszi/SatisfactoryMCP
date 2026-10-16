@@ -5,6 +5,8 @@ Wire rules, and why these are ``typing_extensions`` TypedDicts: docs/web-wire.md
 
 from __future__ import annotations
 
+from typing import NotRequired
+
 from typing_extensions import TypedDict
 
 from ..planning.readout.views import PlanGraphBuilding
@@ -72,6 +74,7 @@ class LabelDoc(TypedDict):
     signature: dict[str, int]
     created: str
     last_matched: str
+    icon: NotRequired[str]
 
 
 class LabelReview(TypedDict):
