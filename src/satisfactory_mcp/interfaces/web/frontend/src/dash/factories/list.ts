@@ -11,7 +11,7 @@ import { openMenu } from "../../kit/overlay/menu";
 import { sortSelect } from "../../kit/ui/controls";
 import { acts, chevron, entry, expandBody, list, wireExpand } from "../../kit/ui/entry";
 import { chip, mixBar } from "../../kit/ui/marks";
-import { dashH, emptyLine, toolrow } from "../../kit/ui/text";
+import { dashH, emptyLine, icon, toolrow } from "../../kit/ui/text";
 import { counted, WORDS } from "../../kit/words";
 import { hashFor } from "../../map/map";
 import { showMachine } from "../../map/map-highlight";
@@ -53,7 +53,7 @@ function issueLine(row: FactoryHealthRow, issue: MachineIssue, i: number): Safe 
   const key = row.name + "#" + i;
   issueAt.set(key, issue);
   const map = issue.x_m !== null ? html`<button type="button" class="btn icon" data-issue="${key}" title="show it on the map">◎</button>` : html`<span class="btn-gap"></span>`;
-  return html`<div class="sub">${stateChip(issue.state)}<span>${issue.what}${issue.cause.length ? html` <span class="ictx">${issue.cause.join(", ")}</span>` : ""}</span><span class="r">${issue.uptime === null ? html`<span class="dim">–</span>` : pct(issue.uptime)}</span>${map}</div>`;
+  return html`<div class="sub">${stateChip(issue.state)}<span class="sw">${icon(issue.building_icon, issue.what)}${issue.what}${issue.cause.length ? html` <span class="ictx">${issue.cause.join(", ")}</span>` : ""}</span><span class="r">${issue.uptime === null ? html`<span class="dim">–</span>` : pct(issue.uptime)}</span>${map}</div>`;
 }
 
 function expandOf(row: FactoryHealthRow): Safe {

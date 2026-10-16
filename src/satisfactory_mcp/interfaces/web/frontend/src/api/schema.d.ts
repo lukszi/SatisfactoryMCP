@@ -4331,7 +4331,8 @@ export interface components {
         };
         /**
          * MachineIssue
-         * @description ``x_m``/``y_m`` are null for a record the projection placed nowhere.
+         * @description ``x_m``/``y_m`` are null for a record the projection placed nowhere. ``building`` is
+         *     the machine's class, ``building_icon`` the descriptor ``/api/icons/`` files it under.
          */
         MachineIssue: {
             /** Instance */
@@ -4342,6 +4343,10 @@ export interface components {
             uptime: number | null;
             /** What */
             what: string;
+            /** Building */
+            building: string;
+            /** Building Icon */
+            building_icon: string | null;
             /** Cause */
             cause: string[];
             /** X M */

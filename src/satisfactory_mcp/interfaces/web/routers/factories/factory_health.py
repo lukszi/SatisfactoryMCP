@@ -28,12 +28,15 @@ WORST_PER_FACTORY = 8
 
 
 class MachineIssue(TypedDict):
-    """``x_m``/``y_m`` are null for a record the projection placed nowhere."""
+    """``x_m``/``y_m`` are null for a record the projection placed nowhere. ``building`` is
+    the machine's class, ``building_icon`` the descriptor ``/api/icons/`` files it under."""
 
     instance: str
     state: str
     uptime: float | None
     what: str
+    building: str
+    building_icon: str | None
     cause: list[str]
     x_m: float | None
     y_m: float | None
@@ -86,6 +89,8 @@ def _issue_row(st: WorldState, placed: Placed, machine: MachineHealth) -> Machin
         "state": machine.state,
         "uptime": None if machine.uptime is None else round(machine.uptime, 3),
         "what": machine.recipe or st.game.building_name(machine.building) or machine.building,
+        "building": machine.building,
+        "building_icon": st.game.building_icon(machine.building),
         "cause": list(machine.cause),
         "x_m": cm_to_m(at[0]) if at else None,
         "y_m": cm_to_m(at[1]) if at else None,
