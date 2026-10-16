@@ -242,6 +242,43 @@ def test_an_empty_hand_fed_generator_says_no_fuel_loaded(game):
     assert [s["cause"] for s in body["starved"]] == ["no fuel loaded"]
 
 
+def test_a_generator_type_carries_its_starved_part_icon_and_place(game):
+    """The Power page draws each type's starved MW hatched and names where a starved one is."""
+    starved = {
+        "instance": "Build_GeneratorCoal_C_1",
+        "cls": "Build_GeneratorCoal_C",
+        "buffers": {"fuel": {"items": {}}},
+        "uptime": {"window_s": 300.0, "produce_s": 0.0},
+    }
+    running = {"instance": "Build_GeneratorCoal_C_2", "cls": "Build_GeneratorCoal_C"}
+    body = _one_circuit(game, [starved, running])
+    rated = game.buildings["Build_GeneratorCoal_C"]
+    for groups in (body["generators"], body["circuits"][0]["generators"]):
+        assert groups == [
+            {
+                "name": rated.name,
+                "count": 2,
+                "mw": pytest.approx(2 * rated.power_production_mw),
+                "starved_mw": pytest.approx(rated.power_production_mw),
+                "icon": rated.descriptor,
+            }
+        ]
+    for rows in (body["starved"], body["circuits"][0]["starved"]):
+        assert [(s["instance"], s["circuit"], s["icon"]) for s in rows] == [
+            ("Build_GeneratorCoal_C_1", 0, rated.descriptor)
+        ]
+
+
+def test_a_machine_ref_carries_its_building_icon(client, state):
+    body = client.get("/api/power/circuits").json()
+    refs = body["unwired"] + body["no_generator"] + body["unwired_generators"]
+    assert refs, "the fixture world has machines off power"
+    for r in refs:
+        building = state.game.buildings.get(state.graph.cls.get(r["instance"], ""))
+        if building is not None:
+            assert r["icon"] == building.descriptor
+
+
 def test_the_off_grid_counts_are_the_unwired_lists(client):
     body = client.get("/api/power/circuits").json()
     off = body["off_grid"]
