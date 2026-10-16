@@ -13,7 +13,7 @@ This page says where those outlines and ports come from and how far to trust the
 container needs `ooz`) and writes `data/building_shapes.json`. It is a committed table like the
 node tables: derived measurements (a few dozen vertices per class and the connector positions),
 not meshes, and the server needs no game assets to serve it. It is written one line per class
-(72 KB for 62 classes), so a regeneration diffs by class rather than by number. The `_meta` block carries the
+(70 KB for 62 classes), so a regeneration diffs by class rather than by number. The `_meta` block carries the
 build it was cut from, and `provenance.PINNED_ARTIFACTS` lists it, so a game update reports it
 as stale alongside the other tables. Rerun the tool after an update:
 
@@ -58,6 +58,85 @@ onto the ground plane. `tools/building_shapes/silhouette.py` then
 
 Several blobs are sent as several rings and drawn as a multipolygon, never as a ring with
 holes. The closing bevels inside corners by about its radius.
+
+Step 4 alone draws a staircase's slant: a wall two degrees off, or a grille a cell proud of
+it, comes out as a tilted, jittery edge on what is a straight-walled machine. So each ring is
+then regularised (below), footprint and bands alike.
+
+### Regular outlines
+
+`tools/building_shapes/regular.py` offers each traced ring in up to two regular forms and keeps
+one only while it still covers the blob's raster about as well as the plain simplification:
+its IoU with the raster may be at most 0.03 lower (`max_loss`). Below that the plain ring is
+kept, which is how irregular parts (the HUB's legs, the Space Elevator's arms, the Alien Power
+Augmenter's star) keep their own shape. Over the 62 classes that kept 193 rings
+straight, 6 round and 16 plain, for a mean IoU loss of 0.005 (worst 0.030; 58 rings cover the
+raster better than before).
+
+#### Straight walls
+
+`straighten.py` works in the building's own frame, where the walls run along its axes:
+
+1. The cell-edge trace is simplified at one cell (Douglas-Peucker), from its sharpest corner.
+2. An edge within 12 degrees of 0, 90, 180 or 270 degrees snaps to it, and one within 12
+   degrees of a diagonal to that 45-degree heading. Consecutive edges with one heading are one
+   wall, placed at the staircase's own mean offset, each step weighted by its run along the
+   wall (risers count for nothing), so the wall sits where the cells say rather than at a DP
+   vertex.
+3. Two parallel walls at most 1.5 cells apart, joined by a step at most 3 cells long, become
+   one wall (a jog from a bolt or a grille).
+4. A slanted edge at most 6 cells long between two walls at right angles is cut, squaring the
+   corner: these are mostly the closing's bevels.
+5. A band's wall within 1.5 cells of a parallel wall of the level below is put on it, so flush
+   walls are drawn as one line.
+6. Walls meet at their intersection; walls that would meet more than 8 cells from the traced
+   corner, or run nearly parallel, are joined by a short step instead.
+
+The snapping angle is then widened to 20 and 30 degrees (`snap_levels`), and the widest that
+still passes the IoU check wins: a Manufacturer's band traced from a sloped roof has 3 m
+edges 20 degrees off, which only the wider snap squares, while a real 30-degree slant costs
+too much area to snap and stays. Where the vertex budget is exceeded, the Douglas-Peucker
+tolerance and the arc step grow by a quarter until it fits.
+
+#### Round parts
+
+A cell staircase strays from the curve it follows by half a cell at its corners, so circles
+are fitted through the midpoints of its steps, resampled every half cell (`rounds.py`).
+Measured on traced discs of 5 to 50 cells' radius, that leaves 0.14 to 0.18 cells (rms)
+between trace and circle, where a wall, a bevel and a wall turning together stray 0.3 cells
+or more.
+
+- A ring whose whole trace sits within 2% of the radius (and never less than 0.3 cells) of
+  one circle is drawn as a regular 24-gon of the circle's area, flat sides facing the axes,
+  when that covers the raster no worse than the straight form does. Its centre is put on a
+  mirror axis (below) within a cell of it. Tanks, the Blender's vessel and the coal
+  generator's chimney come out this way.
+- Within a ring, a run of at least three simplified edges whose trace sits within 0.25 cells
+  (rms) of a circle of at least 8 cells' radius, bulging out by at least 60 degrees, is drawn
+  as that circle's arc, a vertex every 15 degrees; back-to-back arcs on nearly one circle are
+  joined. The Refinery's tank, the Foundry's furnace ends and the Smelter's nose are such
+  arcs. Arcs that bite in are left to the walls: on these traces they are the closing's
+  rounded inside corners, and drawn as arcs they looked like bites taken out of the building.
+
+#### Mirror symmetry
+
+Most machines are symmetric about a line along one of their own axes, not necessarily through
+the actor origin. `mirror.py` searches, on the footprint's raster, the line along each axis
+(on a half-cell lattice, within 2 m of the raster's middle) whose mirror image matches the
+raster best; it counts where that match is an IoU of at least 0.93. Each level (the footprint,
+then each band) whose own raster also matches about that line at 0.93 is made exactly
+symmetric: a ring across the line keeps whichever half covers the raster better plus its
+mirror image, a ring on one side takes its partner's mirror image. A Constructor's housing,
+which is not symmetric (a ladder on one side), scores 0.78 and keeps its own shape.
+
+#### Nesting and ports
+
+A band is traced only where it lies inside the level below (its raster is cut to the cells
+the lower level's rings cover), a regular form may cover at most 16 cells or 1% of its own
+area more outside that level than the plain ring did, and a vertex that still ends up outside
+is moved onto the nearest edge of the level below. A port within 1 m of the plain footprint
+may end at most 30 cm further from the regular one, so a notch a pipe plugs into stays (the
+Fuel Generator's fuel inlet).
 
 ### Height bands
 

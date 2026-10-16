@@ -14,6 +14,8 @@ import numpy as np
 from scipy import ndimage
 
 from satisfactory_mcp.core.arrays import BoolMask, F64Grid
+from tools.building_shapes.polygons import Grid, Ring, covered, pulled_inside, tidy
+from tools.building_shapes.regular import Regulariser
 
 __all__ = [
     "MAX_SAMPLES_PER_EDGE",
@@ -28,9 +30,6 @@ __all__ = [
     "trace_outer",
     "traced",
 ]
-
-#: A polygon as ``(x, y)`` vertices, first not repeated at the end.
-Ring = list[tuple[float, float]]
 
 #: A triangle longer than this many cells is sampled at this many steps per edge anyway.
 MAX_SAMPLES_PER_EDGE = 512
@@ -226,23 +225,42 @@ def traced(
     max_vertices: int,
     min_fraction: float,
     min_cells: int = 0,
+    regular: Regulariser | None = None,
 ) -> list[Ring]:
-    """Each sizeable blob of ``grid`` traced and simplified, largest first, in grid units."""
+    """Each sizeable blob of ``grid`` traced and simplified, largest first, in grid units;
+    regularised (straight walls, round parts, mirror symmetry) when ``regular`` is given."""
+    if regular is not None:
+        regular.inside = None
+        if regular.parent is not None:
+            regular.inside = covered(regular.parent, Grid(grid, corner, cell))
+            grid = grid & regular.inside
     labels, count = ndimage.label(grid)
     if not count:
         return []
     areas = np.bincount(labels.ravel())[1:]
     rings: list[Ring] = []
     x0, y0 = corner
+
+    def world(points: list[tuple[float, float]]) -> Ring:
+        # Half a cell back: a sample on an edge marks the cell past it, so a bare trace
+        # would grow the outline by one cell on its high sides only.
+        return [(c * cell + x0 - cell / 2, r * cell + y0 - cell / 2) for c, r in points]
+
     for blob in np.argsort(areas)[::-1]:
         if areas[blob] < max(min_fraction * areas.max(), min_cells):
             break
-        corners = trace_outer(labels == blob + 1)
-        traced = _collinear_free([(float(c), float(r)) for c, r in corners])
-        simple = simplify_to_budget(traced, max_vertices, tolerance=1.0)
-        # Half a cell back: a sample on an edge marks the cell past it, so a bare trace
-        # would grow the outline by one cell on its high sides only.
-        rings.append([(c * cell + x0 - cell / 2, r * cell + y0 - cell / 2) for c, r in simple])
+        mask = labels == blob + 1
+        corners = _collinear_free([(float(c), float(r)) for c, r in trace_outer(mask)])
+        plain = world(simplify_to_budget(corners, max_vertices, tolerance=1.0))
+        if regular is not None:
+            plain = regular.ring(world(corners), Grid(mask, corner, cell), max_vertices, plain)
+        rings.append(plain)
+    if regular is not None:
+        kept = np.isin(labels, np.argsort(areas)[::-1][: len(rings)] + 1)
+        rings = regular.symmetric(rings, Grid(kept, corner, cell))
+        if regular.parent is not None:
+            rings = [tidy(pulled_inside(ring, regular.parent), cell / 2) for ring in rings]
+        regular.parent = rings
     return rings
 
 
@@ -252,15 +270,20 @@ def silhouette(
     close: float,
     max_vertices: int,
     min_fraction: float = 0.02,
+    regular: Regulariser | None = None,
 ) -> list[Ring]:
     """The simplified outer outlines of ``triangles`` seen from above, largest first.
 
     ``close`` (same unit as ``cell``) bridges gaps between parts; a blob under
-    ``min_fraction`` of the largest one's area is dropped as a stray.
+    ``min_fraction`` of the largest one's area is dropped as a stray. With ``regular``, the
+    footprint also sets that regulariser's mirror axes.
     """
     if len(triangles) == 0:
         return []
     grid, (x0, y0) = rasterise(triangles, cell)
     radius = max(1, round(close / cell))
     corner = (x0 - radius * cell, y0 - radius * cell)
-    return traced(blobs(grid, radius), corner, cell, max_vertices, min_fraction)
+    footprint = blobs(grid, radius)
+    if regular is not None:
+        regular.find_axes(Grid(footprint, corner, cell))
+    return traced(footprint, corner, cell, max_vertices, min_fraction, regular=regular)
