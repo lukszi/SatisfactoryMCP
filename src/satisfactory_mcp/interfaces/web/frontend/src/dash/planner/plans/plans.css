@@ -181,7 +181,7 @@
   bottom: var(--sp-3);
   left: calc(var(--tl-dot) / 2 - var(--tl-ln) / 2);
   width: var(--tl-ln);
-  background: var(--line);
+  background: var(--line-soft);
 }
 
 .tl-ev {

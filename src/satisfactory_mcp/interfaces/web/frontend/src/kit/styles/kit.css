@@ -1573,6 +1573,10 @@ details.fold > summary {
     grid-template-columns: minmax(0, 1fr) var(--unit-w);
   }
 
+  input[type="number"] {
+    width: 100%;
+  }
+
   .slots {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
