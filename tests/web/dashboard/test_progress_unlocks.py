@@ -207,3 +207,27 @@ def test_a_save_with_no_target_phase_hides_every_phase(client, state, monkeypatc
     full = client.get("/api/progress/phase").json()
     assert full["phases"] and all(p["spoiler"] for p in full["phases"])
     assert client.get("/api/progress/phase", params={"spoilers": 0}).json()["phases"] == []
+
+
+def test_milestones_and_mam_nodes_name_what_they_unlock(client, state, game):
+    for route, key in (("milestones", "milestones"), ("mam", "research")):
+        for row in client.get(f"/api/progress/{route}").json()[key]:
+            granted = state.unlocks.schematic_recipes(game.schematics[row["cls"]])
+            assert row["unlock_names"] == list(dict.fromkeys(r.name for r in granted))
+            assert len(row["unlock_names"]) <= row["unlocks"]
+
+
+def test_only_a_running_node_has_an_elapsed_share(client):
+    for row in client.get("/api/progress/mam").json()["research"]:
+        if row["status"] != "RUNNING":
+            assert row["elapsed_pct"] is None
+
+
+@pytest.mark.parametrize(
+    ("time_s", "left_s", "pct"),
+    [(600.0, 150.0, 75.0), (600.0, 600.0, 0.0), (600.0, 900.0, 0.0), (0.0, 10.0, None), (60.0, None, None)],
+)
+def test_elapsed_share_is_the_research_time_passed(time_s, left_s, pct):
+    from satisfactory_mcp.interfaces.web.routers.dashboard.progress_unlocks import _elapsed_pct
+
+    assert _elapsed_pct(time_s, left_s) == pct

@@ -15,6 +15,7 @@ from fastapi import APIRouter, Request
 from typing_extensions import TypedDict
 
 from .....core.gamedata.constants import CAPABILITY_SCHEMATICS
+from .....core.gamedata.model import Recipe
 from .....domain.progression.ladder import Rung, SchematicLadder
 from .....domain.progression.phases import opened_tier, opening_phase, phase_number
 from .....domain.world.state import WorldState
@@ -28,7 +29,8 @@ router = APIRouter(prefix="/api")
 class MilestoneRow(TypedDict):
     """``status`` is ``Rung.status``: DONE, BLOCKED, short or READY.
 
-    ``opens_at`` is the Space Elevator phase that opens a tier the save has not reached yet.
+    ``opens_at`` is the Space Elevator phase that opens a tier the save has not reached yet;
+    ``unlock_names`` names the ``unlocks`` recipes, buildings by their recipe's name.
     """
 
     cls: str
@@ -38,6 +40,7 @@ class MilestoneRow(TypedDict):
     cost: list[ItemAmount]
     short: list[ItemAmount]
     unlocks: int
+    unlock_names: list[str]
     blocked_by: list[str]
     opens_at: int | None
     spoiler: bool
@@ -59,6 +62,11 @@ class MilestonesResponse(TypedDict):
     milestones: list[MilestoneRow]
 
 
+def _names(recipes: list[Recipe]) -> list[str]:
+    """Recipe names in grant order, each once: a building's recipe carries its name."""
+    return list(dict.fromkeys(r.name for r in recipes))
+
+
 def _highest_reached_tier(rungs: list[Rung]) -> int:
     """The highest tier with a finished milestone, else the lowest tier there is."""
     done = [r.schematic.tier for r in rungs if r.status == "DONE"]
@@ -71,6 +79,7 @@ def _milestone_row(st: WorldState, rung: Rung, opened: int | None, top: int) -> 
     """One milestone; it ``opens_at`` a phase when its tier is not open yet."""
     game, schematic = st.game, rung.schematic
     shut = opened is not None and schematic.tier > opened and rung.status != "DONE"
+    granted = st.unlocks.schematic_recipes(schematic)
     return {
         "cls": schematic.cls,
         "tier": schematic.tier,
@@ -78,7 +87,8 @@ def _milestone_row(st: WorldState, rung: Rung, opened: int | None, top: int) -> 
         "status": rung.status,
         "cost": item_amounts(game, ((f.item, f.amount) for f in schematic.cost)),
         "short": item_amounts(game, ((m.item, round(m.short_by, 1)) for m in rung.missing)),
-        "unlocks": len(st.unlocks.schematic_recipes(schematic)),
+        "unlocks": len(granted),
+        "unlock_names": _names(granted),
         "blocked_by": list(rung.blocked_by),
         "opens_at": opening_phase(schematic.tier) if shut else None,
         "spoiler": schematic.tier > top,
@@ -131,17 +141,23 @@ def progress_milestones(
 
 
 class MamRow(TypedDict):
-    """``status`` is DONE, RUNNING, TREE SHUT, BLOCKED, short or READY, as ``mam_research``."""
+    """``status`` is DONE, RUNNING, TREE SHUT, BLOCKED, short or READY, as ``mam_research``.
+
+    ``running_s`` is the research time left on a RUNNING node and ``elapsed_pct`` how much of
+    the node's research time has passed, null when not running or the node has no time.
+    """
 
     cls: str
     name: str
     tree: str | None
     status: str
     running_s: float | None
+    elapsed_pct: float | None
     capability: str | None
     cost: list[ItemAmount]
     short: list[ItemAmount]
     unlocks: int
+    unlock_names: list[str]
     blocked_by: list[str]
     spoiler: bool
 
@@ -171,6 +187,13 @@ def _tree_name(tree: str | None) -> str | None:
     return re.sub(r"(?<=[a-z])(?=[A-Z])", " ", core)
 
 
+def _elapsed_pct(time_s: float, left_s: float | None) -> float | None:
+    """How much of a running node's research time has passed, 0 to 100."""
+    if left_s is None or time_s <= 0:
+        return None
+    return round(max(0.0, min(100.0, (time_s - left_s) / time_s * 100)), 1)
+
+
 @router.get("/progress/mam", response_model=MamResponse)
 def progress_mam(
     request: Request,
@@ -192,6 +215,7 @@ def progress_mam(
         schematic = rung.schematic
         running = research.ongoing.get(schematic.cls)
         status = research.status(rung)
+        granted = st.unlocks.schematic_recipes(schematic)
         rows.append(
             {
                 "cls": schematic.cls,
@@ -199,12 +223,14 @@ def progress_mam(
                 "tree": _tree_name(research.tree_of(schematic.cls)),
                 "status": status,
                 "running_s": None if running is None else float(running),
+                "elapsed_pct": _elapsed_pct(schematic.time_s, running),
                 "capability": gates.get(schematic.cls),
                 "cost": item_amounts(st.game, ((f.item, f.amount) for f in schematic.cost)),
                 "short": item_amounts(
                     st.game, ((m.item, round(m.short_by, 1)) for m in rung.missing)
                 ),
-                "unlocks": len(st.unlocks.schematic_recipes(schematic)),
+                "unlocks": len(granted),
+                "unlock_names": _names(granted),
                 "blocked_by": list(rung.blocked_by),
                 "spoiler": status == "TREE SHUT",
             }
