@@ -3,7 +3,7 @@
 import { statusChip } from "../../kit/dashkit";
 import { coords, formatNumber, metres, perMin } from "../../kit/format";
 import { pickupName } from "../drawn/pickups";
-import { carriesText, fieldLabel, nodeLabel, nodeRate, runLabel } from "../../dash/world/world-finds";
+import { carriesText, fieldLabel, nodeLabel, nodeRate, runLabel } from "../../dash/world/finds";
 import { WORDS } from "../../kit/words";
 
 import type { Column } from "../../kit/dashkit";

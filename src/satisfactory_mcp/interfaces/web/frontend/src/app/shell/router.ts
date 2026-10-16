@@ -2,6 +2,7 @@
  * the old addresses that now land elsewhere. Pure, so it is tested without a page. */
 
 import { itemsAddress, legacyItemsDash } from "../../dash/items/address";
+import { legacyWorldDash, worldScrollKey } from "../../dash/world/address";
 
 export type Page = "map" | "overview" | "factories" | "power" | "progress" | "items" | "world" | "planner" | "maps" | "kit";
 
@@ -64,8 +65,8 @@ function split(dash: string): [string, string] {
 export function redirectFor(dash: string): Redirect | null {
   const [head, subject] = split(dash);
   if (head === "settings") return subject === "maps" ? { dash: "maps" } : { dash: null, settings: "" };
-  const items = legacyItemsDash(head, subject);
-  return items === null ? null : { dash: items };
+  const moved = legacyItemsDash(head, subject) ?? legacyWorldDash(head, subject);
+  return moved === null ? null : { dash: moved };
 }
 
 export function routeOf(dash: string): Route {
@@ -76,10 +77,11 @@ export function routeOf(dash: string): Route {
 }
 
 /** What a scroll position belongs to: moving within it keeps the scroll. On Items that is the
- *  view, so picking an item or a container does not jump to the top. */
+ *  view, on World the query, so picking a row does not jump to the top. */
 export function scrollKey(dash: string): string {
   const at = routeOf(dash);
-  return at.page + "/" + (at.page === "items" ? itemsAddress(at.subject).view : at.subject);
+  if (at.page === "items") return "items/" + itemsAddress(at.subject).view;
+  return at.page + "/" + (at.page === "world" ? worldScrollKey(at.subject) : at.subject);
 }
 
 /** The settings dialog's section from the fragment: null = closed, "" = the last one shown. */

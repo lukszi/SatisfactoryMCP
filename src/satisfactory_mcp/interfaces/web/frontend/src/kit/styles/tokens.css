@@ -13,6 +13,7 @@
   --surface: var(--bg);
   /* the map's background where the biome raster has no data; not water */
   --sea: #10202c;
+  --player-fill: #4aa3df;
 
   /* ink */
   --ink: #e8e6e1;

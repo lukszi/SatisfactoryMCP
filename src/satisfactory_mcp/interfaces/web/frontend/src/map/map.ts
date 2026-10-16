@@ -14,7 +14,7 @@ import { BOOT, pinnedFilename, state } from "../app/state";
 
 import type { BboxM, Point3M, PointM } from "./geometry";
 
-const BOUND = 5000; // metres; the playable world is ~7 km across, so this frames it loosely.
+export const BOUND = 5000; // metres; the playable world is ~7 km across, so this frames it loosely.
 
 // The whole-world framing every load starts from.
 export const HOME_VIEW: { centre: L.LatLngTuple; zoom: number } = { centre: [0, 0], zoom: -3 };
@@ -138,7 +138,7 @@ const MAP_PX_PER_M = MAP_SHEET_PX / MAP_M_PER_SHEET; // 1.0923 sheet pixels to t
  * makes zoom 0 exactly one screen pixel per sheet pixel, which is also what makes Leaflet's
  * own choice of tile level the right one -- at map zoom Z it draws level Z + 5, whose
  * 256 * 2^(Z+5) pixels are precisely the 8192 * 2^Z the view has room for. */
-const CRS_SHEET_PX = L.extend({}, L.CRS.Simple, {
+export const CRS_SHEET_PX = L.extend({}, L.CRS.Simple, {
   transformation: new L.Transformation(
     MAP_PX_PER_M,
     -MAP_SQUARE_M.x_min * MAP_PX_PER_M,

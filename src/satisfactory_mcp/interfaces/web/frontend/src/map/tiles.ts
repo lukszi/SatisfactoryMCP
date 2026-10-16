@@ -156,6 +156,10 @@ export function servableMode(raw: string | undefined): BaseMode | null {
  * out not to draw, which `modeFailed` treats as the same thing. */
 let layerFactories: Partial<Record<BaseMode, () => BaseLayer>> = {};
 
+/** The same pictures as plain layers in a given pane, for a second map (the World page's): baked
+ *  light, and a tile that fails there changes nothing here. */
+let copyFactories: Partial<Record<BaseMode, (pane: string) => L.Layer>> = {};
+
 /** A built base layer, and its light's controls: null for a layer without a light. */
 interface BaseLayer {
   layer: L.Layer;
@@ -198,6 +202,7 @@ function mapImageBounds(response: Response): BboxM {
  * picture of the same world is the one answer that could be mistaken for success. */
 function modeFailed(spec: ModeSpec, why: string, message: string): void {
   delete layerFactories[spec.key];
+  delete copyFactories[spec.key];
   refusals[spec.key] = why;
   if (state.mode === spec.key) showBaseMode("plain", false);
   else showModes(modeChoices(), state.mode || "plain");
@@ -283,7 +288,7 @@ function wantsDenseTiles(): boolean {
  * size that is not a power-of-two fraction of the sheet. For the artwork that means the
  * single-image fallback; for a render it means the mode is not offered, because a tile grid
  * quietly offset from its own picture is worse than no picture. */
-function pyramidMaker(spec: PyramidSpec, response: Response): (() => BaseLayer) | null {
+function pyramidMaker(spec: PyramidSpec, response: Response): { make: () => BaseLayer; copy: (pane: string) => L.Layer } | null {
   const b = mapImageBounds(response);
   const anchored = [
     MAP_SQUARE_M.x_min,
@@ -329,22 +334,9 @@ function pyramidMaker(spec: PyramidSpec, response: Response): (() => BaseLayer) 
   const bounds = boundsOfBbox(b);
   const light = parseLight(response.headers.get("X-Map-Light"));
 
-  return function (): BaseLayer {
-    if (light && webglReady() && !litOff[spec.key]) {
-      try {
-        const lit = makeLitLayer(spec.typeId, light, function (why) {
-          if (litOff[spec.key]) return;
-          litOff[spec.key] = why;
-          fail(spec.label + ": " + why + "; showing it with the default sun baked in");
-          if (state.mode === spec.key) showBaseMode(spec.key, false);
-        });
-        return { layer: lit, light: lightControls(light, "") };
-      } catch (ignored) {
-        litOff[spec.key] = "WebGL would not start";
-      }
-    }
+  function tilesIn(pane: string): L.TileLayer {
     const tiles = new PyramidLayer(url, {
-      pane: "basemap",
+      pane: pane,
       tileSize: tilePx,
       noWrap: true,
       // Clamped to the world the tiles cover, so a pan out into the sea beyond it asks for
@@ -363,6 +355,24 @@ function pyramidMaker(spec: PyramidSpec, response: Response): (() => BaseLayer) 
       denseQuery: denseQuery,
     });
     if (SHARE) (tiles.options as PyramidOptions).siteLayer = spec.typeId;
+    return tiles;
+  }
+
+  function make(): BaseLayer {
+    if (light && webglReady() && !litOff[spec.key]) {
+      try {
+        const lit = makeLitLayer(spec.typeId, light, function (why) {
+          if (litOff[spec.key]) return;
+          litOff[spec.key] = why;
+          fail(spec.label + ": " + why + "; showing it with the default sun baked in");
+          if (state.mode === spec.key) showBaseMode(spec.key, false);
+        });
+        return { layer: lit, light: lightControls(light, "") };
+      } catch (ignored) {
+        litOff[spec.key] = "WebGL would not start";
+      }
+    }
+    const tiles = tilesIn("basemap");
     let broke = false;
     tiles.on("tileerror", function () {
       if (broke) return;
@@ -375,7 +385,9 @@ function pyramidMaker(spec: PyramidSpec, response: Response): (() => BaseLayer) 
     });
     const off = "live light off: " + (litOff[spec.key] || "needs WebGL2");
     return { layer: tiles, light: light ? lightControls(light, off) : null };
-  };
+  }
+
+  return { make: make, copy: tilesIn };
 }
 
 /* The whole sheet as one imageOverlay: the artwork mode's fallback, and what any render that
@@ -404,8 +416,10 @@ function probePyramid(spec: PyramidSpec): Promise<void> {
   return (SHARE ? Promise.resolve(siteProbe(spec.typeId)) : fetch(tilePath(spec.typeId, 0, 0, 0), { method: "HEAD" }))
     .then(function (r) {
       if (r.status !== 200) return; // 204: never generated, and that is not an error
-      const factory = pyramidMaker(spec, r);
-      if (factory) layerFactories[spec.key] = factory;
+      const made = pyramidMaker(spec, r);
+      if (!made) return;
+      layerFactories[spec.key] = made.make;
+      copyFactories[spec.key] = made.copy;
     })
     .catch(function () {
       /* the probe failing means no picture, which is the default state anyway */
@@ -419,6 +433,10 @@ function probeMapImage(spec: ModeSpec): Promise<void> {
     .then(function (r) {
       if (r.status !== 200) return; // 204: no local render, which is the default state
       layerFactories[spec.key] = overlayMaker(spec, r);
+      const bounds = boundsOfBbox(mapImageBounds(r));
+      copyFactories[spec.key] = function (pane) {
+        return L.imageOverlay("/api/mapimage", bounds, { pane: pane, interactive: false });
+      };
     })
     .catch(function () {
       /* same as above: no picture is the shipped answer */
@@ -527,6 +545,7 @@ function rebuildModes(): void {
   readyBefore = readyIds();
   MODES = wantedModes();
   layerFactories = {};
+  copyFactories = {};
   refusals = {};
   probeAll(MODES).then(function () {
     if (state.mode && state.mode !== "plain" && !layerFactories[state.mode]) showBaseMode("plain", false);
@@ -587,4 +606,10 @@ export function loadBaseMap(): Promise<void> {
       booted = true;
       showBaseMode(bootMode(), false);
     });
+}
+
+/** The picture the map shows now, as a new layer in `pane` of another map; null for plain. */
+export function baseCopy(pane: string): L.Layer | null {
+  const make = state.mode ? copyFactories[state.mode] : undefined;
+  return make ? make(pane) : null;
 }

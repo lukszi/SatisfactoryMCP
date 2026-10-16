@@ -39,6 +39,14 @@ describe("the route table", () => {
     expect(redirectFor("recipe-iron-plate")).toEqual({ dash: "items?view=all&rec=iron-plate" });
   });
 
+  it("lands the old World views on the one World page", () => {
+    expect(redirectFor("world/nodes?near=me")).toEqual({ dash: "world" });
+    expect(redirectFor("world/pickups?view=collected")).toEqual({ dash: "world?show=pickups&mode=collected" });
+    expect(redirectFor("world")).toBeNull();
+    expect(redirectFor("world?show=conduits")).toBeNull();
+    expect(scrollKey("world?show=pickups&sel=p-1")).toBe(scrollKey("world?show=pickups"));
+  });
+
   it("keeps the scroll while picking on Items, not across views or pages", () => {
     expect(scrollKey("items?view=held&item=rotor")).toBe(scrollKey("items?view=held"));
     expect(scrollKey("items?view=all")).not.toBe(scrollKey("items?view=held"));

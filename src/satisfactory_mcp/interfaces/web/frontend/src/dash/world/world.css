@@ -1,0 +1,361 @@
+/* The World page: the player strip, the finder left, the live map right (on top on phones). */
+
+#dash-body:has(.wsplit) {
+  max-width: var(--page-w-wide);
+}
+
+.wpage {
+  --wmap-off: 120px;
+  --wmap-min-h: 420px;
+  --wmap-h-phone: 40vh;
+  --wmap-hull: 0.16;
+}
+
+.wstrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-3);
+  align-items: center;
+  margin: 0 0 var(--sp-3);
+  color: var(--ink-soft);
+}
+
+.wstrip .num {
+  color: var(--ink);
+  font-weight: var(--t-number-w);
+  font-variant-numeric: tabular-nums;
+}
+
+.wstrip .muted,
+.wstrip.muted {
+  color: var(--muted);
+}
+
+.wsplit {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  gap: var(--sp-4);
+  align-items: start;
+}
+
+.wfind {
+  min-width: 0;
+}
+
+.wctl {
+  margin-bottom: var(--sp-3);
+}
+
+.qrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-3);
+  align-items: center;
+}
+
+.qrow + .qrow {
+  margin-top: var(--sp-2);
+}
+
+.qpair {
+  display: inline-flex;
+  gap: var(--sp-2);
+  align-items: center;
+}
+
+.qpair > .k,
+.wfield {
+  color: var(--muted);
+  font-size: var(--t-meta-size);
+}
+
+.wfind .dash-h {
+  margin-top: var(--sp-3);
+}
+
+.wfind .entry[data-key] {
+  cursor: pointer;
+  scroll-margin-top: var(--sp-3);
+}
+
+.wfind .entry[data-key]:hover,
+.wfind .entry.hl {
+  background-image: linear-gradient(var(--hover), var(--hover));
+}
+
+.wfind .entry.hl {
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.wfind .entry.picked {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.wfind .entry.spoiler {
+  opacity: 0.55;
+}
+
+.wfind .measured em {
+  text-decoration: underline dotted var(--dim);
+  text-underline-offset: 2px;
+}
+
+.l-wnode .entry {
+  --cols: var(--ic-s) minmax(0, 1fr) 112px 72px 56px;
+}
+
+.l-wfield .entry {
+  --cols: 36px minmax(0, 1fr) 84px 76px 56px 56px;
+}
+
+.l-wsite .entry {
+  --cols: var(--ic-s) minmax(0, 1fr) 72px 96px 56px 56px;
+}
+
+.l-wrun .entry {
+  --cols: var(--ic-s) minmax(0, 1fr) var(--ic-s) 64px 56px;
+}
+
+.l-wnet .entry {
+  --cols: var(--ic-s) minmax(0, 1fr) 64px 72px 56px;
+}
+
+.l-wpick .entry {
+  --cols: var(--ic-s) minmax(0, 1fr) 112px 56px;
+}
+
+.wduo {
+  display: flex;
+}
+
+.wduo .ic,
+.wduo .mono {
+  width: var(--ic-s);
+  height: var(--ic-s);
+}
+
+.wduo > * + * {
+  margin-left: calc(-1 * var(--sp-1));
+}
+
+.l-wrun .chips .ic,
+.l-wrun .chips .mono {
+  width: var(--ic-s);
+  height: var(--ic-s);
+}
+
+.wrk {
+  display: inline-grid;
+  place-items: center;
+  width: var(--ic-s);
+  height: var(--ic-s);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  color: var(--muted);
+  font-size: var(--t-meta-size);
+  font-variant-numeric: tabular-nums;
+}
+
+.wkinds {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-2);
+}
+
+.wkind {
+  display: grid;
+  grid-template-columns: var(--ic-s) minmax(0, 1fr);
+  gap: var(--sp-1) var(--sp-2);
+  align-items: center;
+  padding: var(--sp-1) var(--sp-2);
+  color: var(--ink);
+  text-decoration: none;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+}
+
+.wkind:hover {
+  background-image: linear-gradient(var(--hover), var(--hover));
+}
+
+.wkind.on {
+  border-color: var(--accent);
+}
+
+.wkind .ic,
+.wkind .mono {
+  width: var(--ic-s);
+  height: var(--ic-s);
+}
+
+.wkind .num {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.wkind .muted {
+  color: var(--muted);
+  font-size: var(--t-meta-size);
+}
+
+.wkind .bar {
+  grid-column: 1 / -1;
+  height: var(--slot-bar);
+}
+
+.wmore {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: center;
+  margin-top: var(--sp-2);
+}
+
+.wmore .note {
+  margin: 0;
+}
+
+/* ---------- the map ---------- */
+.wmap {
+  position: sticky;
+  top: 0;
+  height: calc(100vh - var(--hdr-h) - var(--strip-h) - var(--jobstrip-h) - var(--wmap-off));
+  min-height: var(--wmap-min-h);
+  overflow: hidden;
+  background: var(--sea);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+}
+
+.wmap-slot,
+.wmap-live {
+  width: 100%;
+  height: 100%;
+}
+
+.wmap-live.leaflet-container {
+  background: var(--sea);
+  font: inherit;
+}
+
+.wmap-leg {
+  position: absolute;
+  top: var(--sp-2);
+  right: var(--sp-2);
+  z-index: 500;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-3);
+  max-width: calc(100% - 64px);
+  padding: var(--sp-1) var(--sp-2);
+  color: var(--muted);
+  font-size: var(--t-meta-size);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  pointer-events: none;
+}
+
+.wmap-leg:empty {
+  display: none;
+}
+
+.wpage .lg .lg-pl {
+  fill: var(--player-fill);
+  stroke: var(--ink-hi);
+  stroke-width: 1.5;
+}
+
+.wpage .lg .lg-f {
+  fill: var(--ink-soft);
+}
+
+.wpage .lg .lg-r {
+  fill: none;
+  stroke: var(--ink-soft);
+  stroke-width: 1.5;
+}
+
+.wpage .lg .lg-h {
+  fill: var(--ink-soft);
+  opacity: calc(2 * var(--wmap-hull));
+}
+
+.wpage .lg .lg-fac {
+  fill: none;
+  stroke: var(--ink-hi);
+  stroke-width: 1.5;
+}
+
+.wmap .wmap-label,
+.wmap .wmap-rank {
+  padding: 0 var(--sp-1);
+  color: var(--ink-hi);
+  font-size: var(--t-meta-size);
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+.wmap .wmap-label::before,
+.wmap .wmap-rank::before {
+  display: none;
+}
+
+.wmap .wmap-rank {
+  font-weight: var(--t-emph-w);
+}
+
+.wmap .wmap-tip {
+  color: var(--ink);
+  font-size: var(--t-meta-size);
+  background: var(--panel);
+  border-color: var(--line);
+}
+
+/* ---------- phones ---------- */
+@media (max-width: 600px) {
+  .wsplit {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+    align-items: stretch;
+  }
+
+  .wmap {
+    top: 0;
+    z-index: 5;
+    order: -1;
+    height: var(--wmap-h-phone);
+    min-height: 0;
+    margin: 0 calc(-1 * var(--sp-3));
+    border-width: 0 0 1px;
+    border-radius: 0;
+  }
+
+  .wkinds {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .wfind .entry {
+    --cols: auto minmax(0, 1fr) auto auto !important;
+  }
+
+  .wfind .entry > .metric {
+    grid-row: 1;
+    grid-column: 3;
+    text-align: right;
+  }
+
+  .wfind .entry > .facts:last-child {
+    grid-row: 1;
+    grid-column: 4;
+  }
+
+  .wfind .entry > .chips,
+  .wfind .entry > .facts:not(:last-child) {
+    grid-row: 2;
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+}

@@ -31,7 +31,7 @@ import { select } from "../app/selection";
 import { redirectFor, routeOf, scrollKey, TOP_TABS, type Page, type Route } from "../app/shell/router";
 import { drawTopBar } from "../app/shell/topbar";
 import { showSettings } from "../app/settings-dialog/dialog";
-import { renderWorld, worldTitle } from "./world/world";
+import { renderWorld, worldTitle } from "./world/page";
 import { WORDS } from "../kit/words";
 import { pointButton, setDashHooks } from "./actions";
 
@@ -129,7 +129,7 @@ function renderPage(body: HTMLElement, at: Route): void {
     else renderPower(body);
   } else if (page === "progress") renderProgress(body, at.subject, pointButton);
   else if (page === "items") renderItems(body, at.subject);
-  else if (page === "world") renderWorld(body);
+  else if (page === "world") renderWorld(body, at.subject);
   else if (page === "maps") renderMapsPage(body);
   else if (page === "kit") renderKitGallery(body);
 }

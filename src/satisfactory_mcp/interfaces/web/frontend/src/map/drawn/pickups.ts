@@ -40,6 +40,10 @@ const PICKUP_FALLBACK = declareColours("pickups", { "pickup fallback": "#7fd1b9"
   "pickup fallback"
 ];
 
+export function pickupColour(category: string): string {
+  return PICKUP_COLOUR[category] || PICKUP_FALLBACK;
+}
+
 /* The X over a collected pickup: dark on a light base, light on a dark one. */
 const COLLECTED_MARK_COLOURS = declareColours("pickups", {
   "pickup collected": "#2a3147",

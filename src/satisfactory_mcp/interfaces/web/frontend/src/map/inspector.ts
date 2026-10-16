@@ -9,11 +9,11 @@
 
 import { get } from "../api/client";
 import { code, dataButton, esc, FIND_AT_ATTR, FIND_ATTR, html, popup, traceButtons } from "../kit/dom";
-import { pickupPlace } from "../dash/world/world-finds";
+import { pickupPlace } from "../dash/world/finds";
+import { worldDash } from "../dash/world/address";
 import { coords, count, formatNumber, metres, perMin, regionLine, withDetail } from "../kit/format";
 import { L } from "./leaflet";
 import { gameXY, hashFor, map, MAP_SQUARE_M, NARROW } from "./map";
-import { withQuery } from "../app/nav";
 import { pinButtons } from "../chat/pins";
 import { settingOn } from "../app/settings";
 import { friendlyError } from "../kit/toast";
@@ -129,7 +129,7 @@ function actions(x: number, y: number): string {
     findButton("nodes", spot, "nodes near here", "ring the resource nodes near this point"),
     findButton("conduits", spot, "conduits here", "draw the belts and pipes near this point"),
     findButton("pickups", spot, "pickups near here", "ring the nearest pickups"),
-    '<a href="' + esc(hashFor(withQuery("world/nodes", { near: spot }))) + '">open in World</a>',
+    '<a href="' + esc(hashFor(worldDash({ near: spot }))) + '">open in World</a>',
   ].join(" ");
 }
 

@@ -174,3 +174,46 @@ a second click on its slot, × or Esc clears it. Picking does not move the scrol
   electronics with communications); nuclear for fuel rods, their wastes, what default
   recipes make from those and what goes into a rod; the rest is other. Raw, other and the
   catalogue groups carry a dotted underline: worked out, not sent by the save.
+
+## World
+
+`dash/world/` is the World page, one page where there were seven tabs:
+`#dash=world?show=nodes|conduits|pickups&res=<class>&near=<place>&group=…&sort=…&mode=…&kind=…&radius=…&sel=<key>`
+(`address.ts`; defaults are left out, so the bare address is the nodes nearest the player).
+
+- **Strip**: where the player stood at the save (position, height, region and grid, the nearest
+  building), one line and no card, from `/api/world/here` in the live wave (`here.ts`). A save
+  with no pawn says so, and "near me" then means nothing: nodes and pickups are read without a
+  place, conduits ask for a factory.
+- **Finder** (left, about 40%): the query card's first row picks what to show and, for nodes,
+  the resource; the second the place (me or a factory; any other place an old link carried shows
+  as its own segment), the grouping, the view's own controls and one sort select. Filters an old
+  address carried that have no control (purity, status, within, pure only, a network) show as
+  chips with ×. Rows have fixed columns (lead, name, chips, figure, distance); extractor, region
+  and grid sit in the row's tooltip. Lists show 30 rows; "show more" doubles that for the page
+  session.
+  - nodes: grouped free / tapped / locked, or by region with the region names on the map;
+    fields as hulls of their member nodes (the places come from the map's `/api/nodes`, the box
+    when a node is unknown); "best rank" (fields, one resource) lists `/api/world/sites`, whose
+    distance the page measures (dotted underline).
+  - conduits: runs (by length or distance) drawn as lines, or fluid networks as a ring at their
+    centre, within a radius, belts and/or pipes.
+  - pickups: collected of placed per kind as tiles (a tile filters to its kind), then remaining
+    (`mode=nearest` from the player, so the server measures) or collected (measured on the page).
+- **Map** (right, sticky, full height; 40vh on top on phones): a real Leaflet map, one instance
+  kept for the page's life and moved into each render (`world-map.ts`). `map/mini-map.ts` makes
+  it on the main map's terms: its CRS and frame from `map.ts`, the base picture the main map
+  shows as a plain copy (`baseCopy` in `tiles.ts`: baked light, and a failing tile there changes
+  nothing on the main map), and the biome cells (`regionCells` in `regions.ts`) when the picture
+  is plain. Node and pickup colours and sizes are the main map's (`markers.ts`, `pickups.ts`).
+  It draws only the rows listed, plus the player and the factory searched near, and refits only
+  when the results change; a legend of glyphs and single words and the zoom buttons are its only
+  chrome.
+- **Linking**: rows and marks share a key (`model.ts` `keyOf`). Hovering or focusing a row lights
+  its mark in `--ink-hi` and the reverse; a click on either picks it (`sel=` in the address;
+  again or Esc clears; the other marks fade), makes it the page's selection (what the chat
+  sees), and a mark click scrolls its row into view. Picking keeps the scroll (`scrollKey`).
+- **Links in**: the old `world/<view>?…` addresses (here, nodes, fields, rank, regions,
+  conduits, pickups) land on the matching query (`legacyWorldDash`); the map's finder card, the
+  inspector and the chat's world finds link through the same mapping (`fromLegacy`). The
+  regions table (area and direction per region) is gone; grouping nodes by region replaces it.

@@ -10,7 +10,6 @@ import { reveal } from "../labels";
 import { flyPadded, flyToPoint, map, latLngOf } from "../map";
 import { cardTitleBar, cardLine, cardToolbar, cardSubject, closeOtherCards, mapCard } from "../mapcard";
 import { pickupName } from "../drawn/pickups";
-import { withQuery } from "../../app/nav";
 import {
   fieldSelection,
   nodeSelection,
@@ -19,7 +18,8 @@ import {
   runSelection,
   siteSelection,
   worldUrl,
-} from "../../dash/world/world-finds";
+} from "../../dash/world/finds";
+import { fromLegacy } from "../../dash/world/address";
 import { makeRoom } from "../panel";
 import { showPoint } from "../map-highlight";
 import { POINT_ZOOM, clearRings, drawResults, flyToResults, ringPoint, showRings } from "./finder-rings";
@@ -300,16 +300,16 @@ function pointQuery(): { url: ApiUrl; dash: string } {
         resource: filter.resource,
         status: filter.free ? "free" : "",
       }),
-      dash: withQuery("world/nodes", { near: here, resource: filter.resource, status: filter.free ? "free" : "" }),
+      dash: fromLegacy("nodes", { near: here, resource: filter.resource, status: filter.free ? "free" : "" }),
     };
   }
   if (view.kind === "conduits") {
     const params = { near: here, radius_m: filter.radius, conduit_kind: filter.conduitKind === "all" ? "" : filter.conduitKind };
-    return { url: worldUrl("/api/world/conduits", params), dash: withQuery("world/conduits", params) };
+    return { url: worldUrl("/api/world/conduits", params), dash: fromLegacy("conduits", params) };
   }
   return {
     url: worldUrl("/api/collectibles", { mode: "nearest", near: here, group: filter.group, spoilers: spoilerFlag() }),
-    dash: withQuery("world/pickups", { view: "nearest", near: here, group: filter.group }),
+    dash: fromLegacy("pickups", { view: "nearest", near: here, group: filter.group }),
   };
 }
 

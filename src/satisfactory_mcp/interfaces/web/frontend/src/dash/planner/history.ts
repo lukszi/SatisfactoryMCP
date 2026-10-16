@@ -5,7 +5,8 @@ import { get } from "../../api/client";
 import { button, empty, error, link, loading, subTabs, table } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
 import { ageShort } from "../../kit/format";
-import { go, withQuery } from "../../app/nav";
+import { go } from "../../app/nav";
+import { fromLegacy } from "../world/address";
 import { describeArgs } from "./chat-card";
 import { actorWord, bench, changed, commitWords, inbox } from "./state";
 import { duplicatePlan, restoreRev, undoRevisionOf } from "./writes";
@@ -241,8 +242,7 @@ interface FindArgs {
 
 function findDash(row: ActivityRow): string {
   const args = (row.args || {}) as FindArgs;
-  const view = typeof args.view === "string" ? args.view : "";
-  return withQuery(view ? "world/" + view : "world", args.params || {});
+  return typeof args.view === "string" ? fromLegacy(args.view, args.params || {}) : "world";
 }
 
 function activityText(row: ActivityRow): string {
