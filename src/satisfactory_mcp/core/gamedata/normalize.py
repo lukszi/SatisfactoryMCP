@@ -292,6 +292,14 @@ def _split_enum(raw: JsonValue) -> tuple[str, ...]:
 # ---------------------------------------------------------------------- schematics
 
 
+_SHOP_CATEGORY = re.compile(r"SC_RSS_(\w+?)_C\b")
+
+
+def _shop_category(raw: JsonValue) -> str:
+    match = _SHOP_CATEGORY.search(raw if isinstance(raw, str) else "")
+    return match.group(1) if match else ""
+
+
 def _build_schematics(dump: DocsDump) -> dict[str, Schematic]:
     out: dict[str, Schematic] = {}
     for docs_class in dump.classes("FGSchematic"):
@@ -300,6 +308,7 @@ def _build_schematics(dump: DocsDump) -> dict[str, Schematic]:
             continue
         recipes: list[str] = []
         schematics: list[str] = []
+        given: list[str] = []
         slots = 0
         # mUnlocks arrives as real JSON: a list of dicts, each with a 'Class' key.
         for unlock in as_list(docs_class.get("mUnlocks") or []):
@@ -315,6 +324,10 @@ def _build_schematics(dump: DocsDump) -> dict[str, Schematic]:
                 schematics.extend(_classes_in(unlock.get("mSchematics")))
             elif unlock_class == "BP_UnlockInventorySlot_C":
                 slots += _as_int(unlock.get("mNumInventorySlotsToUnlock"))
+            elif unlock_class == "BP_UnlockGiveItem_C":
+                for entry in as_list(parse_struct(unlock.get("mItemsToGive"))):
+                    if isinstance(entry, dict) and (item := obj_class(entry.get("ItemClass"))):
+                        given.append(item)
 
         deps: list[str] = []
         for dependency in as_list(docs_class.get("mSchematicDependencies") or []):
@@ -345,6 +358,8 @@ def _build_schematics(dump: DocsDump) -> dict[str, Schematic]:
             dependencies=tuple(dict.fromkeys(deps)),
             events=str(docs_class.get("mRelevantEvents") or ""),
             grants_inventory_slots=slots,
+            shop_category=_shop_category(docs_class.get("mSubCategories")),
+            gives_items=tuple(dict.fromkeys(given)),
         )
     return out
 

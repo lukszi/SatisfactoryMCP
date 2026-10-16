@@ -1186,7 +1186,8 @@ export interface paths {
         };
         /**
          * Gamedata Items
-         * @description Items whose name contains ``q``, the ``search_items`` order. Needs no save.
+         * @description Items whose name contains ``q``, the ``search_items`` order. Answers without a save,
+         *     with ``locked`` null then.
          */
         get: operations["gamedata_items_api_gamedata_items_get"];
         put?: never;
@@ -4051,7 +4052,11 @@ export interface components {
             /** Per Min */
             per_min: number;
         };
-        /** ItemRow */
+        /**
+         * ItemRow
+         * @description ``category`` is one of ``categories.CATEGORIES``; ``locked`` is true when recipes make
+         *     the item and the save has none of them, null when no save could be read.
+         */
         ItemRow: {
             /** Cls */
             cls: string;
@@ -4063,6 +4068,10 @@ export interface components {
             energy_mj: number;
             /** Sink Points */
             sink_points: number;
+            /** Category */
+            category: string;
+            /** Locked */
+            locked: boolean | null;
         };
         /** ItemsResponse */
         ItemsResponse: {
@@ -4210,7 +4219,10 @@ export interface components {
                 [key: string]: components["schemas"]["BuildingShape"];
             };
         };
-        /** MakerRow */
+        /**
+         * MakerRow
+         * @description ``machine_icon`` is the machine's descriptor class, the key of its picture.
+         */
         MakerRow: {
             /** Cls */
             cls: string;
@@ -4220,6 +4232,8 @@ export interface components {
             alternate: boolean;
             /** Machine */
             machine: string | null;
+            /** Machine Icon */
+            machine_icon: string | null;
             /** Power Mw */
             power_mw: number;
             /** Ingredients */
@@ -6255,6 +6269,8 @@ export interface components {
             unlocked: boolean | null;
             /** Spoiler */
             spoiler: boolean;
+            /** Product */
+            product: string | null;
         };
         /**
          * RecipesResponse
@@ -10223,6 +10239,8 @@ export interface operations {
             query?: {
                 q?: string;
                 limit?: number;
+                save?: string | null;
+                world?: string | null;
             };
             header?: never;
             path?: never;

@@ -58,8 +58,7 @@ The address is still the page's fragment (`map.ts` `hashFor`); `app/shell/router
 land elsewhere. A bare first word is a shorthand (`#maps` is `#dash=maps`).
 
 - Top bar (`app/shell/topbar.ts`): Map · Overview · Factories · Power · Progress · Items · World ·
-  Planner; tabs that do not fit go into "more". Items opens the inventory page for now, with a
-  held / recipes switch to the old Recipes page. Phones get a bottom bar (Map, Overview,
+  Planner; tabs that do not fit go into "more". Phones get a bottom bar (Map, Overview,
   Factories, Planner, More).
 - Jump search (`app/shell/jump.ts`, `/` or Ctrl+K): factories, items and recipes from
   `/api/search`, plans and circuits from what the page holds.
@@ -134,3 +133,44 @@ from `/api/power/circuits` (circuit pages also read factory health for the facto
   progress reads when any are held) or per machine (state, clock, uptime; six per group, then
   "more"). Power is the draw rows of the supply block and the circuit links. Nodes, links,
   floors and sites are compact lists; floors and sites light theirs on the plan.
+
+## Items
+
+`dash/items/` is the Items page, one page for what is held and what exists:
+`#dash=items?view=held|all|containers&item=<slug>&box=<id>&rec=<recipe>&locked=1`
+(`address.ts`). `item` and `rec` take a name's slug or a class id. A pick lives in the address;
+a second click on its slot, × or Esc clears it. Picking does not move the scroll
+(`scrollKey` in the router keys scroll by view).
+
+- **Views** (`grid.ts`): square slots (`slotTile`), the held total compact under the icon.
+  **held** (default) groups parts, raw, fluids, boosts, other; **all** is the catalogue from
+  `/api/gamedata/items`, grouped by category; **containers** shows `/api/stock` places, the
+  region and a fill bar in each slot (crates have no fill), grouped storage / fluid buffers /
+  crates, by region, or one group by fill. Filter left of the sort select; sorting by count or
+  name merges the item groups and keeps fluids and boosts apart. Filter and sort stay for the
+  page session, not in the address.
+- **Spoilers:** a catalogue item is `locked` when recipes make it and the save has none of
+  them. Locked items are hidden while spoilers are off; "show locked" (needs spoilers on)
+  shows them faded. A hard drive on hand that offers a recipe keeps that recipe and its item
+  in view either way, with a "drive N" chip (`/api/progress/harddrives`).
+- **Sheet** (`sheet.ts`): beside the grid, sticky; nothing picked means no sheet. An item:
+  header (held, sink points, solid or fluid); **have** when any is held (piles as fixed rows;
+  Power Shard and Somersloop as free / craftable / in machines from the progress reads, slugs
+  add "makes shards"; the places holding it, biggest first, five then "+N more", ◎ flies to
+  one); **made by** from `/api/gamedata/alternates` (default first, a flow row per recipe:
+  inputs, the machine's icon and MW, outputs); **used by** from
+  `/api/gamedata/recipes?consumes=` (main product icon, recipe, machine, rate). A pill or row
+  picks that item. A container: region, distance, fill, contents. On phones the sheet is a
+  bottom sheet above the bottom bar and the grid takes four slots a row.
+- **Links in:** old addresses redirect (`inventory[/<item>]` to held, `recipes…`,
+  `recipes/item/<cls>`, `recipes/recipe/<cls>`, `item-<slug>`, `recipe-<slug>` to all). A
+  recipe without an item opens its main product with that row marked. `itemDash()` in
+  `stock.ts` links an item to held when any is held, else to all; the jump search uses it.
+- **Categories** are worked out on the server (`core/gamedata/categories.py`), since the
+  game data has none: fluids by form; boosts (the shard descriptor class and the slugs that
+  craft shards); raw by the resource flag; space elevator parts by class; equipment,
+  ammunition, consumables and packaged fluids are other; ingots by name; then the AWESOME
+  Shop's category of the item (minerals, oil products, standard parts, industrial parts,
+  electronics with communications); nuclear for fuel rods, their wastes, what default
+  recipes make from those and what goes into a rod; the rest is other. Raw, other and the
+  catalogue groups carry a dotted underline: worked out, not sent by the save.

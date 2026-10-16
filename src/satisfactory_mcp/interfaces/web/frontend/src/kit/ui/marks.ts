@@ -66,12 +66,15 @@ export interface Slot {
   on?: boolean;
   locked?: boolean;
   fill?: number;
+  /** A muted line in place of the value: a container's region. */
+  sub?: string;
 }
 
-/** A square slot: big icon, the held total under it, an optional fill bar. */
+/** A square slot: big icon, the held total (or a muted line) under it, an optional fill bar. */
 export function slotTile(slot: Slot): Safe {
   const value = slot.value ? html`<b>${slot.value}</b>${slot.unit ? html`<span class="u">${slot.unit}</span>` : ""}` : "";
-  const body = html`${icon(slot.icon, slot.name)}<span class="sv">${value}</span>${slot.fill === undefined ? "" : bar(slot.fill, "util")}`;
+  const line = slot.sub === undefined ? html`<span class="sv">${value}</span>` : html`<span class="rg">${slot.sub}</span>`;
+  const body = html`${icon(slot.icon, slot.name)}${line}${slot.fill === undefined ? "" : bar(slot.fill, "util")}`;
   const names = cls("slot", slot.on && "on", slot.locked && "locked");
-  return slot.href ? html`<a class="${names}" href="${slot.href}" title="${slot.name}">${body}</a>` : html`<span class="${names}" title="${slot.name}">${body}</span>`;
+  return slot.href ? html`<a class="${names}" href="${slot.href}" title="${slot.name}"${slot.on ? html` aria-current="true"` : ""}>${body}</a>` : html`<span class="${names}" title="${slot.name}">${body}</span>`;
 }

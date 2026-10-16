@@ -1,7 +1,9 @@
 /* The route table over the fragment's `dash=` value: which page, which top tab is lit, and
  * the old addresses that now land elsewhere. Pure, so it is tested without a page. */
 
-export type Page = "map" | "overview" | "factories" | "power" | "progress" | "inventory" | "recipes" | "world" | "planner" | "maps" | "kit";
+import { itemsAddress, legacyItemsDash } from "../../dash/items/address";
+
+export type Page = "map" | "overview" | "factories" | "power" | "progress" | "items" | "world" | "planner" | "maps" | "kit";
 
 export type TopTab = "map" | "overview" | "factories" | "power" | "progress" | "items" | "world" | "planner";
 
@@ -11,14 +13,14 @@ export interface TabLink {
   dash: string;
 }
 
-/** The top bar, in order; Items opens the inventory page until Items has its own. */
+/** The top bar, in order. */
 export const TOP_TABS: TabLink[] = [
   { id: "map", label: "Map", dash: "" },
   { id: "overview", label: "Overview", dash: "overview" },
   { id: "factories", label: "Factories", dash: "factories" },
   { id: "power", label: "Power", dash: "power" },
   { id: "progress", label: "Progress", dash: "progress" },
-  { id: "items", label: "Items", dash: "inventory" },
+  { id: "items", label: "Items", dash: "items" },
   { id: "world", label: "World", dash: "world" },
   { id: "planner", label: "Planner", dash: "planner" },
 ];
@@ -44,25 +46,26 @@ const TOP_OF: Record<Page, TopTab | ""> = {
   factories: "factories",
   power: "power",
   progress: "progress",
-  inventory: "items",
-  recipes: "items",
+  items: "items",
   world: "world",
   planner: "planner",
   maps: "map",
   kit: "",
 };
 
+/* The head ends at the first "/" or "?"; a "?" stays on the subject (`items?view=all`). */
 function split(dash: string): [string, string] {
-  const cut = dash.indexOf("/");
-  return cut < 0 ? [dash, ""] : [dash.slice(0, cut), dash.slice(cut + 1)];
+  const m = /[/?]/.exec(dash);
+  if (!m) return [dash, ""];
+  return [dash.slice(0, m.index), dash.slice(m[0] === "?" ? m.index : m.index + 1)];
 }
 
 /** null when the address is current; `dash: null` keeps the page under the dialog. */
 export function redirectFor(dash: string): Redirect | null {
   const [head, subject] = split(dash);
   if (head === "settings") return subject === "maps" ? { dash: "maps" } : { dash: null, settings: "" };
-  if (head === "items" && !subject) return { dash: "inventory" };
-  return null;
+  const items = legacyItemsDash(head, subject);
+  return items === null ? null : { dash: items };
 }
 
 export function routeOf(dash: string): Route {
@@ -70,6 +73,13 @@ export function routeOf(dash: string): Route {
   const [head, subject] = split(dash);
   const page = (head in TOP_OF && head !== "map" ? head : "overview") as Page;
   return { page: page, subject: page === head ? subject : "", top: TOP_OF[page] };
+}
+
+/** What a scroll position belongs to: moving within it keeps the scroll. On Items that is the
+ *  view, so picking an item or a container does not jump to the top. */
+export function scrollKey(dash: string): string {
+  const at = routeOf(dash);
+  return at.page + "/" + (at.page === "items" ? itemsAddress(at.subject).view : at.subject);
 }
 
 /** The settings dialog's section from the fragment: null = closed, "" = the last one shown. */

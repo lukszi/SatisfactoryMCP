@@ -299,10 +299,6 @@ body.job-on {
   margin: 0 auto;
 }
 
-.items-switch {
-  margin-bottom: var(--sp-3);
-}
-
 .bnav {
   display: none;
 }

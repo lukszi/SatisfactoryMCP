@@ -6,10 +6,6 @@ import { onAdvice } from "../chat/advice";
 import { empty } from "../kit/dashkit";
 import { el, make } from "../kit/dom";
 import { keepFocus } from "../kit/focus";
-import { html, mount } from "../kit/html";
-import { seg } from "../kit/ui/controls";
-import { renderInventory } from "./inventory";
-import { hashFor } from "../map/map";
 import { onVitals, vitals } from "../app/vitals";
 import { renderPlanner } from "./planner/planner";
 import { viewFocus } from "./planner/focus";
@@ -17,7 +13,7 @@ import { bench, onBench } from "./planner/state";
 import { planTitle } from "./planner/plan-index";
 import { onProgress } from "./progress/feeds";
 import { renderProgress } from "./progress/progress";
-import { renderRecipes } from "./recipes/recipes";
+import { itemsTitle, renderItems } from "./items/page";
 import { cancelRename, renamingIn } from "./factories/rename";
 import { state } from "../app/state";
 import { renderFactories } from "./factories/list";
@@ -32,16 +28,16 @@ import { renderKitGallery } from "./kit-gallery/gallery";
 import { onMapRegistry } from "../app/map-types";
 import { dashParts } from "../app/nav";
 import { select } from "../app/selection";
-import { redirectFor, routeOf, TOP_TABS, type Page, type Route } from "../app/shell/router";
+import { redirectFor, routeOf, scrollKey, TOP_TABS, type Page, type Route } from "../app/shell/router";
 import { drawTopBar } from "../app/shell/topbar";
 import { showSettings } from "../app/settings-dialog/dialog";
 import { renderWorld, worldTitle } from "./world/world";
 import { WORDS } from "../kit/words";
 import { pointButton, setDashHooks } from "./actions";
 
-const SAVELESS: Page[] = ["recipes", "maps", "kit"];
+const SAVELESS: Page[] = ["items", "maps", "kit"];
 
-const PAGE_TITLE: Partial<Record<Page, string>> = { inventory: "Items", recipes: "Items", maps: "map types", kit: "kit" };
+const PAGE_TITLE: Partial<Record<Page, string>> = { maps: "map types", kit: "kit" };
 
 /* A redraw skipped while a factory name was being edited. */
 let missed = false;
@@ -72,6 +68,7 @@ function knownFactory(name: string): boolean {
 function subjectName(at: Route): string {
   if (at.page === "factories") return factoryAddress(at.subject, knownFactory).name;
   if (at.page === "world") return worldTitle(at.subject);
+  if (at.page === "items") return itemsTitle(at.subject);
   if (at.page === "planner") {
     const key = dashParts("planner/" + at.subject).rest[0] || "";
     if (!key) return "";
@@ -121,20 +118,8 @@ function follow(at: Route): void {
   }
 }
 
-/* Items is the inventory and recipes pages until it has its own; this keeps both a click away. */
-function itemsSwitch(body: HTMLElement, page: Page): void {
-  const holder = make("div", "items-switch");
-  const items = [
-    { value: "inventory", label: "held", href: hashFor("inventory") },
-    { value: "recipes", label: "recipes", href: hashFor("recipes") },
-  ];
-  mount(holder, html`${seg("items", items, page, "items view")}`);
-  body.appendChild(holder);
-}
-
 function renderPage(body: HTMLElement, at: Route): void {
   const page = at.page;
-  if (page === "inventory" || page === "recipes") itemsSwitch(body, page);
   if (page === "overview") renderOverview(body);
   else if (page === "factories") {
     if (at.subject) renderFactory(body, at.subject);
@@ -143,9 +128,8 @@ function renderPage(body: HTMLElement, at: Route): void {
     if (at.subject) renderCircuit(body, at.subject);
     else renderPower(body);
   } else if (page === "progress") renderProgress(body, at.subject, pointButton);
-  else if (page === "inventory") renderInventory(body);
+  else if (page === "items") renderItems(body, at.subject);
   else if (page === "world") renderWorld(body);
-  else if (page === "recipes") renderRecipes(body, at.subject, render);
   else if (page === "maps") renderMapsPage(body);
   else if (page === "kit") renderKitGallery(body);
 }
@@ -212,9 +196,9 @@ export function applyDash(raw: string): void {
   const next = settle(raw);
   if (next === state.dash) return;
   cancelRename();
-  const before = address().page + "/" + address().subject;
+  const before = scrollKey(state.dash);
   state.dash = next;
-  if (address().page + "/" + address().subject !== before) el("dash").scrollTop = 0;
+  if (scrollKey(state.dash) !== before) el("dash").scrollTop = 0;
   show();
 }
 
