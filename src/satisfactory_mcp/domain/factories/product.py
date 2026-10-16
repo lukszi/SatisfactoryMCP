@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from collections import Counter
-
 from ...core.gamedata.model import GameData
 from .query import FactoryView
 
@@ -34,12 +32,12 @@ def main_product(view: FactoryView, game: GameData) -> str | None:
         if len(ranked) > 1 and ranked[0][:2] == ranked[1][:2]:
             return None
         return by_name[ranked[0][2]]
-    extracted: Counter[str] = Counter()
+    extracted: dict[str, float] = {}
     for row in view.machines:
         if not row.recipe_id:
             for name, rate in row.makes.items():
-                extracted[name] += rate
-    top = extracted.most_common(2)
+                extracted[name] = extracted.get(name, 0.0) + rate
+    top = sorted(extracted.items(), key=lambda kv: kv[1], reverse=True)[:2]
     if not top or top[0][0] not in by_name or (len(top) > 1 and top[0][1] == top[1][1]):
         return None
     return by_name[top[0][0]]
