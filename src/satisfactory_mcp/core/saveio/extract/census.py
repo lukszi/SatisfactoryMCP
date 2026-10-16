@@ -44,6 +44,7 @@ _PLACED_RECORD_KEYS: Final = (
     "attachments",
     "fittings",
     "facilities",
+    "hypertube_entrances",
     "storage",
     "crates",
 )

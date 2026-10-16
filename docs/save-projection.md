@@ -1151,6 +1151,13 @@ control point, `ArriveTangent`/`LeaveTangent` for the curve.
   `PipelineConnection0` is `points[0]` and `1` is `points[-1]`, measured against the
   couplings in `graph["material"]`; direction is inferred in `domain/world/flow.py`.
 
+**`hypertubes`** (schema 24) — `{classes, segments}`, row `[-1, classIndex, points,
+actorIndex]` plus `spans`: a hypertube piece carries `mSplineData` exactly as a pipe does, so it
+is read by the same code and laid out the same way, with `-1` where a pipe names its network. The
+frame is the tube actor's, translated and not rotated; all 60 pieces in the reference world carry
+an identity quaternion. The entrances (`Build_PipeHyperStart_C`) are placed records in
+`hypertube_entrances`; the supports are not filed.
+
 **The `spans` column** (schema 15) — one entry per SPAN, not per point: the leave tangent of
 the point behind and the arrive tangent of the point ahead, six integers, or `0` for a flat
 span. A route with no bend gets no column at all, so a straight run's row is byte-identical to
@@ -1199,6 +1206,21 @@ callers match a prefix. When the parser does not merge the three lists into
 `destroyed_actors`, the extractor reads each level's `collectables1`/`collectables2` and the
 two save-level lists itself; the two readings were verified equal set for set (§6.11).
 
+### 6.17 Map markers — what the player pinned on the in-game map
+
+`map_markers` (schema 24) is `FGMapManager.mMapMarkers`, one record per marker in the save's own
+order: `{name, pos, colour, icon_id, type, category, compass}`.
+
+- `pos` is the marker's `Location`, world centimetres rounded to millimetres. A marker whose
+  location will not read is dropped and counted into `warnings`.
+- `colour` is the save's `LinearColor` as `[r, g, b, a]`, still linear. The server converts it
+  to sRGB for the page; the projection keeps what the save wrote.
+- `icon_id` is the game's icon library id (`IconID`); `type` and `compass` are the
+  `MapMarkerType` and `CompassViewDistance` enum values without their prefix (`RT_MapMarker`,
+  `CVD_Near`). `category` is the player's category name, often empty.
+- The reference world holds six, all `RT_MapMarker`. Stamps and other representation types use
+  the same struct and arrive with their own `type`.
+
 ### Schema history
 
 `SCHEMA_VERSION` lives in `core/saveio/projection.py`, which keys the pickle cache on it; the
@@ -1219,6 +1241,7 @@ pickle then disagrees with the code rather than merely being thinner.
 | 21 | CORRECTS what the parser saw: large saves read to the end, every lightweight piece arrives, `_RepSizeNoCull` chains decode |
 | 22 | CORRECTS a false "possibly incomplete" note on saves whose older levels carry the previous build's changelist |
 | 23 | adds `fittings` (pipe junctions, pumps, valves) and `facilities` (the HUB, sink, MAM and other one-off buildings), so the map can draw them |
+| 24 | adds `hypertubes` (§6.16), `hypertube_entrances` and `map_markers` (§6.17), so the map can draw them |
 
 ---
 

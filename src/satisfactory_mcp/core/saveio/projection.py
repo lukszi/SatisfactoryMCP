@@ -28,7 +28,7 @@ from .schema import HeaderOnly, Projection, SaveHeader, SaveScan, UnsupportedSav
 
 #: The projection's shape, stamped by the extractor and part of the disk cache key, so a pickle
 #: from an older schema misses. Each bump is in ``docs/save-projection.md``, "Schema history".
-SCHEMA_VERSION = 23
+SCHEMA_VERSION = 24
 
 #: The in-process projection memo, and the single-flight around its misses. An autosave is a
 #: new cache key for a file every reader resolves to at once, so without the flight the map
