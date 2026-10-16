@@ -17,10 +17,13 @@ export interface PillItem {
   icon?: string | null;
   rate?: string | null;
   href?: string;
+  /** The name only in the title: icon and rate. */
+  noName?: boolean;
 }
 
 /** Icon, rate and name on a well; the name links when href is given. */
 export function pill(item: PillItem): Safe {
+  if (item.noName) return html`<span class="pill" title="${item.name}">${icon(item.icon, item.name)}${item.rate ? html`<b>${item.rate}</b>` : ""}</span>`;
   const name = item.href ? html`<a class="nm" href="${item.href}">${item.name}</a>` : html`<span class="nm">${item.name}</span>`;
   return html`<span class="pill">${icon(item.icon, item.name)}${item.rate ? html`<b>${item.rate}</b>` : ""}${name}</span>`;
 }
