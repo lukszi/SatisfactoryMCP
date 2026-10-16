@@ -1,5 +1,5 @@
 /* What the World finders' rows are called, where they ask, and what selecting one selects:
- * shared by the World tabs and the finder card on the map. */
+ * shared by the World page and the finder card on the map. */
 
 import { formatNumber, perMin, roundHalfEven } from "../../kit/format";
 import { knownNodes } from "../../map/drawn/markers";

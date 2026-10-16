@@ -84,7 +84,7 @@ import "./map/drawn/pipes";
 import "./map/drawn/placements";
 import "./map/drawn/plan-sitings";
 import "./map/drawn/power-wires";
-import "./dash/world/world-here";
+import "./dash/world/here";
 
 /* ------------------------------------------------------------------- wiring */
 

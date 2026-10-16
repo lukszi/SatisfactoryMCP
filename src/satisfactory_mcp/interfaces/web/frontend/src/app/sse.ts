@@ -15,7 +15,7 @@ import { fetchMapRegistry, onMapsEvent } from "./map-types";
 import { onSettingsEvent, refetchSharedSettings } from "./shared-settings";
 import { isSincePageOpened, state } from "./state";
 import { fail } from "../kit/toast";
-import { onFindActivity } from "../dash/world/world";
+import { onFindActivity } from "../dash/world/page";
 import { refreshWorlds } from "./world-picker";
 
 import type { SettingsResponse } from "../api/shapes";
