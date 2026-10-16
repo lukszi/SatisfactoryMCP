@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  BAND_VEIL,
+  BAND_STEP,
+  BAND_TIERS,
+  bandLightness,
   bandVeil,
   FADED_VEIL_SHARE,
   lowestFirst,
@@ -60,13 +62,31 @@ describe("notchLocal", () => {
 });
 
 describe("bandVeil", () => {
-  it("lightens a higher tier more", () => {
-    expect(bandVeil(2, false)).toBeGreaterThan(bandVeil(1, false));
+  /* What a stack of veils leaves of the fill, lowest first: 1 - prod(1 - opacity). */
+  function stacked(tiers: number[], faded: boolean): number {
+    let under = 0;
+    let left = 1;
+    tiers.forEach(function (tier) {
+      left *= 1 - bandVeil(tier, under, faded);
+      under = tier;
+    });
+    return 1 - left;
+  }
+
+  it("lightens each tier by one even step", () => {
+    [1, 2, 3, 4].forEach(function (tier) {
+      expect(stacked(Array.from({ length: tier }, (_, i) => i + 1), false)).toBeCloseTo(tier * BAND_STEP, 9);
+    });
+  });
+
+  it("reaches a tier's lightness when a tier under it was dropped", () => {
+    expect(stacked([2, 4], false)).toBeCloseTo(stacked([1, 2, 3, 4], false), 9);
+    expect(stacked([3], false)).toBeCloseTo(bandLightness(3, false), 9);
   });
 
   it("reads a tier past the table as the tallest, and fades with an idle building", () => {
-    expect(bandVeil(7, false)).toBe(BAND_VEIL[BAND_VEIL.length - 1]);
-    expect(bandVeil(1, true)).toBeCloseTo(BAND_VEIL[0]! * FADED_VEIL_SHARE, 9);
+    expect(bandLightness(7, false)).toBe(bandLightness(BAND_TIERS, false));
+    expect(stacked([1, 2], true)).toBeCloseTo(2 * BAND_STEP * FADED_VEIL_SHARE, 9);
   });
 });
 

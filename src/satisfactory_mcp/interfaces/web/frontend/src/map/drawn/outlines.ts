@@ -23,8 +23,8 @@ const NOTCH = declareColours("routes", {
   "notch rim": "#0e1116",
 });
 
-/* A neutral veil, never drawn on its own: laid over a building's fill at BAND_VEIL, so a higher
- * band reads lighter in whatever hue the layer gives it (docs/frontend_palette.md). */
+/* A neutral veil, never drawn on its own: laid over a building's fill in even steps (bandVeil), so
+ * a higher band reads lighter in whatever hue the layer gives it (docs/frontend_palette.md). */
 const BAND_LIGHT = declareColours("outlines", { "band veil": "#ffffff" })["band veil"];
 const BAND_EDGE_OPACITY = 0.45;
 
@@ -129,8 +129,10 @@ export function addBands(
 ): void {
   if (!shape || !shape.bands.length) return;
   const shown = pixelsPerMetre() >= BAND_MIN_PPM;
+  let under = 0;
   shape.bands.forEach(function (band) {
-    const veil = bandVeil(band.tier, faded);
+    const veil = bandVeil(band.tier, under, faded);
+    under = band.tier;
     const piece = L.polygon(ringsLatLngs(x, y, yaw, band.rings), {
       color: NOTCH["notch rim"],
       weight: 1,
