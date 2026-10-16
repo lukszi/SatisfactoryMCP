@@ -342,7 +342,10 @@ def test_shapes_come_once_per_class_and_cover_every_drawn_machine(client):
         for port in shape["ports"]:
             assert port["kind"] in ("belt", "pipe") and port["flow"] in ("in", "out", "any")
         for band in shape["bands"]:
-            assert band["tier"] in (1, 2) and band["z_m"] >= 2.0, cls
+            assert band["tier"] in (1, 2, 3, 4) and band["z_m"] >= 2.0, cls
+        tiers = [band["tier"] for band in shape["bands"]]
+        floors = [band["z_m"] for band in shape["bands"]]
+        assert tiers == sorted(set(tiers)) and floors == sorted(floors), cls
 
 
 def test_facilities_are_drawn_beside_the_machines_without_a_state(client, state):

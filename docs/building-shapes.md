@@ -13,7 +13,7 @@ This page says where those outlines and ports come from and how far to trust the
 container needs `ooz`) and writes `data/building_shapes.json`. It is a committed table like the
 node tables: derived measurements (a few dozen vertices per class and the connector positions),
 not meshes, and the server needs no game assets to serve it. It is written one line per class
-(56 KB for 62 classes), so a regeneration diffs by class rather than by number. The `_meta` block carries the
+(72 KB for 62 classes), so a regeneration diffs by class rather than by number. The `_meta` block carries the
 build it was cut from, and `provenance.PINNED_ARTIFACTS` lists it, so a game update reports it
 as stale alongside the other tables. Rerun the tool after an update:
 
