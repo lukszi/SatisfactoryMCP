@@ -23,6 +23,8 @@ type Body<K extends keyof Schema> = Schema[K] & ApiError;
 /* ----------------------------------------------------------------- /api/nodes */
 
 export type NodeRow = Schema["NodeRow"];
+/** A resource well's fracking core, sent beside the nodes; its satellites are node rows. */
+export type WellCoreRow = Schema["WellCoreRow"];
 export type NodesResponse = Body<"NodesResponse">;
 
 /* --------------------------------------------------------------- /api/inspect */
@@ -76,6 +78,9 @@ export type BeltsResponse = Body<"BeltsResponse">;
 export type PipeRow = Schema["PipeRow"];
 export type PipesResponse = Body<"PipesResponse">;
 
+export type HypertubeRow = Schema["HypertubeRow"];
+export type HypertubesResponse = Body<"HypertubesResponse">;
+
 /** The two closed vocabularies `/api/pipes` publishes, read off the row's own fields rather
  *  than restated. `PIPE_FLOW_BASIS` in map/drawn/pipes.ts is a `Record` keyed by the second, so a
  *  fifth basis in `domain/world/flow.py` is a missing key and a compile error here. */
@@ -112,6 +117,11 @@ export type PowerResponse = Body<"PowerResponse">;
 
 export type CrateRow = Schema["CrateRow"];
 export type CratesResponse = Body<"CratesResponse">;
+
+/* ------------------------------------------------------------- /api/map-markers */
+
+export type MapMarkerRow = Schema["MapMarkerRow"];
+export type MapMarkersResponse = Body<"MapMarkersResponse">;
 
 /* ------------------------------------------------------------- /api/factories */
 
