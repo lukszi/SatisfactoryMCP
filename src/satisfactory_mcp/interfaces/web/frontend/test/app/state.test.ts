@@ -33,6 +33,12 @@ describe("parseHash", async () => {
     expect(garbled).toEqual(["world", "save"]);
   });
 
+  it("reads a bare first word as a page and keeps the settings key apart", () => {
+    expect(parseHash("#maps")).toEqual({ dash: "maps" });
+    expect(parseHash("#kit&z=1")).toEqual({ dash: "kit", z: "1" });
+    expect(parseHash("#dash=world?show=x&settings=map")).toEqual({ dash: "world?show=x", settings: "map" });
+  });
+
   it("keeps a dashboard query's own parameters with the dashboard", () => {
     expect(parseHash("#dash=world/nodes?near=x&kind=coal&z=1")).toEqual({ dash: "world/nodes?near=x&kind=coal", z: "1" });
     expect(parseHash("#dash=power&kind=coal")).toEqual({ dash: "power", kind: "coal" });

@@ -72,6 +72,8 @@ export interface PageState {
   pickups: string[];
   /** The dashboard address, `tab` or `tab/subject`; "" while the map is the view. */
   dash: string;
+  /** The settings dialog's section while it is open ("" = the last one shown), else null. */
+  settings: string | null;
   noSaves: boolean;
   /** The save the page last read, sent back as `?as_of=` so every read sees the same save. */
   saveToken: string;
@@ -79,7 +81,7 @@ export interface PageState {
   saveMovedOn: boolean;
 }
 
-const FRAGMENT_KEYS = ["world", "save", "floor", "mode", "pickups", "dash", "show", "z", "c"];
+const FRAGMENT_KEYS = ["world", "save", "floor", "mode", "pickups", "dash", "settings", "show", "z", "c"];
 const OPEN_GRACE_MS = 2000;
 
 /* The selection lives in the URL fragment so a reload, a bookmark or a pasted link lands on the
@@ -108,6 +110,7 @@ export const state: PageState = {
   floor: null,
   pickups: parseList(BOOT.pickups),
   dash: dashFromFragment(BOOT),
+  settings: "settings" in BOOT ? BOOT.settings! : null,
   noSaves: false,
   saveToken: "",
   saveMovedOn: false,
@@ -121,8 +124,10 @@ export function parseHash(hash: string, garbled?: string[]): Record<string, stri
   hash
     .replace(/^#/, "")
     .split("&")
-    .forEach(function (piece) {
+    .forEach(function (piece, at) {
       const eq = piece.indexOf("=");
+      // A bare first word is a page shorthand: `#maps` is `#dash=maps`.
+      if (eq < 0 && at === 0 && /^[a-z][a-z-]*$/.test(piece)) out.dash = piece;
       if (eq <= 0) return;
       const key = piece.slice(0, eq);
       const raw = piece.slice(eq + 1);

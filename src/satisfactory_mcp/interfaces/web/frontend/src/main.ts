@@ -15,8 +15,10 @@ import "./dash/panel.css";
 import "./dash/planner/site.css";
 import "./dash/prodgraph/prod-graph.css";
 import "./chat/advice.css";
-import "./dash/maps/settings-maps.css";
 import "./map/live-light.css";
+import "./kit/styles/kit.css";
+import "./app/shell/shell.css";
+import "./app/settings-dialog/settings-dialog.css";
 
 import { listenForCopies } from "./kit/copy";
 import { el } from "./kit/dom";
@@ -36,7 +38,11 @@ import { listenForPins } from "./chat/pins";
 import { noteRegionChoice, updateRegionBlend } from "./map/regions";
 import { restyleNotchesForZoom } from "./map/drawn/outlines";
 import { restyleRoutesForZoom, ROUTE_LAYERS, sinkRoutes } from "./map/drawn/route-passes";
-import { wireSearch } from "./app/search";
+import { wireJump } from "./app/shell/jump";
+import { wireJobStrip } from "./app/shell/jobstrip";
+import { wireTopBar } from "./app/shell/topbar";
+import { wireIconFallback } from "./kit/ui/text";
+import { syncSettingsFromAddress } from "./app/settings-dialog/dialog";
 import { syncSharedSettings } from "./app/shared-settings";
 import { connectLiveEvents } from "./app/sse";
 import { BOOT, BOOT_GARBLED, garbledNote, state } from "./app/state";
@@ -158,7 +164,11 @@ document.addEventListener("keydown", escapeLeavesFloorMode);
 /* ...and the third: one delegated click for every selector on the page, which is why it is
  * here and not in whatever module last built a popup. */
 listenForCopies();
-wireSearch();
+wireIconFallback();
+wireTopBar();
+wireJump();
+wireJobStrip();
+syncSettingsFromAddress();
 listenForTraces();
 listenForFinds();
 listenForPins();

@@ -95,6 +95,8 @@ function apply(hash: string): void {
   // normalising write beats two.
   if (mode && mode !== state.mode) requestBaseMode(mode, false);
   applyPickupFragment(asked.pickups);
+  // Kept before the write below; settings-dialog/dialog.ts opens or closes to match.
+  state.settings = "settings" in asked ? asked.settings! : null;
   applyDash(dashFromFragment(asked));
   // Not while the floor half is still moving: `enterFloors` is a fetch and a flight, and it
   // writes the fragment itself when it lands. Applying a stale `z` and `c` over it would

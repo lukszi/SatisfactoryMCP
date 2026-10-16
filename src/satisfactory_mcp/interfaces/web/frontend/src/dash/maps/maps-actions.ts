@@ -1,9 +1,7 @@
-/* What the maps section sends: registry writes, job submissions, and the one inline confirm
+/* What the maps page sends: registry writes, job submissions, and the one inline confirm
  * open at a time. */
 
 import { send } from "../../api/client";
-import { button } from "../../kit/dashkit";
-import { make } from "../../kit/dom";
 import { adoptMapRegistry, fetchMapRegistry } from "../../app/map-types";
 import { fail, friendlyError } from "../../kit/toast";
 import { requestRender } from "../actions";
@@ -76,21 +74,6 @@ export function submit(preset: string, options: Record<string, unknown>, label: 
     });
 }
 
-export function inlineConfirm(parent: HTMLElement, question: string, yes: string, no: string, act: () => void): void {
-  const line = make("div", "maps-confirm");
-  line.setAttribute("role", "group");
-  line.appendChild(make("span", "", question));
-  line.appendChild(
-    button(yes, function () {
-      confirming = "";
-      act();
-    })
-  );
-  line.appendChild(
-    button(no, function () {
-      confirming = "";
-      redraw();
-    })
-  );
-  parent.appendChild(line);
+export function closeConfirm(): void {
+  confirming = "";
 }

@@ -1,0 +1,45 @@
+/* The kit gallery's own layout and its sample lists' column templates. */
+
+.kit-sec {
+  margin-bottom: var(--sp-5);
+}
+
+.kit-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  align-items: center;
+  margin-bottom: var(--sp-3);
+}
+
+.kit-bars {
+  display: grid;
+  gap: var(--sp-3);
+  max-width: 480px;
+  margin-bottom: var(--sp-3);
+}
+
+.kit-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, var(--item-sheet-w));
+  gap: var(--sp-5);
+  align-items: start;
+}
+
+.kit-split .list {
+  margin-top: var(--sp-3);
+}
+
+.l-kit .entry {
+  --cols: 24px minmax(0, 1fr) 96px 150px auto;
+}
+
+.l-kitcard .entry {
+  --cols: 32px minmax(0, 1fr) 84px auto;
+}
+
+@media (max-width: 600px) {
+  .kit-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

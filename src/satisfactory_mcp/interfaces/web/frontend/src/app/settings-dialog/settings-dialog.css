@@ -1,0 +1,293 @@
+/* The settings dialog: header with search, section list left, rows right with one fixed
+   control column; a full-screen sheet on phones. */
+
+.sdlg {
+  width: min(var(--dlg-w), calc(100vw - 2 * var(--sp-5)));
+  max-width: none;
+  height: min(var(--dlg-h), calc(100vh - 2 * var(--sp-5)));
+  max-height: none;
+  padding: 0;
+  overflow: hidden;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  box-shadow: var(--overlay-shadow);
+  color: var(--ink);
+}
+
+.sdlg[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.sdlg::backdrop {
+  background: var(--backdrop);
+}
+
+.sd-head {
+  display: flex;
+  gap: var(--sp-3);
+  align-items: center;
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--line);
+}
+
+.sd-head h2 {
+  margin: 0;
+  font-size: var(--t-title-size);
+  font-weight: var(--t-title-w);
+  line-height: var(--t-title-lh);
+}
+
+.sd-find {
+  position: relative;
+  flex: 0 1 var(--ctl-w);
+  min-width: 0;
+  margin-left: auto;
+}
+
+.sd-find input {
+  width: 100%;
+  padding-right: var(--sp-5);
+}
+
+.sd-find input:focus + .khint,
+.sd-find input:not(:placeholder-shown) + .khint {
+  display: none;
+}
+
+.sd-body {
+  display: grid;
+  flex: 1;
+  grid-template-columns: var(--dlg-nav-w) minmax(0, 1fr);
+  min-height: 0;
+}
+
+.sd-nav {
+  display: flex;
+  flex-direction: column;
+  padding: var(--sp-2) 0;
+  overflow-y: auto;
+  border-right: 1px solid var(--line);
+}
+
+.sd-nav button {
+  display: block;
+  width: 100%;
+  padding: var(--sp-1) var(--sp-3);
+  border: 0;
+  border-left: 2px solid transparent;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: var(--t-body-size);
+  line-height: var(--t-ctl-lh);
+  text-align: left;
+  cursor: pointer;
+}
+
+.sd-nav button:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+
+.sd-nav button[aria-current="true"] {
+  border-left-color: var(--accent);
+  color: var(--ink-hi);
+}
+
+.sd-nav button:focus-visible {
+  outline-offset: -2px;
+}
+
+.sd-nav .n {
+  color: var(--dim);
+  font-size: var(--t-meta-size);
+}
+
+.sd-sel {
+  display: none;
+}
+
+.sd-pane {
+  min-height: 0;
+  padding: var(--sp-3) var(--sp-4);
+  overflow-y: auto;
+}
+
+.sd-h {
+  margin: 0 0 var(--sp-1);
+  font-size: var(--t-section-size);
+  font-weight: var(--t-section-w);
+  line-height: var(--t-section-lh);
+}
+
+.sd-pane .dash-h {
+  margin: var(--sp-4) 0 0;
+}
+
+.sd-pane .dash-h:first-child {
+  margin-top: 0;
+}
+
+.sd-pane .empty {
+  padding: var(--sp-2) 0;
+}
+
+.srow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto var(--ctl-w);
+  gap: var(--sp-3);
+  align-items: center;
+  padding: var(--sp-2) 0;
+  border-top: 1px solid var(--line-soft);
+}
+
+.sd-h + .srow,
+.dash-h + .srow {
+  border-top: 0;
+}
+
+.srow .st {
+  min-width: 0;
+  cursor: pointer;
+}
+
+.srow .k,
+.srow .d {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.srow .kl {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: center;
+  min-width: 0;
+}
+
+.srow .k {
+  flex: 0 1 auto;
+  min-width: 0;
+  color: var(--ink);
+  font-size: var(--t-name-size);
+  font-weight: var(--t-name-w);
+}
+
+.srow .kl .chip {
+  flex: none;
+  line-height: calc(var(--t-chip-lh) - 2 * var(--sp-0));
+}
+
+.srow .d {
+  color: var(--muted);
+  font-size: var(--t-meta-size);
+}
+
+.srow .sx {
+  display: flex;
+  gap: var(--sp-1);
+  align-items: center;
+  justify-content: flex-end;
+  white-space: nowrap;
+}
+
+.srow .sc {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.srow .sc select,
+.srow .sc input[type="number"] {
+  width: 100%;
+}
+
+.srow input[aria-invalid="true"] {
+  border-color: var(--bad);
+}
+
+.sd-more {
+  margin: var(--sp-3) 0 0;
+}
+
+.sd-more a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.sd-foot {
+  display: flex;
+  gap: var(--sp-3);
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--sp-2) var(--sp-3);
+  border-top: 1px solid var(--line);
+}
+
+.sd-foot .note {
+  min-width: 0;
+  margin: 0;
+}
+
+@media (max-width: 600px) {
+  .sdlg {
+    width: 100vw;
+    height: 100vh;
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .sd-body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .sd-nav,
+  .sd-head .khint {
+    display: none;
+  }
+
+  .sd-sel {
+    display: block;
+    padding: var(--sp-2) var(--sp-3);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .sd-sel select {
+    width: 100%;
+  }
+
+  .sd-pane {
+    padding: var(--sp-2) var(--sp-3);
+  }
+
+  .sd-find {
+    flex: 1;
+  }
+
+  .srow {
+    grid-template-columns: minmax(0, 1fr) var(--ctl-w);
+    row-gap: var(--sp-1);
+  }
+
+  .srow .st {
+    grid-column: 1 / -1;
+  }
+
+  .srow .d {
+    white-space: normal;
+  }
+
+  .srow .sx {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    white-space: normal;
+  }
+
+  .sd-foot {
+    flex-wrap: wrap;
+  }
+}

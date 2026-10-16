@@ -261,6 +261,8 @@ export function hashFor(dash: string): string {
   // API's own snake_case, so joining them needs no escaping.
   if (state.pickups.length) parts.push("pickups=" + state.pickups.join(","));
   if (dash) parts.push("dash=" + encodeURIComponent(dash).replace(/%2F/g, "/"));
+  // The dialog stays open over its own page only; a link to another page closes it.
+  if (state.settings !== null && dash === state.dash) parts.push("settings=" + encodeURIComponent(state.settings));
   const centre = gameXY(map.getCenter());
   parts.push("z=" + map.getZoom());
   parts.push("c=" + Math.round(centre[0] * 10) / 10 + "," + Math.round(centre[1] * 10) / 10);

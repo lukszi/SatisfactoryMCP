@@ -39,12 +39,6 @@ function drawHeader(summary: SummaryResponse): void {
   span.title = parts.join(" · ") + "\n" + summary.age_note + "\npower: " + power.join("; ");
 }
 
-function wireSearchToggle(): void {
-  el("search-open").onclick = function () {
-    el<HTMLInputElement>("search-q").focus();
-  };
-}
-
 /* A failure leaves a statement, not a blank that reads as "everything is fine, there is just
  * nothing here". Tooltip included: the previous world's power figures hovering over the words
  * "could not be read" is worse than the blank, because it is an answer. */
@@ -68,8 +62,6 @@ registerFetch<SummaryResponse>({
     el("summary").title = UNREADABLE;
   },
 });
-
-wireSearchToggle();
 
 onBiomass(function () {
   loadOne("/api/summary");
