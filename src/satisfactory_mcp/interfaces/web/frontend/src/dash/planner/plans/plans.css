@@ -1,0 +1,224 @@
+/* The Planner page: plan cards (two across) and the activity timeline (3 : 2, sticky); under
+ * 1100 px and on phones one column, one card per row, the timeline below. */
+
+#dash-body:has(.psplit) {
+  max-width: var(--page-w-wide);
+}
+
+.plans {
+  /* the timeline's dot, time and who columns, and its rail */
+  --tl-dot: 8px;
+  --tl-time-w: 40px;
+  --tl-who-w: 64px;
+  --tl-ln: 1px;
+  --pcard-ic: 32px;
+}
+
+.pchat:empty {
+  display: none;
+}
+
+.psplit {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: var(--sp-5);
+  align-items: start;
+}
+
+.pcards,
+.ptl {
+  min-width: 0;
+}
+
+.pextra > * {
+  margin-top: var(--sp-4);
+}
+
+/* ---------- plan cards ---------- */
+.list.grid.l-plans {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.l-plans .entry {
+  --cols: var(--pcard-ic) minmax(0, 1fr) auto;
+}
+
+.l-plans .entry > .ic,
+.l-plans .entry > .noic {
+  width: var(--pcard-ic);
+  height: var(--pcard-ic);
+}
+
+.l-plans .acts {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: center;
+}
+
+.pcard .pv {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.pcard > .pills {
+  min-height: calc(var(--ic-s) + 2 * var(--sp-0));
+}
+
+.prename {
+  width: 100%;
+}
+
+.pbuilt {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--sp-3);
+  align-items: center;
+  min-height: var(--lh-control);
+  color: var(--muted);
+  font-size: var(--t-meta-size);
+}
+
+.pbuilt > a,
+.pbuilt > span {
+  grid-column: 1 / -1;
+}
+
+.pb-fig {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.pb-fig b {
+  color: var(--ink);
+  font-size: var(--t-figure-size);
+  font-weight: var(--t-figure-w);
+  line-height: var(--t-figure-lh);
+}
+
+.pnew {
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px dashed var(--line);
+  border-radius: var(--r-card);
+}
+
+.pnew .name {
+  display: block;
+  margin-bottom: var(--sp-1);
+}
+
+.pnew .frow {
+  grid-template-columns: var(--unit-w) minmax(0, 1fr);
+}
+
+.pnew input[type="text"] {
+  width: 100%;
+}
+
+/* ---------- activity timeline ---------- */
+.ptl {
+  position: sticky;
+  top: 0;
+  max-height: calc(100vh - var(--hdr-h) - var(--jobstrip-h) - 2 * var(--sp-3));
+  overflow-y: auto;
+}
+
+.tl-day {
+  margin: var(--sp-3) 0 var(--sp-1);
+  color: var(--muted);
+  font-size: var(--t-group-size);
+  font-weight: var(--t-group-w);
+  letter-spacing: var(--t-group-track);
+  text-transform: var(--t-group-case);
+}
+
+.tl {
+  position: relative;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tl::before {
+  content: "";
+  position: absolute;
+  top: var(--sp-3);
+  bottom: var(--sp-3);
+  left: calc(var(--tl-dot) / 2 - var(--tl-ln) / 2);
+  width: var(--tl-ln);
+  background: var(--line);
+}
+
+.tl-ev {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--tl-dot) var(--tl-time-w) var(--tl-who-w) minmax(0, 1fr) auto;
+  gap: var(--sp-2);
+  align-items: center;
+  min-height: calc(var(--sp-5) + var(--sp-1));
+}
+
+.tl-dot {
+  width: var(--tl-dot);
+  height: var(--tl-dot);
+  border: 1px solid var(--ink-soft);
+  border-radius: var(--r-round);
+  background: var(--bg);
+}
+
+.tl-ev.you .tl-dot {
+  background: var(--ink-soft);
+}
+
+.tl-ev time {
+  color: var(--muted);
+  font-size: var(--t-meta-size);
+  font-variant-numeric: tabular-nums;
+}
+
+.tl-ev .chip {
+  justify-self: start;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tl-ev .line1 {
+  color: var(--ink);
+}
+
+.tl-ev .ictx {
+  margin-left: var(--sp-2);
+}
+
+.tl-ev a.ictx {
+  color: var(--accent);
+}
+
+@media (max-width: 1100px) {
+  .psplit {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ptl {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+}
+
+@media (max-width: 600px) {
+  .psplit {
+    gap: var(--sp-4);
+  }
+
+  .list.grid.l-plans {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

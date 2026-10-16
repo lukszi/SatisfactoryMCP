@@ -516,10 +516,11 @@ export function restoreRev(rev: number, done?: () => void): void {
 
 /* ------------------------------------------------- writes to other plans */
 
-export function duplicatePlan(rev?: number): Promise<string> {
+/** Copies the open plan (or `key`) at `rev` (or its head) to a new plan; resolves to its key. */
+export function duplicatePlan(rev?: number, key?: string): Promise<string> {
   const body: Record<string, unknown> = {};
   if (rev) body.rev = rev;
-  return postWithConflict<PushedResponse, Refusal & ApiError>("/api/plans/{key}/duplicate", body, bench.key).then(function (answer) {
+  return postWithConflict<PushedResponse, Refusal & ApiError>("/api/plans/{key}/duplicate", body, key || bench.key).then(function (answer) {
     if (answer.conflict) throw new Error(answer.body.error || "the copy could not be named");
     return answer.body.key;
   });
@@ -534,6 +535,15 @@ export function undoRevisionOf(key: string, rev: number): Promise<string> {
       const why = conflictTexts(answer.body);
       throw new Error("v" + rev + " cannot be undone: it was changed again since" + (why ? " (" + why + ")" : ""));
     });
+  });
+}
+
+/** One version of any plan from the list, against the head the list read: rename, forget. */
+export function pushOpsTo(key: string, baseRev: number, ops: Op[]): Promise<void> {
+  return postWithConflict<PushedResponse, Refusal & ApiError>("/api/plans/{key}/ops", { base_rev: baseRev, sav: "", ops: ops }, key).then(function (answer) {
+    if (!answer.conflict) return;
+    if (answer.body.name_taken) throw new Error(answer.body.error || "that name is taken");
+    throw new Error(answer.body.outdated ? "the plan changed since the list was read; try again" : answer.body.error || "the server refused this change");
   });
 }
 

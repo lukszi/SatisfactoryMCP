@@ -15,7 +15,7 @@ import { startLasso } from "../../map/tools/lasso";
 import { startTrace } from "../../map/tools/trace";
 import { leaveDashThen, requestRender } from "../actions";
 import { factoryAddress, factoryDash } from "./address";
-import { chooseIcon, chosenIcon, moveIcon } from "./icon-choice";
+import { factoryIcons, type IconStore } from "./icon-choice";
 import { editName } from "./rename";
 
 import type { ItemsResponse, PlanFromFactoryResponse } from "../../api/shapes";
@@ -38,7 +38,7 @@ function rename(name: string, button: HTMLElement): void {
   if (!health || !host) return;
   editName(host, name, health.labels_version, function (reply) {
     if (reply) {
-      moveIcon(reply.was, reply.name);
+      factoryIcons.move(reply.was, reply.name);
       const at = factoryAddress(state.dash.slice("factories/".length));
       if (state.dash.indexOf("factories/") === 0 && at.name === name) replaceDash(factoryDash(reply.name, at.aspect, at.floor));
     }
@@ -80,7 +80,7 @@ export function wireFactoryButtons(root: HTMLElement): void {
 
 /* ------------------------------------------------------------------ icon picker */
 
-let picker: { dialog: HTMLDialogElement; box: Modal; name: string; timer: number } | null = null;
+let picker: { dialog: HTMLDialogElement; box: Modal; name: string; store: IconStore; timer: number } | null = null;
 
 function pickerDialog(): NonNullable<typeof picker> {
   if (picker) return picker;
@@ -91,7 +91,7 @@ function pickerDialog(): NonNullable<typeof picker> {
   const box = modal(dialog, function () {
     box.close();
   });
-  picker = { dialog, box, name: "", timer: 0 };
+  picker = { dialog, box, name: "", store: factoryIcons, timer: 0 };
   const p = picker;
   dialog.addEventListener("input", function (event) {
     if ((event.target as HTMLElement).id !== "icq") return;
@@ -106,7 +106,7 @@ function pickerDialog(): NonNullable<typeof picker> {
     const hit = (event.target as Element).closest<HTMLElement>("[data-icon]");
     if (!hit) return;
     const icon = hit.dataset.icon!;
-    chooseIcon(p.name, icon === "*default" ? null : icon === "*none" ? "" : icon);
+    p.store.choose(p.name, icon === "*default" ? null : icon === "*none" ? "" : icon);
     box.close();
     requestRender();
   });
@@ -138,10 +138,12 @@ function fillGrid(query: string): void {
     });
 }
 
-export function openIconPicker(name: string, opener: HTMLElement): void {
+/** Picks an icon for `name` in `store` (factories by default); the page redraws after. */
+export function openIconPicker(name: string, opener: HTMLElement, store?: IconStore): void {
   const p = pickerDialog();
   p.name = name;
-  const chosen = chosenIcon(name);
+  p.store = store || factoryIcons;
+  const chosen = p.store.chosen(name);
   mount(
     p.dialog,
     html`<div class="ichead"><b>icon for “${name}”</b><input type="search" id="icq" placeholder="search items" aria-label="search items"><button type="button" class="btn icon" data-close="1" aria-label="close">×</button></div>

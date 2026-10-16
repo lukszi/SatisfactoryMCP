@@ -15,8 +15,8 @@ import { dropFeeders, forgetSolves, hideAlternates, loadAlternates, loadTrack, o
 import { actorWord, bench, changed, inbox, loadItems, onBench, pendingFocus, resetBench } from "./state";
 import { followHead, openPlan, redoLast, resyncHead, undoLast } from "./writes";
 import { scheduleFocus, wireFocusReports } from "./focus";
-import { loadActivity } from "./history";
-import { renderList } from "./list";
+import { renderPlansPage } from "./plans/page";
+import { loadActivity } from "./plans/timeline";
 import { loadList, planTitle } from "./plan-index";
 import { onPins } from "../../chat/pins";
 import { clearPick } from "./result";
@@ -188,7 +188,7 @@ function draw(): void {
     root.textContent = "";
     renderAskBar(root);
     if (mountedKey) renderBench(root, selectInPlan, closeAlternates);
-    else renderList(root);
+    else renderPlansPage(root);
   });
   settleAskFocus(root);
   revealTrackTargets();

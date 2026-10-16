@@ -217,3 +217,31 @@ a second click on its slot, × or Esc clears it. Picking does not move the scrol
   conduits, pickups) land on the matching query (`legacyWorldDash`); the map's finder card, the
   inspector and the chat's world finds link through the same mapping (`fromLegacy`). The
   regions table (area and direction per region) is gone; grouping nodes by region replaces it.
+
+## Planner
+
+`dash/planner/plans/` is the Planner page (`#dash=planner`); a plan's own pages
+(`#dash=planner/<key>[/…]`) are still the old workbench in `dash/planner/` until their design is
+settled. `planner.ts` mounts either, and holds a redraw while a field there has an unsaved value.
+
+- **Cards** (`cards.ts`, `model.ts`), two across, "+ new plan" first: an item (from the game
+  data's names) and a rate make a plan named "<item> <rate>/min" (least raw, then power) and
+  open it. Each card: the plan's icon, name, goal chip, version, the factory it is tied to (only
+  a named factory links), export pills (icon and rate, the name in the tooltip; a power plan
+  with no item exports shows "MW"), and the built line from `/api/plan/built` for that version:
+  "x / y built" with a bar, or percent of the planned rate (a click switches, as the "progress"
+  setting), else "no site", "which factory?" (to Track) or why it does not solve. At most one
+  status chip: the first of `status` (all of them in the tooltip), else "done", uncoloured.
+  Sort: last change, name, built (unplaced last).
+- **Icon**: the first export's item, unless "change icon" in ⋯ chose one; the choice is kept in
+  this browser only, per world and plan key (`iconStore` in `factories/icon-choice.ts`, the same
+  picker as factories). The other ⋯ actions: rename in place, duplicate (opens the copy), pin,
+  forget. Renames and forgets go against the version the list read; if the plan moved on
+  meanwhile the write is refused and the list says to try again.
+- **Activity** (`timeline.ts`): `/api/activity` (last 50), newest first, grouped by day in the
+  browser's zone, on one rail: a "you" dot filled, chat hollow. One line per event: time, who,
+  what, the plan; repeated finds and views fold into one line. Undo on plan versions after v1
+  (a new version, from the plan's head); open on chat's solves (the solve card above the
+  cards) and finds (the World query). A filter shows all, you or chat. Sticky beside the cards;
+  under 1100 px and on phones it goes below them, cards one per row.
+- Chat's pins and asks cards sit under the plan cards until they are ported.
