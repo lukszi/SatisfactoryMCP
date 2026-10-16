@@ -1,0 +1,156 @@
+/* Every token of the page, dark only. Rules use these by name, never a raw value; text uses
+   the role tokens (--t-<role>-*), never --fs-* directly. docs/frontend_kit.md lists the roles. */
+
+:root {
+  color-scheme: dark;
+
+  /* surfaces */
+  --bg: #16181c;
+  --bg-deep: #12161a;
+  --panel: #1f2228;
+  --line: #333842;
+  --line-soft: color-mix(in srgb, var(--line) 60%, transparent);
+  --surface: var(--bg);
+  /* the map's background where the biome raster has no data; not water */
+  --sea: #10202c;
+
+  /* ink */
+  --ink: #e8e6e1;
+  --ink-hi: #fff;
+  --ink-soft: #b8bec6;
+  --ink-cool: #cfd8e0;
+  --muted: #9aa0a8;
+  --dim: #7b828c;
+  --off: #555;
+
+  /* accent and state */
+  --accent: #6ea8d8;
+  --accent-hi: #9ecbf0;
+  --select: #ff4fd8;
+  --ok: #5cb85c;
+  --bad: #f08c89;
+  --blocked: #ffd000;
+  --blocked-ink: #ffd000;
+  --mid: #9aa0a8;
+  --flash: #f0ad4e;
+  --remove: #f0ad4e;
+  --hover: rgba(255, 255, 255, 0.04);
+
+  /* plan graph lines by item group: lines only (docs/frontend_palette.md) */
+  --grp-oil: #a585e8;
+  --grp-water: #4aa3eb;
+  --grp-gas: #3fc2ad;
+  --grp-ore: #c9744a;
+  --grp-metal: #c3cad3;
+  --grp-component: #d6ae4c;
+  --grp-nuclear: #8fd14a;
+  --grp-power: #ffa257;
+  --grp-other: #7b818a;
+
+  --floor-up: #eef4f8;
+  --floor-down: #93a5b4;
+  --count-ink: #f2f4f6;
+  --thumb-terrain: #24302c;
+  --thumb-art: #3e4c4a;
+  --thumb-light: #a6ad9c;
+
+  /* sizes and type roles: four sizes, 11 / 12 / 14 / 18 */
+  --fs-s: 11px;
+  --fs-m: 12px;
+  --fs-l: 14px;
+  --fs-h1: 18px;
+  --fs-v: 20px;
+  --w-regular: 400;
+  --w-bold: 600;
+  --track-caps: 0.06em;
+  --lh-body: 1.45;
+  --lh-control: 20px;
+  --lh-chip: 16px;
+  --t-title-size: var(--fs-h1);
+  --t-title-w: var(--w-bold);
+  --t-title-lh: var(--lh-body);
+  --t-section-size: var(--fs-l);
+  --t-section-w: var(--w-bold);
+  --t-section-lh: var(--lh-body);
+  --t-group-size: var(--fs-s);
+  --t-group-w: var(--w-bold);
+  --t-group-case: uppercase;
+  --t-group-track: var(--track-caps);
+  --t-name-size: var(--fs-m);
+  --t-name-w: var(--w-bold);
+  --t-number-size: var(--fs-m);
+  --t-number-w: var(--w-bold);
+  --t-body-size: var(--fs-m);
+  --t-body-w: var(--w-regular);
+  --t-body-lh: var(--lh-body);
+  --t-meta-size: var(--fs-s);
+  --t-meta-w: var(--w-regular);
+  --t-figure-size: var(--fs-h1);
+  --t-figure-w: var(--w-bold);
+  --t-figure-lh: var(--lh-control);
+  --t-glyph-size: var(--fs-l);
+  --t-emph-w: var(--w-bold);
+  --t-ctl-lh: var(--lh-control);
+  --t-chip-lh: var(--lh-chip);
+
+  /* space, radius, edges */
+  --sp-0: 2px;
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --r: 3px;
+  --r-chip: 8px;
+  --r-card: var(--r);
+  --r-round: 50%;
+  --edge: 3px;
+  --ic-s: 20px;
+
+  /* motion, overlays, loading */
+  --dur: 120ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --overlay-shadow: 0 4px 12px rgb(0 0 0 / 0.35);
+  --backdrop: rgb(0 0 0 / 0.55);
+  --spin-size: 12px;
+  --spin-stroke: 1.5px;
+  --spin-turn: 800ms;
+  --spin-pulse: 1600ms;
+  --sweep: 1200ms;
+  --job-h: 2px;
+
+  /* shell: top bar, the strips under it, the phone bottom bar */
+  --hdr-h: 40px;
+  --strip-h: 26px;
+  --jobstrip-h: 0px;
+  --bnav-h: 48px;
+  --page-w: 1280px;
+  --content-max: var(--page-w);
+
+  /* dialog and forms */
+  --dlg-w: 880px;
+  --dlg-h: 640px;
+  --dlg-nav-w: 168px;
+  --ctl-w: 200px;
+  --form-label-w: 112px;
+  --form-ctl-max: 480px;
+  --num-w: 96px;
+  --unit-w: 40px;
+  --title-ic: 32px;
+
+  /* slots and the side panel */
+  --slot-w: 80px;
+  --slot-ic: 40px;
+  --slot-bar: 4px;
+  --slot-locked: 0.45;
+  --item-sheet-w: 480px;
+  --sheet-h: 60vh;
+
+  --z-controls: 1000;
+  --z-popup: 1050;
+  --z-overlay: 1100;
+  --z-dash: 1150;
+  --z-chrome: 1180;
+  --z-dropdown: 1200;
+  --z-toast: 1300;
+}

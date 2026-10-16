@@ -3,82 +3,10 @@
    selectors win -- see the note above `.leaflet-control-layers .layer-folded` in
    map/layer-control.css.
 
-   What the ground looks like is not decided here: the base map is a MODE and tiles.ts owns
-   which pictures exist and how one is picked. One consequence lands in this file -- `--sea`
-   below is the background showing through the cells the biome raster calls void, so it is
-   visible in plain mode and covered in every other. It is a colour for the absence of data,
-   not for water.
+   Everything else here is chrome: the toast and the legend index.html spells out. The
+   tokens live in kit/styles/tokens.css. */
 
-   Everything else here is chrome: the tokens, the header bar, the toast, and the legend
-   index.html spells out. */
-
-:root {
-  color-scheme: dark;
-
-  --bg: #16181c;
-  --bg-deep: #12161a;
-  --panel: #1f2228;
-  --line: #333842;
-  --sea: #10202c;
-
-  --ink: #e8e6e1;
-  --ink-hi: #fff;
-  --ink-soft: #b8bec6;
-  --ink-cool: #cfd8e0;
-  --muted: #9aa0a8;
-  --dim: #7b828c;
-  --off: #555;
-
-  --accent: #6ea8d8;
-  --accent-hi: #9ecbf0;
-  --select: #ff4fd8;
-
-  --ok: #5cb85c;
-  --bad: #f08c89;
-  --blocked: #ffd000;
-  --mid: #9aa0a8;
-  --flash: #f0ad4e;
-  --remove: #f0ad4e;
-
-  /* The plan graph's lines by item group: the one exception to the closed palette, lines only
-     (docs/frontend_palette.md, "Plan graph lines"). */
-  --grp-oil: #a585e8;
-  --grp-water: #4aa3eb;
-  --grp-gas: #3fc2ad;
-  --grp-ore: #c9744a;
-  --grp-metal: #c3cad3;
-  --grp-component: #d6ae4c;
-  --grp-nuclear: #8fd14a;
-  --grp-power: #ffa257;
-  --grp-other: #7b818a;
-
-  --floor-up: #eef4f8;
-  --floor-down: #93a5b4;
-  --count-ink: #f2f4f6;
-
-  --fs-s: 11px;
-  --fs-m: 12px;
-  --fs-h1: 18px;
-  --fs-v: 20px;
-
-  --sp-1: 4px;
-  --sp-2: 8px;
-  --sp-3: 12px;
-
-  --r: 3px;
-  --r-chip: 8px;
-
-  --z-controls: 1000;
-  --z-popup: 1050;
-  --z-overlay: 1100;
-  --z-dash: 1150;
-  --z-dropdown: 1200;
-  --z-toast: 1300;
-
-  --content-max: 1280px;
-
-  --surface: var(--bg);
-}
+@import "../kit/styles/tokens.css";
 
 * {
   box-sizing: border-box;
@@ -111,32 +39,11 @@ summary:focus-visible,
   outline-offset: 1px;
 }
 
-#bar {
-  position: relative;
-  display: flex;
-  gap: var(--sp-3);
-  align-items: center;
-  padding: 0 var(--sp-3);
-  background: var(--panel);
-  border-bottom: 1px solid var(--line);
-  height: 40px;
-}
-
-#bar strong {
-  flex: none;
-  letter-spacing: 0.03em;
-}
-
 .muted {
   color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-#summary {
-  flex: 1 1 160px;
-  min-width: 0;
 }
 
 select {
@@ -146,70 +53,6 @@ select {
   border-radius: var(--r);
   padding: 2px var(--sp-1);
   max-width: 22rem;
-}
-
-#world,
-#save {
-  flex: 0 1 auto;
-  min-width: 0;
-  max-width: 220px;
-}
-
-.live {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  gap: var(--sp-1);
-  margin-left: auto;
-  color: var(--muted);
-  font-size: var(--fs-s);
-  white-space: nowrap;
-}
-
-.live .dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--off);
-}
-
-.live.on .dot {
-  background: var(--ok);
-}
-
-.live.hit .dot {
-  background: var(--flash);
-}
-
-.live.lost {
-  color: var(--bad);
-}
-
-@media (max-width: 899px) {
-  #bar {
-    gap: var(--sp-2);
-    padding: 0 var(--sp-2);
-  }
-}
-
-@media (max-width: 599px) {
-  #bar strong {
-    display: none;
-  }
-
-  #summary {
-    display: none;
-  }
-
-  #world,
-  #save {
-    flex: 1 1 0;
-  }
-}
-
-#map {
-  height: calc(100% - 40px);
-  background: var(--sea);
 }
 
 /* A world switch in flight: the old world's layers are still visible underneath, and an
