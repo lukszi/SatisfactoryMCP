@@ -163,6 +163,11 @@ from `/api/power/circuits` (circuit pages also read factory health for the facto
   recipe and ×n beside it, the measured ring round the disc, line width in four rate steps), at
   1:1 and scrolled rather than fitted; the balance per item below, grouped by verdict. A floor
   shown elsewhere is only noted. Hovering a balance row or a line lights that item.
+- **Worth a look** (`chat/advice.ts`), under the overview aspect: the advisories about this
+  factory, one line each (kind chip, "new" or "back", the text; a hidden one says for how
+  long), ◎ to the machines, the evidence in the row's expand, and ⋯ for trace, power, the plan,
+  ask chat, snooze (30 min to 10 h of play) or hide until it gets worse, restore when hidden.
+  Five rows, at most three of a kind, then "+N more"; hidden ones fold under the list.
 - **Machines** per recipe (count, worst state, clock as "100% clock", shards and sloops from the
   progress reads when any are held) or per machine (state, clock, uptime; six per group, then
   "more"). Power is the draw rows of the supply block and the circuit links. Nodes, links,

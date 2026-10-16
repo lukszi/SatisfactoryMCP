@@ -123,6 +123,47 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* ---------- worth a look ---------- */
+.advice {
+  margin-top: var(--sp-4);
+}
+
+.l-adv .entry {
+  --cols: minmax(0, 1fr) auto;
+}
+
+.l-adv .nl .chip {
+  flex: none;
+}
+
+.l-adv .adv-hidden .name {
+  color: var(--muted);
+}
+
+.l-adv .expand {
+  grid-column: 1 / -1;
+}
+
+.l-adv .expand p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: var(--t-meta-size);
+}
+
+.advlink {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: var(--t-meta-size);
+  cursor: pointer;
+}
+
+.advice > .advlink {
+  margin-top: var(--sp-1);
+}
+
 .sub + .sub {
   border-top: 1px solid var(--line-soft);
 }

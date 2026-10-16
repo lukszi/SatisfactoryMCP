@@ -1,10 +1,15 @@
-/* Advisors: the "worth a look" card on a factory's page, the snooze split button, restore,
- * and the store behind them. See docs/advisors_contract.md §8. */
+/* Advisors: the "worth a look" block on a factory's page in the kit, snooze and restore in
+ * its ⋯, and the store behind them. See docs/advisors_contract.md §8. */
 
 import { get, latest, send } from "../api/client";
-import { askButton, askBarOwnerId, onAsks, renderAskBar, settleAskFocus } from "./asks";
-import { button, chip, empty, error, link, loading } from "../kit/dashkit";
-import { make } from "../kit/dom";
+import { askBarOwnerId, onAsks, openAsk, renderAskBar, settleAskFocus } from "./asks";
+import { html, mount, type Safe } from "../kit/html";
+import { openMenu, type MenuItem } from "../kit/overlay/menu";
+import { btn, moreBtn } from "../kit/ui/controls";
+import { acts, entry, expandBody, list, nameLine } from "../kit/ui/entry";
+import { chip } from "../kit/ui/marks";
+import { dashH, emptyLine, toolrow, type Tone } from "../kit/ui/text";
+import { hashFor } from "../map/map";
 import { createListeners } from "../app/listeners";
 import { goToMapThen } from "../app/nav";
 import { showBox, showMachine } from "../map/map-highlight";
@@ -42,8 +47,6 @@ const view = {
   expandedKeys: {} as Record<string, boolean>,
   showAllActive: false,
   showHidden: false,
-  openMenuKey: "",
-  focusMenuOnRender: false,
   writingKeys: {} as Record<string, boolean>,
 };
 const adviceListeners = createListeners();
@@ -166,7 +169,6 @@ function playTimeText(hours: number): string {
 function snoozeOrDismiss(advisory: AdviceRow, hours: number | null): void {
   if (view.writingKeys[advisory.key]) return;
   view.writingKeys[advisory.key] = true;
-  view.openMenuKey = "";
   const body = hours === null ? { key: advisory.key, mode: "dismiss", rev: advisory.rev } : { key: advisory.key, mode: "snooze", hours: hours, rev: advisory.rev };
   notifyAdviceListeners();
   send<AdviceRow & ApiError>("POST", HIDE, body, undefined, spoilerQuery())
@@ -201,149 +203,33 @@ function restore(advisory: AdviceRow): void {
     });
 }
 
-/* ---------------------------------------------------------------- the menu */
-
-function closeMenu(focusBack: boolean): void {
-  const key = view.openMenuKey;
-  if (!key) return;
-  view.openMenuKey = "";
-  notifyAdviceListeners();
-  if (!focusBack) return;
-  const opener = document.querySelector<HTMLElement>('[data-ctl="adv-more:' + CSS.escape(key) + '"]');
-  if (opener) opener.focus({ preventScroll: true });
-}
-
-document.addEventListener("click", function (event) {
-  if (!view.openMenuKey) return;
-  const target = event.target as HTMLElement | null;
-  if (target?.closest?.(".advice-menu, .advice-split")) return;
-  closeMenu(false);
-});
-
-function handleMenuKey(menu: HTMLElement, event: KeyboardEvent): void {
-  const items = Array.prototype.slice.call(menu.querySelectorAll("[role=menuitem]")) as HTMLElement[];
-  const at = items.indexOf(document.activeElement as HTMLElement);
-  if (event.key === "Escape") {
-    event.preventDefault();
-    event.stopPropagation();
-    closeMenu(true);
-  } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-    event.preventDefault();
-    const step = event.key === "ArrowDown" ? 1 : -1;
-    const next = items[(at + step + items.length) % items.length];
-    if (next) next.focus();
-  } else if (event.key === "Tab") closeMenu(false);
-}
-
-function snoozeSplit(advisory: AdviceRow): HTMLElement {
-  const box = make("span", "advice-split");
-  const writing = !!view.writingKeys[advisory.key];
-  box.appendChild(
-    button(
-      "snooze 1 h",
-      function () {
-        snoozeOrDismiss(advisory, 1);
-      },
-      { title: "hide it for 1 h of play time; it comes back sooner if it gets worse", label: "snooze " + ADVICE_WORD[advisory.kind] + " for 1 h of play", disabled: writing }
-    )
-  );
-  const open = view.openMenuKey === advisory.key;
-  const more = button(
-    "▾",
-    function () {
-      view.openMenuKey = open ? "" : advisory.key;
-      view.focusMenuOnRender = !open;
-      notifyAdviceListeners();
-    },
-    { title: "snooze for longer, or until it gets worse", label: "more ways to hide " + ADVICE_WORD[advisory.kind], disabled: writing }
-  );
-  more.classList.add("advice-caret");
-  more.setAttribute("aria-haspopup", "menu");
-  more.setAttribute("aria-expanded", String(open));
-  more.setAttribute("data-ctl", "adv-more:" + advisory.key);
-  box.appendChild(more);
-  if (!open) return box;
-  const menu = make("div", "advice-menu");
-  menu.setAttribute("role", "menu");
-  menu.setAttribute("aria-label", "hide for");
-  SNOOZES.forEach(function (snooze) {
-    const item = make("button", "advice-menu-item", snooze[1]);
-    item.type = "button";
-    item.setAttribute("role", "menuitem");
-    item.onclick = function (event) {
-      event.stopPropagation();
-      snoozeOrDismiss(advisory, snooze[0]);
-    };
-    menu.appendChild(item);
-  });
-  menu.onkeydown = function (event) {
-    handleMenuKey(menu, event);
-  };
-  box.appendChild(menu);
-  return box;
-}
-
 /* ----------------------------------------------------------------- the rows */
 
-function mapAction(advisory: AdviceRow): HTMLElement | null {
-  const spots = advisory.machines;
-  if (!spots.length) return null;
+function goToSpots(advisory: AdviceRow): void {
+  const one = advisory.machines.length === 1 ? advisory.machines[0]! : null;
   const layers = advisory.reveal;
-  const one = spots.length === 1 ? spots[0]! : null;
-  return button(
-    "map",
-    function () {
-      goToMapThen(function () {
-        if (one?.instance && one.x_m !== null && one.y_m !== null) {
-          showMachine(one.instance, one.name, one.x_m, one.y_m, { layers: layers });
-          return;
-        }
-        const bbox = advisory.bbox_m;
-        if (!bbox) return;
-        const pad = 30;
-        showBox([bbox[0]! - pad, bbox[1]! - pad, bbox[2]! + pad, bbox[3]! + pad], { layers: layers });
-      });
-    },
-    { title: "fly the map to " + (one ? "it" : "them"), map: true, label: "show " + ADVICE_WORD[advisory.kind] + " " + advisory.subject + " on the map" }
-  );
+  goToMapThen(function () {
+    if (one?.instance && one.x_m !== null && one.y_m !== null) {
+      showMachine(one.instance, one.name, one.x_m, one.y_m, { layers: layers });
+      return;
+    }
+    const bbox = advisory.bbox_m;
+    if (!bbox) return;
+    const pad = 30;
+    showBox([bbox[0]! - pad, bbox[1]! - pad, bbox[2]! + pad, bbox[3]! + pad], { layers: layers });
+  });
 }
 
-function actions(advisory: AdviceRow): HTMLElement {
-  const box = make("span", "dash-acts advice-acts");
-  const map = mapAction(advisory);
-  if (map) box.appendChild(map);
+/** The ⋯ items: where it leads, ask, then the ways to hide it (or restore a hidden one). */
+function menuOf(advisory: AdviceRow): MenuItem[] {
+  const items: MenuItem[] = [];
   const seed = advisory.seed;
-  if (seed && TRACED.indexOf(advisory.kind) >= 0) {
-    const from = seed;
-    box.appendChild(
-      button(
-        "trace",
-        function () {
-          goToMapThen(function () {
-            startTrace(from, "up");
-          });
-        },
-        { title: "draw what feeds it on the map", label: "trace what feeds " + advisory.subject }
-      )
-    );
-  }
-  if (advisory.kind === "power" || advisory.kind === "headroom") box.appendChild(link("power", "power", "btn"));
-  if (advisory.plan) box.appendChild(link("planner/" + advisory.plan, "open plan", "btn"));
-  if (advisory.state === "active") {
-    box.appendChild(askButton({ kind: "advice", label: advisory.text, ref: advisory.key }, "adv-" + advisory.id));
-    box.appendChild(snoozeSplit(advisory));
-  } else {
-    box.appendChild(
-      button(
-        "restore",
-        function () {
-          restore(advisory);
-        },
-        { title: "show it again", label: "restore " + ADVICE_WORD[advisory.kind] + ": " + advisory.text, disabled: !!view.writingKeys[advisory.key] }
-      )
-    );
-  }
-  return box;
+  if (seed && TRACED.indexOf(advisory.kind) >= 0) items.push({ label: "trace what feeds it", act: () => goToMapThen(() => startTrace(seed, "up")) });
+  if (advisory.kind === "power" || advisory.kind === "headroom") items.push({ label: "open power", href: hashFor("power") });
+  if (advisory.plan) items.push({ label: "open plan", href: hashFor("planner/" + advisory.plan) });
+  if (advisory.state !== "active") return items.concat({ label: "restore", act: () => restore(advisory) });
+  items.push({ label: WORDS.askChat, act: () => openAsk({ kind: "advice", label: advisory.text, ref: advisory.key }, "adv-" + advisory.id) });
+  return items.concat(SNOOZES.map((s) => ({ label: s[0] === null ? "hide until it gets worse" : "snooze " + s[1], act: () => snoozeOrDismiss(advisory, s[0]) })));
 }
 
 function hiddenWords(advisory: AdviceRow): string {
@@ -356,36 +242,20 @@ function hiddenWords(advisory: AdviceRow): string {
   return "hidden" + who + " until it gets worse";
 }
 
-function rowView(advisory: AdviceRow): HTMLElement {
-  const li = make("li", "advice-row" + (advisory.state === "active" ? "" : " advice-hidden"));
+function rowView(advisory: AdviceRow): Safe {
   const open = !!view.expandedKeys[advisory.key];
-  const main = make("button", "advice-main");
-  main.type = "button";
-  main.setAttribute("aria-expanded", String(open));
-  main.setAttribute("data-ctl", "adv:" + advisory.key);
-  main.title = open ? "hide the evidence" : "show the evidence";
-  main.appendChild(chip(ADVICE_WORD[advisory.kind] || advisory.kind, advisory.tone as "blocked" | "mid" | "muted"));
-  if (view.newIds[advisory.id] && advisory.state === "active") main.appendChild(chip("new", "muted", "not on this page before"));
-  if (advisory.back) main.appendChild(chip("back", "muted", "back: worse than when it was hidden"));
-  main.appendChild(make("span", "advice-text", advisory.text));
-  main.onclick = function () {
-    view.expandedKeys[advisory.key] = !open;
-    notifyAdviceListeners();
-  };
-  li.appendChild(main);
-  li.appendChild(actions(advisory));
-  if (open) {
-    const lines = make("ul", "advice-lines");
-    const facts = advisory.lines.slice();
-    if (advisory.back) facts.unshift("back: worse than when it was hidden");
-    if (advisory.state !== "active") facts.unshift(hiddenWords(advisory));
-    if (!facts.length) facts.push("no more to it than the line above");
-    facts.forEach(function (line) {
-      lines.appendChild(make("li", "", line));
-    });
-    li.appendChild(lines);
-  }
-  return li;
+  const word = ADVICE_WORD[advisory.kind] || advisory.kind;
+  const marks = html`${chip(word, advisory.tone as Tone)}${view.newIds[advisory.id] && advisory.state === "active" ? chip("new", "muted", "not on this page before") : ""}${advisory.back ? chip("back", "muted", "back: worse than when it was hidden") : ""}`;
+  const facts = advisory.lines.slice();
+  if (!facts.length) facts.push("no more to it than the line above");
+  const map = advisory.machines.length
+    ? html`<button type="button" class="btn icon" data-advmap="${advisory.key}" title="show it on the map" aria-label="${"show " + word + " " + advisory.subject + " on the map"}">◎</button>`
+    : html`<span class="btn-gap" aria-hidden="true"></span>`;
+  const chev = html`<button class="chev" type="button" data-advx="${advisory.key}" aria-expanded="${String(open)}" aria-label="${(open ? "hide" : "show") + " the evidence"}">${open ? "▾" : "▸"}</button>`;
+  return entry(
+    { open, title: advisory.text, extra: advisory.state === "active" ? "" : "adv-hidden" },
+    html`<div class="id">${nameLine(html`${marks} <span class="name">${advisory.text}</span>`, advisory.state === "active" ? "" : hiddenWords(advisory))}</div>${acts(html`${map}<span data-adv="${advisory.key}">${moreBtn(word, [])}</span>${chev}`)}${expandBody(html`${facts.map((line) => html`<p>${line}</p>`)}`)}`
+  );
 }
 
 /** At most VISIBLE rows and PER_KIND of each kind, unless every row was asked for. */
@@ -409,105 +279,76 @@ function moreWords(rest: AdviceRow[]): string {
     if (!perKind[advisory.kind]) kinds.push(advisory.kind);
     perKind[advisory.kind] = (perKind[advisory.kind] || 0) + 1;
   });
-  return kinds
-    .map(function (kind) {
-      return (perKind[kind]! > 1 ? perKind[kind] + " " : "") + ADVICE_WORD[kind];
-    })
-    .join(", ");
+  return kinds.map((kind) => (perKind[kind]! > 1 ? perKind[kind] + " " : "") + ADVICE_WORD[kind]).join(", ");
 }
 
-function textLink(text: string, action: () => void, expanded: boolean): HTMLButtonElement {
-  const toggle = make("button", "advice-link", text);
-  toggle.type = "button";
-  toggle.setAttribute("aria-expanded", String(expanded));
-  toggle.onclick = function (event) {
-    event.stopPropagation();
-    action();
-  };
-  return toggle;
+function textLink(text: string, act: string, expanded: boolean): Safe {
+  return html`<button type="button" class="advlink" data-advact="${act}" aria-expanded="${String(expanded)}">${text}</button>`;
 }
 
 export interface AdviceFilter {
   factory: string;
 }
 
-function renderActiveAdvice(card: HTMLElement, active: AdviceRow[], filter?: AdviceFilter): void {
-  if (!active.length) {
-    empty(card, filter ? "nothing worth a look in this factory" : "nothing worth a look in this save");
-    return;
-  }
+function activeBlock(active: AdviceRow[], filter?: AdviceFilter): Safe {
+  if (!active.length) return emptyLine(filter ? "nothing worth a look in this factory" : "nothing worth a look in this save");
   const cut = shownRows(active);
-  const list = make("ul", "advice-list");
-  cut.shown.forEach(function (advisory) {
-    list.appendChild(rowView(advisory));
+  const more = cut.rest.length
+    ? textLink("+" + cut.rest.length + " more (" + moreWords(cut.rest) + ")", "all", false)
+    : view.showAllActive && active.length > VISIBLE
+      ? textLink("show fewer", "fewer", true)
+      : "";
+  return html`${list("adv", "stacked", cut.shown.map(rowView), "nolead")}${more}`;
+}
+
+function wireAdvice(card: HTMLElement, rows: AdviceRow[]): void {
+  const byKey = (key: string | undefined) => rows.filter((r) => r.key === key)[0];
+  card.addEventListener("click", function (event) {
+    const target = event.target as Element;
+    const toggle = target.closest<HTMLElement>("[data-advx]");
+    const map = target.closest<HTMLElement>("[data-advmap]");
+    const more = target.closest<HTMLElement>("[data-adv] .more");
+    const act = target.closest<HTMLElement>("[data-advact]")?.dataset.advact;
+    if (toggle) {
+      event.stopPropagation();
+      view.expandedKeys[toggle.dataset.advx!] = !view.expandedKeys[toggle.dataset.advx!];
+    } else if (map) {
+      const advisory = byKey(map.dataset.advmap);
+      if (advisory) goToSpots(advisory);
+      return;
+    } else if (more) {
+      const advisory = byKey(more.closest<HTMLElement>("[data-adv]")!.dataset.adv);
+      if (advisory) openMenu(more, menuOf(advisory));
+      return;
+    } else if (act === "all" || act === "fewer") view.showAllActive = act === "all";
+    else if (act === "hidden") view.showHidden = !view.showHidden;
+    else if (act === "retry") refetchAdvice();
+    else return;
+    notifyAdviceListeners();
   });
-  card.appendChild(list);
-  const line = make("p", "advice-foot");
-  if (cut.rest.length) {
-    line.appendChild(
-      textLink("+" + cut.rest.length + " more (" + moreWords(cut.rest) + ")", function () {
-        view.showAllActive = true;
-        notifyAdviceListeners();
-      }, false)
-    );
-  } else if (view.showAllActive && active.length > VISIBLE) {
-    line.appendChild(
-      textLink("show fewer", function () {
-        view.showAllActive = false;
-        notifyAdviceListeners();
-      }, true)
-    );
-  }
-  if (line.childNodes.length) card.appendChild(line);
 }
 
-function renderHiddenAdvice(card: HTMLElement, hidden: AdviceRow[]): void {
-  if (!hidden.length) return;
-  const foot = make("p", "advice-foot");
-  foot.appendChild(
-    textLink(hidden.length + " hidden · " + (view.showHidden ? "close" : "show"), function () {
-      view.showHidden = !view.showHidden;
-      notifyAdviceListeners();
-    }, view.showHidden)
-  );
-  card.appendChild(foot);
-  if (!view.showHidden) return;
-  const list = make("ul", "advice-list");
-  hidden.forEach(function (advisory) {
-    list.appendChild(rowView(advisory));
-  });
-  card.appendChild(list);
-}
-
-function restoreAdviceFocus(card: HTMLElement): void {
-  if (!view.openMenuKey || !view.focusMenuOnRender) return;
-  const first = card.querySelector<HTMLElement>(".advice-menu [role=menuitem]");
-  if (!first) return;
-  view.focusMenuOnRender = false;
-  first.focus({ preventScroll: true });
-}
-
+/** The "worth a look" block: one line per advisory, the evidence in its expand, ⋯ for the
+ *  rest; hidden ones folded under the list. */
 export function adviceCard(parent: HTMLElement, filter?: AdviceFilter): void {
-  const card = make("section", "dash-card advice-card");
-  const bar = make("div", "dash-title");
-  bar.appendChild(make("h2", "dash-h", WORDS.worthALook));
-  card.appendChild(bar);
+  const card = document.createElement("section");
+  card.className = "advice";
+  card.setAttribute("aria-label", WORDS.worthALook);
   parent.appendChild(card);
-  if (askBarOwnerId().indexOf(ASK_PREFIX) === 0) renderAskBar(card);
   const data = view.world === state.world ? view.data : null;
   if (!data) {
-    if (view.loadError) error(card, "the advisories", view.loadError, refetchAdvice);
-    else loading(card, "advisories");
+    const head = toolrow(dashH(WORDS.worthALook));
+    mount(card, view.loadError ? html`${head}${emptyLine("the advisories did not load", view.loadError)} ${btn("try again", { data: { advact: "retry" } })}` : html`${head}<p class="note" aria-busy="true">loading advisories…</p>`);
+    wireAdvice(card, []);
     return;
   }
-  const inScope = function (advisory: AdviceRow): boolean {
-    return !filter || (advisory.subject_kind === "factory" && advisory.subject === filter.factory);
-  };
+  const inScope = (advisory: AdviceRow) => !filter || (advisory.subject_kind === "factory" && advisory.subject === filter.factory);
   const active = data.active.filter(inScope);
   const hidden = data.hidden.filter(inScope);
-  bar.appendChild(make("span", "dash-muted advice-count", active.length + " · " + hidden.length + " hidden"));
-  renderActiveAdvice(card, active, filter);
-  renderHiddenAdvice(card, hidden);
+  const fold = hidden.length ? textLink(hidden.length + " hidden · " + (view.showHidden ? "close" : "show"), "hidden", view.showHidden) : "";
+  const hiddenList = hidden.length && view.showHidden ? list("adv", "stacked", hidden.map(rowView), "nolead") : "";
+  mount(card, html`${toolrow(dashH(WORDS.worthALook, active.length), fold)}<div class="adv-ask"></div>${activeBlock(active, filter)}${hiddenList}`);
+  if (askBarOwnerId().indexOf(ASK_PREFIX) === 0) renderAskBar(card.querySelector<HTMLElement>(".adv-ask")!);
+  wireAdvice(card, active.concat(hidden));
   settleAskFocus(card);
-  restoreAdviceFocus(card);
 }
