@@ -7,7 +7,7 @@ import { html, mount, type Safe } from "../../kit/html";
 import { icon } from "../../kit/ui/text";
 import { friendlyError } from "../../kit/toast";
 import { counted, RECIPE_KIND } from "../../kit/words";
-import { circuitName } from "../../dash/power-ledger";
+import { circuitName } from "../../dash/power/readings";
 import { loadList, planIndex } from "../../dash/planner/plan-index";
 import { go } from "../nav";
 import { spoilerQuery } from "../settings";

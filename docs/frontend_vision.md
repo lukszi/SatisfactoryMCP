@@ -570,7 +570,7 @@ has no automated way to supply either, so their MW lasts as long as someone keep
 
 ### 8.8 One reading of a ledger
 
-`dash/power-ledger.ts` is the only place a ledger figure turns into text. The Overview, Power, the
+`dash/power/readings.ts` is the only place a ledger figure turns into text. The Overview, Power, the
 circuit detail, the map panel and the header all go through it. A figure that cannot be read
 shows "–" and the reason: "generation not modelled" when game data cannot rate a generator on
 the circuit, and "no machine measured" when no machine on it carries a productivity monitor.

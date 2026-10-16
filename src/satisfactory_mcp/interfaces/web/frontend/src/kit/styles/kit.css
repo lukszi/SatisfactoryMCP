@@ -458,6 +458,18 @@ a.bh:hover .dash-h {
   margin-top: var(--sp-1);
 }
 
+.title h1 {
+  margin-right: var(--sp-1);
+}
+
+.title .grow {
+  flex: 1;
+}
+
+.phead .note {
+  margin: var(--sp-1) 0 0;
+}
+
 /* ---------- icons ---------- */
 .ic {
   display: inline-block;

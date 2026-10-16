@@ -25,6 +25,24 @@ export function blockHead(title: Hole, figs?: Hole, href?: string): Safe {
   return href ? html`<a class="bh" href="${href}">${dashH(title)}${figs}</a>` : html`<div class="bh">${dashH(title)}${figs}</div>`;
 }
 
+export interface PageHead {
+  /** [label, href] of each level above the page. */
+  crumbs: [string, string][];
+  name: string;
+  lead?: Hole;
+  chips?: Hole;
+  acts?: Hole;
+  figs?: Hole;
+  note?: Hole;
+}
+
+/** An object page's header card: breadcrumb, title with lead and chips, figures, one note. */
+export function pageHead(o: PageHead): Safe {
+  const crumbs = o.crumbs.map((c) => html`<a href="${c[1]}">${c[0]}</a><span class="sep">/</span>`);
+  return html`<header class="phead"><nav class="crumbs" aria-label="breadcrumb">${crumbs}<span aria-current="page">${o.name}</span></nav>
+    <div class="title">${o.lead}<h1>${o.name}</h1>${o.chips}${o.acts ? html`<span class="grow"></span><span class="acts">${o.acts}</span>` : ""}</div>${o.figs ? html`<div class="figs">${o.figs}</div>` : ""}${o.note ? note(o.note) : ""}</header>`;
+}
+
 /** Heading and count left; filters, then one sort select right. */
 export function toolrow(head: Safe, tools?: Hole): Safe {
   return html`<div class="toolrow">${head}${tools ? html`<span class="tools">${tools}</span>` : ""}</div>`;

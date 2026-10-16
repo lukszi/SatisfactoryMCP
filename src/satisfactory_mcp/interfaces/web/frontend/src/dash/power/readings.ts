@@ -1,12 +1,11 @@
-/* How a power ledger and a circuit are read, drawn and named, on every surface that shows one.
+/* How a power ledger and a circuit are read and named, on every surface that shows one.
  * See docs/frontend_vision.md §8. */
 
-import { make } from "../kit/dom";
-import { mw, regionLine } from "../kit/format";
-import { onSetting, settingOn } from "../app/settings";
-import { WORDS } from "../kit/words";
+import { count, mw, regionLine } from "../../kit/format";
+import { onSetting, settingOn } from "../../app/settings";
+import { counted, WORDS } from "../../kit/words";
 
-import type { CircuitRow, CircuitsResponse, Ledger, MachineRef, SummaryResponse } from "../api/shapes";
+import type { CircuitRow, CircuitsResponse, Ledger, MachineRef, StarvedGenerator, SummaryResponse } from "../../api/shapes";
 
 export const NONE = "–";
 
@@ -109,61 +108,37 @@ export interface Where {
   dash: string;
 }
 
-/* A machine's place as the tables name it: its factory, else its circuit, else its region. */
-export function whereOf(machine: MachineRef): Where {
+/* A machine's place as the lists name it: its factory, else its circuit, else its region. */
+export function whereOf(machine: Pick<MachineRef, "factory" | "circuit" | "region">): Where {
   if (machine.factory) return { where: machine.factory, dash: "factories/" + machine.factory };
   if (machine.circuit !== null) return { where: "circuit " + (machine.circuit + 1), dash: "power/" + (machine.circuit + 1) };
   return { where: machine.region ? regionLine(machine.region) : "", dash: "" };
 }
 
-function legendKey(parent: HTMLElement, className: string, text: string): void {
-  const item = make("span", "bar-key-item");
-  item.appendChild(make("span", "bar-key-swatch " + className));
-  item.appendChild(document.createTextNode(text));
-  parent.appendChild(item);
+export interface Faults {
+  unwired: MachineRef[];
+  noGenerator: MachineRef[];
+  starved: StarvedGenerator[];
 }
 
-/* Nameplate and measured draw as fills, generation as a cap mark, on one scale. */
-export function ledgerBar(ledger: Figures, legend?: boolean): HTMLElement {
-  const track = make("div", "panel-bar dash-bar");
-  const cap = Math.max(ledger.generation_mw, ledger.draw_mw, 1);
-  const nameplate = make("span", "panel-bar-nameplate");
-  nameplate.style.width = Math.min(100, (ledger.draw_mw / cap) * 100) + "%";
-  track.appendChild(nameplate);
-  if (ledger.monitored) {
-    const measured = make("span", "panel-bar-measured");
-    measured.style.width = Math.min(100, (ledger.measured_draw_mw / cap) * 100) + "%";
-    track.appendChild(measured);
-  }
-  const generation = make("span", "panel-bar-cap");
-  generation.style.left = Math.min(100, (ledger.generation_mw / cap) * 100) + "%";
-  track.appendChild(generation);
-  track.title =
-    (ledger.monitored ? mw(ledger.measured_draw_mw) + " " + WORDS.measuredDraw : UNMEASURED) +
-    ", " +
-    mw(ledger.draw_mw) +
-    " " +
-    WORDS.nameplateDraw +
-    ", against " +
-    mw(ledger.generation_mw) +
-    " " +
-    WORDS.generation;
-  track.setAttribute("role", "img");
-  track.setAttribute("aria-label", track.title);
-  if (!legend) return track;
-  const wrap = make("div", "bar-keyed");
-  wrap.appendChild(track);
-  const keys = make("div", "bar-key");
-  keys.setAttribute("aria-hidden", "true");
-  legendKey(keys, "panel-bar-measured", WORDS.measuredDraw);
-  legendKey(keys, "panel-bar-nameplate", WORDS.nameplateDraw);
-  legendKey(keys, "panel-bar-cap", WORDS.generation);
-  wrap.appendChild(keys);
-  return wrap;
+export function faultsOf(data: CircuitsResponse): Faults {
+  return { unwired: data.unwired, noGenerator: data.no_generator, starved: data.starved };
 }
 
-// The first three factories on a circuit, and how many more there are.
-function factoriesOn(row: CircuitRow): string {
+export function faultCount(faults: Faults): number {
+  return faults.unwired.length + faults.noGenerator.length + faults.starved.length;
+}
+
+export function faultWords(faults: Faults): string {
+  return [
+    count(faults.unwired.length) + " " + WORDS.noWire,
+    count(faults.noGenerator.length) + " " + WORDS.noGenerator,
+    counted(faults.starved.length, WORDS.starvedGenerator),
+  ].join(" · ");
+}
+
+/* The first three factories on a circuit, and how many more there are. */
+export function factoriesOn(row: CircuitRow): string {
   const more = row.factory_count > 3 ? " +" + (row.factory_count - 3) : "";
   return row.factories.slice(0, 3).join(", ") + more;
 }

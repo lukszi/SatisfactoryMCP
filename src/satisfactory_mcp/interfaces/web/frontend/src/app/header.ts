@@ -15,7 +15,7 @@ import { el } from "../kit/dom";
 import { mw, phaseText } from "../kit/format";
 import { loadOne } from "./load";
 import { drawPlayer } from "../map/drawn/markers";
-import { biomassLine, biomassQuery, onBiomass, ratedSummary, readGeneration, readMeasuredDraw } from "../dash/power-ledger";
+import { biomassLine, biomassQuery, onBiomass, ratedSummary, readGeneration, readMeasuredDraw } from "../dash/power/readings";
 import { registerFetch } from "./registry";
 import { WORDS } from "../kit/words";
 
