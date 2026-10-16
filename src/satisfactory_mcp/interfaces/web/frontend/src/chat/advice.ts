@@ -1,5 +1,5 @@
-/* Advisors: the "worth a look" card on the Overview and on a factory's page, the snooze split
- * button, restore, and the store behind them. See docs/advisors_contract.md §8. */
+/* Advisors: the "worth a look" card on a factory's page, the snooze split button, restore,
+ * and the store behind them. See docs/advisors_contract.md §8. */
 
 import { get, latest, send } from "../api/client";
 import { askButton, askBarOwnerId, onAsks, renderAskBar, settleAskFocus } from "./asks";

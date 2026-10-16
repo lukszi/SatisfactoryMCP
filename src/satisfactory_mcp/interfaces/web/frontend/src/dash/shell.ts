@@ -20,7 +20,7 @@ import { renderFactories } from "./factories/list";
 import { renderFactory } from "./factories/page";
 import { wireDetect } from "./factories/clusters";
 import { factoryAddress } from "./factories/address";
-import { renderOverview } from "./overview";
+import { renderOverview } from "./overview/page";
 import { renderCircuit, renderPower } from "./power/page";
 import { circuitName } from "./power/readings";
 import { renderMapsPage } from "./maps/maps-page";
@@ -208,7 +208,7 @@ function wire(): void {
   onProgress(render);
   onAdvice(function () {
     const page = address().page;
-    if (state.dash && (page === "overview" || page === "factories")) render();
+    if (state.dash && page === "factories") render();
   });
   onMapRegistry(function (listed) {
     if (listed && state.dash && address().page === "maps") render();

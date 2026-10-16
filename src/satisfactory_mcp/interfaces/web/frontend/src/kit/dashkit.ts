@@ -16,12 +16,6 @@ export function link(dash: string, text: string, className?: string): HTMLAnchor
   return a;
 }
 
-export function appendNote(parent: HTMLElement, text: string): HTMLElement {
-  const line = make("p", "dash-note", text);
-  parent.appendChild(line);
-  return line;
-}
-
 /* "<before>Settings<after>" as a note, the link being the way to the setting that hid something. */
 export function settingsLinkNote(parent: HTMLElement, before: string, after: string, tag?: "p" | "span"): HTMLElement {
   const line = make(tag || "p", "dash-note", before);
@@ -29,21 +23,6 @@ export function settingsLinkNote(parent: HTMLElement, before: string, after: str
   if (after) line.appendChild(document.createTextNode(after));
   parent.appendChild(line);
   return line;
-}
-
-export function heading(parent: HTMLElement, text: string, unit?: string): void {
-  const h = make("h2", "dash-h", text);
-  if (unit) h.appendChild(make("span", "dash-unit", " " + unit));
-  parent.appendChild(h);
-}
-
-export function tile(label: string, value: string, sub: string, bad?: boolean, href?: string): HTMLElement {
-  const box = make(href ? "a" : "div", "dash-tile" + (bad ? " bad" : ""));
-  if (href) box.setAttribute("href", href);
-  box.appendChild(make("span", "dash-tile-k", label));
-  box.appendChild(make("span", "dash-tile-v", value));
-  if (sub) box.appendChild(make("span", "dash-tile-sub", sub));
-  return box;
 }
 
 export function cell(tr: HTMLElement, content: string | number | HTMLElement, className?: string): void {

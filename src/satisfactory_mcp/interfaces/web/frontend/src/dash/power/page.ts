@@ -17,6 +17,9 @@ import { circuitChips, circuitList, circuitMap, factoryList, problemList, wirePo
 
 import type { CircuitRow, CircuitsResponse } from "../../api/shapes";
 
+/** The circuits heading's tooltip; the Overview's power block carries it too. */
+export const CIRCUITS_TIP = "worst first · the bar is drawing now and if all run against the circuit's generation, the tick at 100% · switches read as closed, batteries are not counted";
+
 export function retryCircuits(): void {
   loadOne("/api/power/circuits");
 }
@@ -31,7 +34,7 @@ function missing(body: HTMLElement): boolean {
 }
 
 /** Headroom now as the figure, headroom if all run under it. */
-function headroomFigs(rated: Rated): Safe {
+export function headroomFigs(rated: Rated): Safe {
   const now = readHeadroomNow(rated);
   const full = readHeadroomFull(rated);
   return html`${fig(now.value, WORDS.headroomNow, now.bad ? "bad" : undefined)}${figSub(html`<span class="${full.bad ? "bad-t" : ""}" title="${"headroom " + WORDS.ifAllRun + ": " + WORDS.ifAllRunTip}">${full.value} ${WORDS.ifAllRun}</span>`)}`;
@@ -56,7 +59,7 @@ export function renderPower(body: HTMLElement): void {
   const problems = problemsOf(data);
   const supply = html`<section class="card">${blockHead("supply and demand", headroomFigs(rated))}${supplyBlock(supplyOf(data.generators, data.world, rated), worldUncounted(data))}</section>`;
   const problemPart = html`<section>${dashH(WORDS.powerProblems, problems.length)}${problems.length ? problemList(problems) : emptyLine("no " + WORDS.powerProblems)}</section>`;
-  const circuits = html`<section>${dashH("circuits", data.circuits.length)}${data.circuits.length ? circuitList(data.circuits) : emptyLine("no circuits", "nothing stands on a wire yet")}${note("worst first · the bar is drawing now and if all run against the circuit's generation, the tick at 100% · switches read as closed, batteries are not counted")}</section>`;
+  const circuits = html`<section>${dashH("circuits", data.circuits.length, "h2", CIRCUITS_TIP)}${data.circuits.length ? circuitList(data.circuits) : emptyLine("no circuits", "nothing stands on a wire yet")}</section>`;
   mountPage(body, html`<div class="pw">${supply}${problemPart}${circuits}</div>`);
 }
 

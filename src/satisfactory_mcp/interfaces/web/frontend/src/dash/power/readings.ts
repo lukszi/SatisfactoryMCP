@@ -1,9 +1,9 @@
 /* How a power ledger and a circuit are read and named, on every surface that shows one.
  * See docs/frontend_vision.md §8. */
 
-import { count, mw, regionLine } from "../../kit/format";
+import { mw, regionLine } from "../../kit/format";
 import { onSetting, settingOn } from "../../app/settings";
-import { counted, WORDS } from "../../kit/words";
+import { WORDS } from "../../kit/words";
 
 import type { CircuitRow, CircuitsResponse, Ledger, MachineRef, StarvedGenerator, SummaryResponse } from "../../api/shapes";
 
@@ -127,14 +127,6 @@ export function faultsOf(data: CircuitsResponse): Faults {
 
 export function faultCount(faults: Faults): number {
   return faults.unwired.length + faults.noGenerator.length + faults.starved.length;
-}
-
-export function faultWords(faults: Faults): string {
-  return [
-    count(faults.unwired.length) + " " + WORDS.noWire,
-    count(faults.noGenerator.length) + " " + WORDS.noGenerator,
-    counted(faults.starved.length, WORDS.starvedGenerator),
-  ].join(" · ");
 }
 
 /* The first three factories on a circuit, and how many more there are. */

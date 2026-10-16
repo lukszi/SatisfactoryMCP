@@ -32,8 +32,9 @@ export function playerKnown(): boolean {
   return !here.data || !!here.data.player;
 }
 
+/* The World page and the Overview's map draw the player. */
 function shown(): boolean {
-  return state.dash === "world" || state.dash.indexOf("world?") === 0;
+  return state.dash === "world" || state.dash.indexOf("world?") === 0 || state.dash === "overview";
 }
 
 registerFetch<HereResponse>({
