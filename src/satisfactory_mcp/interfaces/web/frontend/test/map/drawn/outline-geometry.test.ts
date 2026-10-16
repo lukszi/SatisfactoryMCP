@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { lowestFirst, notchLocal, placeLocal, placeRings } from "../../../src/map/drawn/outline-geometry";
+import {
+  BAND_VEIL,
+  bandVeil,
+  FADED_VEIL_SHARE,
+  lowestFirst,
+  notchLocal,
+  placeLocal,
+  placeRings,
+} from "../../../src/map/drawn/outline-geometry";
 
 import type { PortRow } from "../../../src/api/shapes";
 
@@ -48,6 +56,17 @@ describe("notchLocal", () => {
 
   it("draws a two-way port as a diamond", () => {
     expect(notchLocal(port("any")).length).toBe(4);
+  });
+});
+
+describe("bandVeil", () => {
+  it("lightens a higher tier more", () => {
+    expect(bandVeil(2, false)).toBeGreaterThan(bandVeil(1, false));
+  });
+
+  it("reads a tier past the table as the tallest, and fades with an idle building", () => {
+    expect(bandVeil(7, false)).toBe(BAND_VEIL[BAND_VEIL.length - 1]);
+    expect(bandVeil(1, true)).toBeCloseTo(BAND_VEIL[0]! * FADED_VEIL_SHARE, 9);
   });
 });
 

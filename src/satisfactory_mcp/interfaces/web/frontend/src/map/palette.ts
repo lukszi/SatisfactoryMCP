@@ -287,6 +287,14 @@ const DISCHARGED: Exception[] = [
       "the light-tone X against the 3 px ring under a locked node, which always carries the " +
       "ore's own dashed colour on top: two crossed strokes, never a ring.",
   },
+  {
+    a: "markers/player",
+    b: "outlines/band veil",
+    de: 6.7,
+    why:
+      "the veil is never seen as itself: it lays 0.09-0.42 of white over a building's own fill, " +
+      "inside that building's outline, while the player is an opaque glyph on open ground.",
+  },
 ];
 
 /* And the debt: pairs that are under the threshold, that no warrant defends, and that are

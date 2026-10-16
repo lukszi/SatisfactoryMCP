@@ -104,6 +104,13 @@ disc or a ring, and are discharged.
 | `stopped` | `#d9534f` | thick outline: stopped and needs action | markers/Desc_Geyser_C 23.1 | |
 | `storage` | `#6a78c8` | a solid container, filled box | pickups/hard_drive 18.0 | must clear the other filled boxes and the selection pink (dE 64.1) |
 | `storage fluid` | `#253496` | a fluid buffer, one value step below | markers/Desc_LiquidOil_C 16.2 | |
+| `facilities` | `#3fa0a0` | the HUB, sink, MAM and other one-off buildings | markers/Desc_NitrogenGas_C 21.6 | teal, the one hue the machine layers and the belts leave free |
+
+### `outlines` — `drawn/outlines.ts`
+
+| key | hex | role | nearest cross-owner neighbour | constraint |
+| --- | --- | --- | --- | --- |
+| `band veil` | `#ffffff` | a building's height bands, laid over its fill at 0.09 to 0.42 | markers/player 6.7, discharged | never seen as itself: it lightens the fill it covers, inside that building's outline; the band edges reuse `routes/notch rim` |
 
 ### `routes` — the belts and the pipes (`drawn/belts.ts`, `drawn/pipes.ts`)
 

@@ -2366,7 +2366,8 @@ export interface components {
         };
         /**
          * AttachmentRow
-         * @description A splitter or a merger: a piece of the belt network, drawn by the belt layer.
+         * @description A piece a run passes through: a splitter or a merger on ``/api/belts``, a pipe
+         *     junction, pump or valve on ``/api/pipes``. Drawn by that run's layer.
          *
          *     ``cls`` and ``name`` are not nullable: an attachment is an actor record. The coordinates
          *     are null where the transform did not decode, ``yaw`` where the projection predates schema
@@ -2391,6 +2392,19 @@ export interface components {
             w_m: number | null;
             /** L M */
             l_m: number | null;
+        };
+        /**
+         * BandRow
+         * @description The parts of a class standing higher than ``z_m`` above its floor, as outline rings.
+         *     ``tier`` is the rule that cut it: 1 the body above 2 m, 2 the tall parts.
+         */
+        BandRow: {
+            /** Tier */
+            tier: number;
+            /** Z M */
+            z_m: number;
+            /** Rings */
+            rings: number[][][];
         };
         /**
          * BeltRow
@@ -2483,7 +2497,8 @@ export interface components {
         };
         /**
          * BuildingShape
-         * @description What the map draws a class as: where the outline came from, the rings, the ports.
+         * @description What the map draws a class as: where the outline came from, the footprint rings, the
+         *     height bands (none for a clearance outline) and the ports.
          */
         BuildingShape: {
             /**
@@ -2493,6 +2508,8 @@ export interface components {
             source: "mesh" | "clearance";
             /** Rings */
             rings: number[][][];
+            /** Bands */
+            bands: components["schemas"]["BandRow"][];
             /** Ports */
             ports: components["schemas"]["PortRow"][];
         };
@@ -3171,6 +3188,34 @@ export interface components {
             counts: {
                 [key: string]: number;
             };
+        };
+        /**
+         * FacilityRow
+         * @description A one-off building that is neither a machine nor storage: the HUB, the AWESOME Sink and
+         *     Shop, the MAM, the Space Elevator, a workshop. Drawn, with no recipe and no state.
+         *     ``h_m`` is null with ``w_m``/``l_m``.
+         */
+        FacilityRow: {
+            /** Instance Leaf */
+            instance_leaf: string;
+            /** Cls */
+            cls: string;
+            /** Name */
+            name: string;
+            /** X M */
+            x_m: number | null;
+            /** Y M */
+            y_m: number | null;
+            /** Z M */
+            z_m: number | null;
+            /** Yaw */
+            yaw: number | null;
+            /** W M */
+            w_m: number | null;
+            /** L M */
+            l_m: number | null;
+            /** H M */
+            h_m: number | null;
         };
         /** FactoriesResponse */
         FactoriesResponse: {
@@ -4042,6 +4087,8 @@ export interface components {
             extractors: components["schemas"]["PlacementRow"][];
             /** Generators */
             generators: components["schemas"]["PlacementRow"][];
+            /** Facilities */
+            facilities: components["schemas"]["FacilityRow"][];
             /** Shapes */
             shapes: {
                 [key: string]: components["schemas"]["BuildingShape"];
@@ -5118,6 +5165,12 @@ export interface components {
             networks: number;
             /** Directed */
             directed: number;
+            /** Fittings */
+            fittings: components["schemas"]["AttachmentRow"][];
+            /** Shapes */
+            shapes: {
+                [key: string]: components["schemas"]["BuildingShape"];
+            };
         };
         /**
          * PlaceRow

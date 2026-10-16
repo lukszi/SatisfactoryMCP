@@ -133,8 +133,42 @@ per actor ([web-wire.md](web-wire.md), "Placements"). `source` says `mesh` or `c
 `map/drawn/outlines.ts` draws the rings rotated by yaw, with the same styling and click
 behaviour the rectangles had. Notches are small triangles (pointing out for an output, in for
 an input) or diamonds (either way), in the belt or pipe tone, hidden below 3 px per metre where
-they would be specks. They carry their building's floor mark without a height, so the floor
-filter keeps or drops them with the building and never ghosts them.
+they would be specks.
+
+Height bands are drawn over the footprint as a white veil with a thin dark edge: 0.22 for the
+body, 0.42 for the tall parts, at 40% of that on an idle building whose fill is faded. The veil
+keeps the layer's hue and lightens it, so lower reads darker and higher lighter, and the status
+colours (blocked yellow, stopped red) stay on the outline alone. Bands are hidden below 1.5 px
+per metre and take no clicks; a click on one lands on the building.
+
+Notches and bands carry their building's floor mark without a height, so the floor filter keeps
+or drops them with the building and never ghosts them.
+
+### Buildings under an upper deck
+
+Each layer is drawn lowest first, but a top-down map still paints a building on an upper deck
+over the one beneath it, and the layers stack in a fixed order (generators over machines). On
+the reference world seven Packagers stand under Fuel Generators 32 m above them, every one
+fully covered, so they looked missing. Every building, facility and container therefore also
+gets an x-ray line: a dashed copy of its outline, in its outline colour (so in its status
+colour), in its own pane above the routes and buildings. Over its own building it falls on its
+own outline and adds nothing; where something higher covers it, it is the line left showing.
+Floor mode is still the way to look at one deck alone.
+
+### Fittings and facilities
+
+Pipe junctions, pumps and valves ride with `/api/pipes` and are drawn in the pipes layer, as
+the splitters are in the belts layer. The one-off facilities ride with `/api/machines` and get
+their own layer, `facilities`, in teal. Neither is listed by `/api/floors`, so the floor filter
+places them by where they stand, as it places storage.
+
+Placed classes in the reference world that are still not drawn, on purpose: belt and pipe
+supports (conveyor poles, ceiling and wall mounts, stackable poles, pipeline supports and their
+wall variants), pipe flow indicators, foundation passthroughs, hypertubes (a spline like a pipe,
+with supports and entrances; a route layer of its own, not an outline), lights, ladders, the
+toilet, the doors, gates and conveyor walls placed as actors, and the HUB's own terminal and
+work bench, which the HUB's outline already covers. Power poles and towers are the power
+layer's.
 
 ## Limits
 

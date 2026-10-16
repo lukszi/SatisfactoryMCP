@@ -58,6 +58,8 @@ export type SummaryResponse = Body<"SummaryResponse">;
 
 export type PlacementRow = Schema["PlacementRow"];
 export type MachinesResponse = Body<"MachinesResponse">;
+/** A one-off building the machines payload carries beside them: the HUB, the sink, the MAM. */
+export type FacilityRow = Schema["FacilityRow"];
 export type StructureRow = Schema["StructureRow"];
 export type StructuresResponse = Body<"StructuresResponse">;
 
