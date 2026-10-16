@@ -1,0 +1,750 @@
+/* The Factories list and a factory's page: cards, the floor plan, the graph, the aspect lists. */
+
+#dash-body:has(.fsplit) {
+  max-width: var(--page-w-wide);
+}
+
+.facs > .clusters,
+.fside > .card {
+  margin-bottom: var(--sp-4);
+}
+
+/* ---------- unnamed clusters ---------- */
+.l-cand .entry {
+  --cols: minmax(170px, 1fr) minmax(0, 1.5fr) 84px auto;
+  padding-left: calc(var(--sp-3) + var(--edge));
+}
+
+.l-cand input[type="text"] {
+  width: 100%;
+  max-width: 280px;
+}
+
+.l-cand input.guess {
+  border-style: dashed;
+}
+
+.l-cand input[aria-invalid="true"] {
+  border-color: var(--bad);
+}
+
+.l-cand .entry.skipped {
+  opacity: 0.55;
+}
+
+.cmakes {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.cmakes > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  align-items: center;
+}
+
+.cgraph {
+  margin-top: var(--sp-3);
+}
+
+/* ---------- factory cards ---------- */
+.list.grid.l-fac {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 400px), 1fr));
+}
+
+.l-fac .entry {
+  --cols: 32px minmax(0, 1fr) 84px auto;
+}
+
+.l-fac .entry[data-href] {
+  cursor: pointer;
+}
+
+.l-fac .entry[data-href]:hover {
+  background-image: linear-gradient(var(--hover), var(--hover));
+}
+
+.l-fac .entry > .ic,
+.l-fac .entry > .noic {
+  width: 32px;
+  height: 32px;
+}
+
+.l-fac .facts {
+  grid-column: 2 / -1;
+  justify-content: flex-start;
+}
+
+.l-fac .metric.bad b {
+  color: var(--bad);
+}
+
+.l-fac .metric.blocked b {
+  color: var(--blocked);
+}
+
+/* cards in a row share the tallest height; the mix bar sits on the card's bottom edge */
+.grid > .entry:has(> .foot) {
+  padding-bottom: var(--sp-5);
+}
+
+.grid > .entry > .foot {
+  position: absolute;
+  right: var(--sp-3);
+  bottom: var(--sp-2);
+  left: calc(var(--sp-3) + var(--edge));
+}
+
+.grid > .entry.open > .foot {
+  position: static;
+}
+
+.grid > .entry.open:has(> .foot) {
+  padding-bottom: var(--sp-2);
+}
+
+.noic {
+  display: inline-block;
+  flex: none;
+  width: 24px;
+  height: 24px;
+}
+
+.sub {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr) 40px 24px;
+  gap: var(--sp-3);
+  align-items: center;
+  padding: var(--sp-0) 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.sub + .sub {
+  border-top: 1px solid var(--line-soft);
+}
+
+.sub .r {
+  text-align: right;
+}
+
+.expand > .chips {
+  justify-content: flex-start;
+  margin-top: var(--sp-1);
+}
+
+/* ---------- factory page: header, split ---------- */
+.phead .lead {
+  width: var(--title-ic);
+  height: var(--title-ic);
+}
+
+.fsplit {
+  display: grid;
+  grid-template-columns: minmax(0, 9fr) minmax(0, 11fr);
+  gap: var(--sp-4);
+  align-items: start;
+}
+
+.fsplit.fwide {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.fside {
+  min-width: 0;
+}
+
+.fside > .dash-h:first-child,
+.fside > .toolrow:first-child,
+.fside > .card:first-child,
+.fside > .fscope:first-child + .dash-h,
+.fside > .fscope:first-child + .toolrow {
+  margin-top: 0;
+}
+
+.fside .entry[data-hl] {
+  cursor: pointer;
+}
+
+.fside .entry[data-hl]:hover,
+.fside .entry.hl,
+.fside .entry[data-item].hl {
+  background-image: linear-gradient(var(--hover), var(--hover));
+}
+
+.fside .entry.hl {
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.fside .entry.picked {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.fscope {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: center;
+  margin: 0 0 var(--sp-2);
+  color: var(--muted);
+  font-size: var(--t-meta-size);
+}
+
+.fpend {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: center;
+}
+
+.fpend .spinner {
+  display: inline-block;
+  animation: spin var(--spin-turn) linear infinite;
+}
+
+/* ---------- the floor plan ---------- */
+.fplan {
+  --plan-base: color-mix(in srgb, var(--line) 45%, var(--bg-deep));
+  --plan-belt: color-mix(in srgb, var(--muted) 55%, transparent);
+  --plan-fill: color-mix(in srgb, var(--ink-soft) 24%, var(--bg-deep));
+  --plan-edge: var(--dim);
+  --plan-band-ink: var(--ink-hi);
+  --plan-fade: 0.22;
+  --plan-w: 1px;
+  --plan-w-on: 2.5px;
+  --plan-ghost: 0.4;
+  --fflr-w: 56px;
+  --fplan-off: 200px;
+
+  position: sticky;
+  top: 0;
+  height: calc(100vh - var(--hdr-h) - var(--strip-h) - var(--jobstrip-h) - var(--fplan-off));
+  min-height: 420px;
+  overflow: hidden;
+  background: var(--bg-deep);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+}
+
+.fplan.has-floors {
+  display: grid;
+  grid-template-columns: var(--fflr-w) minmax(0, 1fr);
+}
+
+.fmap {
+  position: relative;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.fmap > .empty,
+.fmap > .fpend {
+  padding: var(--sp-3);
+}
+
+.fsvg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.fsvg:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.fflr {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow-y: auto;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+}
+
+#dash .ffl {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: var(--sp-1);
+  align-items: baseline;
+  padding: var(--sp-1) var(--sp-2);
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+  text-decoration: none;
+}
+
+.ffl:first-child {
+  border-bottom-color: var(--line);
+}
+
+.ffl b {
+  color: var(--ink);
+  font-weight: var(--t-number-w);
+}
+
+.ffl .n,
+.ffl .d {
+  color: var(--muted);
+  font-size: var(--t-meta-size);
+}
+
+.ffl .d {
+  grid-column: 1 / -1;
+}
+
+.ffl:hover {
+  background: var(--hover);
+}
+
+.ffl.on {
+  background: var(--line);
+}
+
+.ffl.on b {
+  color: var(--ink-hi);
+}
+
+.ffl:focus-visible {
+  outline-offset: -2px;
+}
+
+.fsvg .pbase {
+  fill: var(--plan-base);
+}
+
+.fsvg .pbelt {
+  fill: none;
+  stroke: var(--plan-belt);
+  stroke-width: var(--plan-w);
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+/* machines: neutral body, lighter height bands, the edge in a status colour only when wrong */
+.fsvg .pm {
+  color: var(--plan-edge);
+  fill: var(--plan-fill);
+  cursor: pointer;
+}
+
+.fsvg .pm.bad {
+  color: var(--bad);
+}
+
+.fsvg .pm.blocked {
+  color: var(--blocked);
+}
+
+.fsvg .pm.hl,
+.fsvg .pm.on {
+  --plan-w: var(--plan-w-on);
+}
+
+.fsvg .pm.hl:not(.bad, .blocked),
+.fsvg .pm.on:not(.bad, .blocked) {
+  color: var(--ink-hi);
+}
+
+.fsvg.has-hl .pm:not(.hl),
+.fsvg.has-hl .pbelt,
+.fsvg.has-sel:not(.has-hl) .pm:not(.on) {
+  opacity: var(--plan-fade);
+}
+
+.fsvg .pghost {
+  --plan-band-ink: transparent;
+
+  opacity: var(--plan-ghost);
+  pointer-events: none;
+}
+
+.fsvg .pgm {
+  color: var(--plan-edge);
+  fill: none;
+}
+
+.fsvg .pg-edge {
+  fill: none;
+  stroke: var(--plan-edge);
+  stroke-width: var(--plan-w);
+  stroke-dasharray: 4 3;
+  vector-effect: non-scaling-stroke;
+}
+
+.fplan-leg {
+  position: absolute;
+  bottom: var(--sp-2);
+  left: var(--sp-2);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-3);
+  max-width: calc(100% - 2 * var(--sp-2));
+  padding: var(--sp-1) var(--sp-2);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  color: var(--muted);
+  font-size: var(--t-meta-size);
+  pointer-events: none;
+}
+
+.lgi {
+  display: inline-flex;
+  gap: var(--sp-1);
+  align-items: center;
+}
+
+.lg {
+  flex: none;
+  width: var(--sp-3);
+  height: var(--sp-3);
+}
+
+.lg .lg-ln {
+  fill: none;
+  stroke: var(--ink-soft);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.lg .lg-gh {
+  fill: none;
+  stroke: var(--plan-edge);
+  stroke-width: 1.5;
+  stroke-dasharray: 2 1.5;
+}
+
+.lg .lg-bad,
+.lg .lg-blk {
+  fill: var(--plan-fill);
+  stroke-width: 1.5;
+}
+
+.lg .lg-bad {
+  stroke: var(--bad);
+}
+
+.lg .lg-blk {
+  stroke: var(--blocked);
+}
+
+.fplan-ph {
+  flex-basis: 100%;
+  color: var(--dim);
+}
+
+/* ---------- aspect lists: fixed columns per list ---------- */
+.l-fstate .entry {
+  --cols: 96px 48px minmax(0, 1fr);
+}
+
+.l-fstate .entry > .name {
+  font-weight: var(--t-body-w);
+}
+
+.tone-bad {
+  color: var(--bad);
+}
+
+.tone-blocked {
+  color: var(--blocked);
+}
+
+.l-fiss .entry {
+  --cols: 24px minmax(0, 1fr) 72px 48px;
+}
+
+.st {
+  font-size: var(--t-meta-size);
+  white-space: nowrap;
+}
+
+.l-fflow .entry {
+  --cols: 24px minmax(0, 1fr) 84px 84px 104px;
+}
+
+.l-fgroup .entry {
+  --cols: 24px minmax(0, 1fr) 104px 40px 84px;
+}
+
+.l-fgroup.has-boost .entry {
+  --cols: 24px minmax(0, 1fr) 104px 40px 84px 150px;
+}
+
+.facts.boost {
+  flex-wrap: wrap;
+  row-gap: var(--sp-0);
+}
+
+.l-fmach .entry {
+  --cols: 24px minmax(0, 1fr) 104px 84px 64px;
+}
+
+#dash .fmore {
+  display: block;
+  width: 100%;
+  padding: var(--sp-1) var(--sp-3) var(--sp-1) calc(var(--sp-3) + var(--edge) + 24px + var(--sp-3));
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--line-soft);
+  color: var(--muted);
+  font-size: var(--t-meta-size);
+  text-align: left;
+  cursor: pointer;
+}
+
+.l-ffnode .entry {
+  --cols: 24px minmax(0, 1fr) 84px 84px;
+}
+
+.l-flink .entry {
+  --cols: minmax(0, 1fr) 88px;
+}
+
+.l-ffloor .entry {
+  --cols: 72px 56px minmax(0, 1fr) 40px 64px 88px;
+}
+
+.l-fsite .entry {
+  --cols: minmax(0, 1fr) 56px minmax(0, 1fr) 72px 72px;
+}
+
+.kinds {
+  flex-wrap: nowrap;
+  gap: var(--sp-2);
+  overflow: hidden;
+}
+
+.kp {
+  display: inline-flex;
+  gap: var(--sp-0);
+  align-items: center;
+  color: var(--muted);
+  font-size: var(--t-meta-size);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.kp .ic,
+.kp .mono {
+  width: var(--ic-s);
+  height: var(--ic-s);
+}
+
+.kp b {
+  color: var(--ink-soft);
+  font-weight: var(--t-number-w);
+}
+
+.sd.fdraw .tr > i.gen {
+  background: var(--ink-soft);
+}
+
+/* ---------- the production graph, as cards ---------- */
+.fgraph {
+  margin-bottom: var(--sp-3);
+  background: var(--bg-deep);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+}
+
+.fg-key {
+  padding: var(--sp-1) var(--sp-2);
+  border-top: 1px solid var(--line-soft);
+  color: var(--muted);
+  font-size: var(--t-meta-size);
+}
+
+.fgraph .pg-card {
+  fill: var(--panel);
+  stroke: var(--line);
+  stroke-width: 1.5;
+}
+
+.fgraph .pg-node.kind-process .pg-title,
+.fgraph .pg-node.kind-process .pg-sub {
+  text-anchor: start;
+}
+
+.fgraph .pg-node.kind-process .pg-disc {
+  fill: var(--bg-deep);
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.fgraph .pg-ring {
+  stroke-width: 2.5;
+}
+
+.fgraph .pg-node.state-bad .pg-card {
+  stroke: var(--bad);
+  stroke-width: 2.5;
+}
+
+.fgraph .pg-node.state-blocked .pg-card {
+  stroke: var(--blocked);
+  stroke-width: 2.5;
+}
+
+.fgraph .pg-node.state-bad .pg-disc,
+.fgraph .pg-node.state-blocked .pg-disc {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.fgraph .pg-node:hover .pg-card,
+.fgraph .pg-node:focus-visible .pg-card {
+  stroke: var(--accent);
+}
+
+.fgraph .pg-edge.w1 {
+  stroke-width: 1.5;
+}
+
+.fgraph .pg-edge.w2 {
+  stroke-width: 2.5;
+}
+
+.fgraph .pg-edge.w3 {
+  stroke-width: 3.5;
+}
+
+.fgraph .pg-edge.w4 {
+  stroke-width: 5;
+}
+
+.fgraph svg.has-hl .pg-node:not(.hl),
+.fgraph svg.has-hl .pg-edge:not(.hl),
+.fgraph svg.has-hl .pg-label:not(.hl) {
+  opacity: 0.22;
+}
+
+/* ---------- the icon picker ---------- */
+.icdlg {
+  width: min(560px, calc(100vw - 2 * var(--sp-5)));
+  max-height: min(560px, calc(100vh - 2 * var(--sp-5)));
+  padding: var(--sp-3);
+  background: var(--panel);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  box-shadow: var(--overlay-shadow);
+}
+
+.icdlg::backdrop {
+  background: var(--backdrop);
+}
+
+.ichead,
+.icfoot {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: center;
+}
+
+.ichead input {
+  flex: 1;
+}
+
+.icgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 32px);
+  gap: var(--sp-1);
+  max-height: 360px;
+  margin: var(--sp-2) 0;
+  overflow-y: auto;
+}
+
+.icgrid button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: var(--bg-deep);
+  border: 1px solid transparent;
+  border-radius: var(--r);
+  cursor: pointer;
+}
+
+.icgrid button:hover,
+.icgrid button:focus-visible {
+  border-color: var(--accent);
+}
+
+.icgrid .ic {
+  width: var(--ic-s);
+  height: var(--ic-s);
+}
+
+.icfoot .note {
+  margin: 0 0 0 auto;
+}
+
+/* ---------- phones ---------- */
+@media (max-width: 600px) {
+  .fsplit {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+    align-items: stretch;
+  }
+
+  .fplan {
+    top: 0;
+    z-index: 5;
+    height: 40vh;
+    min-height: 0;
+    margin: 0 calc(-1 * var(--sp-3));
+    border-width: 0 0 1px;
+    border-radius: 0;
+  }
+
+  .fplan.has-floors {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .fflr {
+    flex-direction: row;
+    overflow-x: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  #dash .ffl {
+    flex: 1 0 auto;
+    grid-template-columns: auto auto;
+    justify-content: center;
+    padding: var(--sp-1);
+    border-bottom: 0;
+    border-left: 1px solid var(--line-soft);
+  }
+
+  .ffl .d {
+    display: none;
+  }
+
+  .fside .metric {
+    text-align: right;
+  }
+
+  .l-cand .entry {
+    --cols: minmax(0, 1fr) auto !important;
+  }
+
+  .sub {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+}

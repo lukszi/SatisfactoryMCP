@@ -1,229 +1,205 @@
-/* One factory's page, `dash=factories/<name>[/<aspect>]`: the header with its actions, the
- * overview tiles and tables, or the aspect picked under the header. */
+/* One factory's page, `dash=factories/<name>[/<aspect>][?floor=<n|all>]`: the header with its
+ * figures and tabs, the floor plan left (sticky; on top on phones) and the aspect right; flows
+ * takes the whole width. docs/frontend_kit.md, "Factories". */
 
+import "./factories.css";
+import "../power/power.css";
 import { adviceCard } from "../../chat/advice";
-import { appendNote, button, empty, heading, link, table, tile } from "../../kit/dashkit";
-import { make } from "../../kit/dom";
-import { count, mw, pct } from "../../kit/format";
-import { startLasso } from "../../map/tools/lasso";
-import { startTrace } from "../../map/tools/trace";
 import { replaceDash } from "../../app/nav";
 import { state } from "../../app/state";
 import { vitals } from "../../app/vitals";
-import { counted, WORDS } from "../../kit/words";
-import { factoryMapButton, leaveDashThen, pointButton, renameButton, requestRender } from "../actions";
-import { issueCount, issueGroups, issueTable } from "../machine-health";
-import { actionTone, stateTone } from "../machine-states";
-import { aspectTabs, factoryAddress, factoryDash, factoryPinButton } from "./address";
-import { renderAspect } from "./factory-detail";
-import { closeGraph, graphView, openGraph, renderGraphCard, resetGraphOnNewEpoch } from "./graph-view";
-import { healthOrPlaceholder } from "./list";
-import { planFromFactoryButton } from "./plan-from";
-import { resetDetectOnNewEpoch } from "./detect";
+import { count, pct } from "../../kit/format";
+import { cls, html, mount, type Safe } from "../../kit/html";
+import { openMenu } from "../../kit/overlay/menu";
+import { btn } from "../../kit/ui/controls";
+import { wireExpand } from "../../kit/ui/entry";
+import { emptyLine, fig, pageHead } from "../../kit/ui/text";
+import { hashFor } from "../../map/map";
+import { actionTone } from "../machine-states";
+import { requestRender } from "../actions";
+import { ASPECTS, factoryAddress, factoryDash } from "./address";
+import { floorsAspect, linksAspect, machinesAspect, nodesAspect, opts, overviewAspect, powerAspect, sitesAspect } from "./aspects";
+import { aspectHref, buildCtx, setPick, type FCtx } from "./ctx";
+import { wireRetry } from "./data";
+import { factoryMore, mapBtn, MENU_PAGE, runFactoryAction, wireFactoryButtons } from "./factory-actions";
+import { flowsAspect, lightItem, mountGraph } from "./flows";
+import { factoryLead } from "./icon-choice";
+import { healthOr, powerChips } from "./list";
+import { planPanel } from "./plan";
 import { onRenamed, renamedTo } from "./rename";
 
 import type { FactoryHealthRow } from "../../api/shapes";
 
-function worstList(parent: HTMLElement, row: FactoryHealthRow): void {
-  const section = make("section", "dash-card");
-  heading(section, WORDS.needAction);
-  const found = issueGroups([row]);
-  if (!found.length) {
-    empty(
-      section,
-      "none " + WORDS.needAction,
-      row.attention ? counted(row.attention, "machine") + " " + WORDS.notRunning : ""
-    );
-    parent.appendChild(section);
+/* Set when a pick came from the plan, so the list scrolls its row into view once. */
+let scrollTo = "";
+
+function header(c: FCtx): Safe {
+  const row = c.row;
+  const total = row.machines;
+  const tone = actionTone(row.states);
+  const figs = html`${fig(count(row.actionable) + " of " + count(total), "machines " + "need action", row.actionable ? tone || undefined : undefined, total ? (row.actionable / total) * 100 : 0)}${fig(pct(row.uptime), "uptime")}`;
+  const acts = html`${mapBtn(row.name, !!row.bbox_m)}<span data-factory="${row.name}">${btn("trace supply", { extra: "hide-phone", title: "draw what feeds this factory on the map", data: { fact: "trace supply" } })}</span>${factoryMore(row.name, MENU_PAGE)}`;
+  const tabs = ASPECTS.map((a) => ({ label: a[1], href: aspectHref(c, a[0]), on: a[0] === c.aspect }));
+  return pageHead({ crumbs: [["Factories", hashFor("factories")]], name: row.name, lead: factoryLead(row, "lead"), chips: powerChips(row), acts, figs, tabs, tabsLabel: "factory sections" });
+}
+
+function aspectBody(c: FCtx): Safe {
+  if (c.aspect === "flows") return flowsAspect(c);
+  if (c.aspect === "machines") return machinesAspect(c);
+  if (c.aspect === "power") return powerAspect(c);
+  if (c.aspect === "nodes") return nodesAspect(c);
+  if (c.aspect === "links") return linksAspect(c);
+  if (c.aspect === "floors") return floorsAspect(c);
+  if (c.aspect === "sites") return sitesAspect(c);
+  return overviewAspect(c);
+}
+
+/* ---------------------------------------------------------------- linking */
+
+function light(root: HTMLElement, key: string | null): void {
+  root.querySelectorAll(".fsplit .hl").forEach((el) => el.classList.remove("hl"));
+  const svg = root.querySelector(".fsvg");
+  if (svg) svg.classList.toggle("has-hl", !!key);
+  if (!key) return;
+  root.querySelectorAll('.fsvg [data-k~="' + key + '"], .fside [data-hl~="' + key + '"]').forEach((el) => el.classList.add("hl"));
+}
+
+function pick(c: FCtx, key: string, go?: string, fromPlan?: boolean): void {
+  if (!key) return;
+  if (/^fl-?\d+$/.test(key)) {
+    const ordinal = key.slice(2);
+    location.hash = aspectHref(c, c.aspect, c.floor === +ordinal ? "all" : ordinal);
     return;
   }
-  section.appendChild(
-    issueTable(
-      found,
-      function (group) {
-        return pointButton(group.issues[0]!, "show " + group.what + " on the map");
-      },
-      false
-    )
-  );
-  const listed = issueCount(found);
-  if (listed < row.actionable) appendNote(section, "showing " + count(listed) + " of " + count(row.actionable));
-  parent.appendChild(section);
+  const same = c.picked === key;
+  setPick(c.name, same ? "" : key);
+  scrollTo = same || !fromPlan ? "" : key;
+  if (go && !same && location.hash !== go) location.hash = go;
+  else requestRender();
 }
 
-function statesTable(parent: HTMLElement, row: FactoryHealthRow): void {
-  const section = make("section", "dash-card");
-  heading(section, "machines by state");
-  let biggest = 1;
-  row.states.forEach(function (entry) {
-    biggest = Math.max(biggest, entry.count);
+function stepFloor(c: FCtx, by: number): void {
+  if (c.floors.length < 2) return;
+  const order = [-1].concat(c.floors.map((f) => f.ordinal));
+  const at = order.indexOf(c.floor);
+  const next = order[Math.max(0, Math.min(order.length - 1, at + by))]!;
+  if (next !== c.floor) location.hash = aspectHref(c, c.aspect, next < 0 ? "all" : String(next));
+}
+
+function wire(root: HTMLElement, c: FCtx): void {
+  wireExpand(root);
+  wireRetry(root);
+  wireFactoryButtons(root);
+  const flows = c.aspect === "flows";
+  root.addEventListener("mouseover", function (event) {
+    const t = event.target as Element;
+    if (flows) {
+      const item = t.closest<HTMLElement | SVGElement>("[data-item]");
+      lightItem(root, c, item ? item.getAttribute("data-item") : null);
+      return;
+    }
+    const hit = t.closest<HTMLElement | SVGElement>(".fside [data-hl], .fsvg [data-pk]");
+    light(root, hit ? hit.getAttribute("data-hl") || hit.getAttribute("data-pk") : null);
   });
-  type StateRow = FactoryHealthRow["states"][number];
-  section.appendChild(
-    table<StateRow>(
-      [
-        {
-          key: "state",
-          label: "state",
-          render: function (entry) {
-            return entry.state;
-          },
-        },
-        {
-          key: "machines",
-          label: "machines",
-          align: "right",
-          render: function (entry) {
-            return count(entry.count);
-          },
-        },
-        {
-          key: "bar",
-          label: "",
-          className: "bar",
-          render: function (entry) {
-            const bar = make("div", "dash-hbar");
-            const fill = make("span", "dash-mix-" + stateTone(entry.state));
-            fill.style.width = (entry.count / biggest) * 100 + "%";
-            bar.appendChild(fill);
-            return bar;
-          },
-        },
-      ],
-      row.states,
-      {
-        rowClass: function (entry) {
-          const tone = stateTone(entry.state);
-          return tone === "ok" ? "" : tone;
-        },
-        caption: "machines by state",
-      }
-    )
-  );
-  parent.appendChild(section);
-}
-
-function factoryGraphShown(name: string): boolean {
-  return graphView.source === "factory" && graphView.subject === name;
+  root.addEventListener("focusin", function (event) {
+    const hit = (event.target as Element).closest<HTMLElement>(".fside [data-hl]");
+    if (hit) light(root, hit.dataset.hl || null);
+  });
+  root.addEventListener("click", function (event) {
+    const t = event.target as Element;
+    const more = t.closest<HTMLElement>(".phead .more[data-menu]");
+    if (more) {
+      openMenu(more, MENU_PAGE.map((label) => ({ label, act: () => runFactoryAction(label, c.name, more) })));
+      return;
+    }
+    const extra = t.closest<HTMLElement>("[data-more]");
+    if (extra) {
+      opts.more.add(extra.dataset.more || "");
+      requestRender();
+      return;
+    }
+    const segBtn = t.closest<HTMLElement>("[data-seg='fgrain']");
+    if (segBtn) {
+      opts.grain = segBtn.dataset.val || "group";
+      requestRender();
+      return;
+    }
+    const mark = t.closest<SVGElement>(".fsvg [data-pk]");
+    if (mark) {
+      pick(c, mark.getAttribute("data-pk") || "", mark.getAttribute("data-go") || undefined, true);
+      return;
+    }
+    if (t.closest("a, button, input, select, label")) return;
+    const row = t.closest<HTMLElement>(".fside .entry[data-hl]");
+    if (row && row.dataset.hl) pick(c, row.dataset.hl, row.dataset.go);
+    else if (row && row.dataset.go) location.hash = row.dataset.go;
+    const link = t.closest<HTMLElement>(".fside .entry[data-href]");
+    if (link) location.hash = link.dataset.href!;
+  });
+  root.addEventListener("change", function (event) {
+    const el = event.target as HTMLInputElement;
+    if (el.id === "fgsort") opts.groupSort = el.value;
+    else if (el.id === "fmsort") opts.machineSort = el.value;
+    else if (el.id === "fmbld") opts.building = el.value;
+    else if (el.id === "fboost") opts.boosted = el.checked;
+    else return;
+    requestRender();
+  });
+  root.addEventListener("keydown", function (event) {
+    const t = event.target as Element;
+    if (event.key === "Escape" && c.picked) {
+      setPick(c.name, "");
+      requestRender();
+      return;
+    }
+    if (event.key === "Enter" && t.matches(".fside .entry[data-hl]")) {
+      const row = t as HTMLElement;
+      pick(c, row.dataset.hl || "", row.dataset.go);
+      return;
+    }
+    if (!t.closest(".fsvg, .fflr")) return;
+    const up = event.key === "PageUp" || event.key === "ArrowUp" || event.key === "ArrowRight";
+    const down = event.key === "PageDown" || event.key === "ArrowDown" || event.key === "ArrowLeft";
+    if (!up && !down) return;
+    event.preventDefault();
+    stepFloor(c, up ? -1 : 1);
+  });
 }
 
 /* A name renamed since the page was linked: follow it to the new address. */
-function followRename(body: HTMLElement, name: string, aspect: string): boolean {
+function followRename(body: HTMLElement, name: string, aspect: string, floor: string): boolean {
   const now = renamedTo(name);
   if (!now) return false;
-  replaceDash(factoryDash(now, aspect));
-  renderFactory(body, factoryDash(now, aspect).slice("factories/".length));
+  replaceDash(factoryDash(now, aspect, floor));
+  renderFactory(body, factoryDash(now, aspect, floor).slice("factories/".length));
   return true;
 }
 
-function factoryHeader(row: FactoryHealthRow, aspect: string): HTMLElement {
-  const head = make("div", "dash-title");
-  const title = make("h1", "", row.name);
-  head.appendChild(title);
-  head.appendChild(
-    renameButton(row.name, title, function (to) {
-      if (state.dash === factoryDash(row.name, aspect)) replaceDash(factoryDash(to, aspect));
-      requestRender();
-    })
-  );
-  head.appendChild(factoryMapButton(row));
-  const shown = factoryGraphShown(row.name);
-  const toggle = button(
-    shown ? "hide graph" : "graph",
-    function () {
-      if (shown) closeGraph();
-      else openGraph("factory", row.name, row.name);
-    },
-    { title: "draw this factory's production graph" }
-  );
-  toggle.setAttribute("data-ctl", "graph");
-  toggle.setAttribute("aria-expanded", String(shown));
-  head.appendChild(toggle);
-  head.appendChild(
-    button(
-      "trace supply",
-      function () {
-        leaveDashThen(function () {
-          startTrace("label:" + row.name, "up");
-        });
-      },
-      { title: "draw what feeds this factory on the map, with items and rates" }
-    )
-  );
-  head.appendChild(
-    button(
-      "amend on map",
-      function () {
-        leaveDashThen(function () {
-          startLasso(row.name);
-        });
-      },
-      { title: "draw around machines on the map to add them to this factory or remove them" }
-    )
-  );
-  head.appendChild(planFromFactoryButton(row.name));
-  head.appendChild(factoryPinButton(row.name));
-  return head;
-}
-
-function factoryTiles(row: FactoryHealthRow): HTMLElement {
-  const power = row.unwired + row.no_generator;
-  const tiles = make("div", "dash-tiles");
-  tiles.appendChild(tile("machines", count(row.machines), pct(row.uptime) + " mean uptime"));
-  const need = tile(WORDS.needAction, count(row.actionable), count(row.attention) + " " + WORDS.notRunning);
-  const tone = actionTone(row.states);
-  if (tone) need.classList.add(tone);
-  tiles.appendChild(need);
-  tiles.appendChild(tile(WORDS.measuredDraw, mw(row.measured_mw), mw(row.nameplate_mw) + " nameplate"));
-  tiles.appendChild(
-    tile(
-      WORDS.powerProblems,
-      count(power),
-      power ? count(row.unwired) + " " + WORDS.noWire + " · " + count(row.no_generator) + " " + WORDS.noGenerator : "none",
-      power > 0
-    )
-  );
-  return tiles;
-}
-
 export function renderFactory(body: HTMLElement, subject: string): void {
-  resetGraphOnNewEpoch();
-  resetDetectOnNewEpoch();
   const health = vitals().health;
-  const at = factoryAddress(subject, function (whole) {
-    return !!health && health.factories.some(function (row) {
-      return row.name === whole;
-    });
-  });
-  const name = at.name;
-  const aspect = at.aspect;
-  const row = health
-    ? health.factories.filter(function (candidate) {
-        return candidate.name === name;
-      })[0]
-    : undefined;
-  if (health && !row && followRename(body, name, aspect)) return;
-  body.appendChild(link("factories", "‹ all factories", "dash-back"));
-  if (!healthOrPlaceholder(body)) return;
+  const at = factoryAddress(subject, (whole) => !!health && health.factories.some((r) => r.name === whole));
+  const row: FactoryHealthRow | undefined = health ? health.factories.filter((r) => r.name === at.name)[0] : undefined;
+  if (health && !row && followRename(body, at.name, at.aspect, at.floor)) return;
+  if (!healthOr(body)) return;
+  const root = document.createElement("div");
+  root.className = "fpage";
   if (!row) {
-    empty(body, "no factory named “" + name + "” in this world", "it may have been renamed or forgotten; pick one from the list");
+    mount(root, html`${pageHead({ crumbs: [["Factories", hashFor("factories")]], name: at.name })}${emptyLine("no factory named “" + at.name + "” in this world", "it may have been renamed or forgotten; pick one from the list")}`);
+    body.appendChild(root);
     return;
   }
-  body.appendChild(factoryHeader(row, aspect));
-  if (factoryGraphShown(row.name)) renderGraphCard(body);
-  body.appendChild(aspectTabs(row.name, aspect));
-  if (aspect) {
-    renderAspect(body, row.name, aspect);
-    return;
+  const c = buildCtx(row, at.aspect, at.floor);
+  const wide = c.aspect === "flows";
+  mount(root, html`${header(c)}<div class="${cls("fsplit", wide && "fwide")}">${wide ? "" : planPanel(c)}<section class="fside" aria-label="${c.aspect || "overview"}">${aspectBody(c)}</section></div>`);
+  if (wide) mountGraph(c, root);
+  if (!c.aspect) adviceCard(root.querySelector<HTMLElement>(".fside")!, { factory: row.name });
+  wire(root, c);
+  body.appendChild(root);
+  if (scrollTo) {
+    const key = scrollTo;
+    scrollTo = "";
+    requestAnimationFrame(() => root.querySelector('.fside [data-hl~="' + key + '"]')?.scrollIntoView({ block: "nearest" }));
   }
-  if (row.review) appendNote(body, "label " + row.review + ": " + row.alive + " of " + row.anchors + " anchors still stand");
-  body.appendChild(factoryTiles(row));
-  adviceCard(body, { factory: row.name });
-
-  const split = make("div", "dash-split");
-  statesTable(split, row);
-  worstList(split, row);
-  body.appendChild(split);
 }
 
 onRenamed(function () {

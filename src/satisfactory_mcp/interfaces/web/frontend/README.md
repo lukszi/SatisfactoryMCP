@@ -128,8 +128,8 @@ picker is drawn without knowing what a storey is. The floors module is imported 
 Esc key), `app/load.ts` (a redraw replaces a layer's contents, and the floor filter is a fact
 about contents) and
 `map/drawn/placements.ts` (a save write changes what is built, so `/api/machines` re-asks for
-the decomposition) and `dash/factories/factory-places.ts` (the floors aspect's way in) — so it
-must import none of those six, and does not.
+the decomposition) — so it must import none of those five, and does not. The factory page's
+floor plan reads only `map/floors/model.ts`, the pure half.
 
 ### Two ranks
 
