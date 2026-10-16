@@ -1,5 +1,5 @@
-/* The Overview page, `dash=overview`: five glanceable blocks (factories, power, do next,
- * progress, map), each clicking through to its page. Desktop: two independent column stacks;
+/* The Overview page, `dash=overview`: four glanceable blocks (factories, power, do next,
+ * progress), each clicking through to its page. Desktop: two independent column stacks;
  * phones: one column, do next first. docs/frontend_kit.md, "Overview". */
 
 import "../factories/factories.css";
@@ -29,9 +29,7 @@ import { utilScale, worstFirst } from "../power/model";
 import { DEFAULT_HORIZON, planHref, stepWords } from "../progress/model";
 import { loadList, planIndex } from "../planner/plan-index";
 import { onBench } from "../planner/state";
-import { playerAt } from "../world/here";
 import { cellOrder, gateTally, machineTotals, moreDash, plansTally, SHOWN, todoOf, type Tally, type Todo } from "./model";
-import { attachOverviewMap } from "./overview-map";
 
 import type { ApiUrl } from "../../api/client";
 import type { FactoryHealthRow, GateView } from "../../api/shapes";
@@ -160,12 +158,6 @@ function progressBlock(): Safe {
   return card("ov-prog", html`${blockHead("progress", undefined, hashFor("progress"))}<div class="ov-rows">${gatePart}${plansRow()}</div>`);
 }
 
-/* ------------------------------------------------------------------ map */
-
-function mapBlock(): Safe {
-  return card("ov-map", html`${blockHead("map", undefined, hashFor(""))}<div class="ovm-slot"></div>`);
-}
-
 /* ------------------------------------------------------------------ page */
 
 function wire(root: HTMLElement): void {
@@ -184,14 +176,12 @@ function wire(root: HTMLElement): void {
 }
 
 export function renderOverview(body: HTMLElement): void {
-  const blocks = { fac: factoriesBlock(), pow: powerBlock(), todo: doBlock(), prog: progressBlock(), map: mapBlock() };
+  const blocks = { fac: factoriesBlock(), pow: powerBlock(), todo: doBlock(), prog: progressBlock() };
   const markup = PHONE.matches
-    ? html`<div class="ov one">${blocks.todo}${blocks.fac}${blocks.pow}${blocks.prog}${blocks.map}</div>`
-    : html`<div class="ov"><div class="ov-col">${blocks.fac}${blocks.map}</div><div class="ov-col">${blocks.pow}${blocks.todo}${blocks.prog}</div></div>`;
+    ? html`<div class="ov one">${blocks.todo}${blocks.fac}${blocks.pow}${blocks.prog}</div>`
+    : html`<div class="ov"><div class="ov-col">${blocks.fac}${blocks.prog}</div><div class="ov-col">${blocks.pow}${blocks.todo}</div></div>`;
   const root = document.createElement("div");
   mount(root, html`<h1 class="dk-hidden">Overview</h1>${markup}`);
   wire(root);
   body.appendChild(root);
-  const health = vitals().health;
-  attachOverviewMap(root.querySelector<HTMLElement>(".ovm-slot")!, health ? health.factories : [], playerAt());
 }

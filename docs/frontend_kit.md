@@ -70,11 +70,11 @@ land elsewhere. A bare first word is a shorthand (`#maps` is `#dash=maps`).
 
 ## Overview
 
-`dash/overview/` is the Overview (`#dash=overview`, and where an unknown `dash=` lands): five
+`dash/overview/` is the Overview (`#dash=overview`, and where an unknown `dash=` lands): four
 glanceable blocks, each clicking through to the page with the detail. Headline figures sit in
 the block heading at heading size; no list runs past three rows. Desktop has two independent
-column stacks (factories and map left, about two thirds; power, do next and progress right);
-phones get one column in the order do next, factories, power, progress, map, factory cells
+column stacks (factories and progress left, about two thirds; power and do next right);
+phones get one column in the order do next, factories, power, progress, factory cells
 two across. The order is the DOM order on both, picked at render by a 600 px media query.
 
 - **Factories**: machines and need action in the heading; one cell per named factory, worst
@@ -92,12 +92,9 @@ two across. The order is the DOM order on both, picked at render by a 600 px med
   `/api/progress/gate` at the default horizon (the same read the Progress page makes), the
   first next step, and the plans as machines built of planned (`/api/plan/built`, plans whose
   figure counts machines at their current version).
-- **Map**: a real Leaflet map from `map/mini-map.ts` (`overview-map.ts`), kept across renders
-  and refitted only when the factories or the player move. One dot per named factory at its
-  centroid, coloured only when it needs action, the player from `/api/world/here`. It does not
-  pan or zoom; a dot opens the factory, anywhere else opens the main map there.
-- The "worth a look" advice card left the Overview; it stays on a factory's page. The old
-  tiles (`dashkit` `tile`) and tables are gone.
+- The map block left the Overview: at that size it said nothing the main map does not. The
+  "worth a look" advice card left too; it stays on a factory's page. The old tiles (`dashkit`
+  `tile`) and tables are gone.
 
 ## Power
 
@@ -242,10 +239,13 @@ a second click on its slot, × or Esc clears it. Picking does not move the scrol
     (`mode=nearest` from the player, so the server measures) or collected (measured on the page).
 - **Map** (right, sticky, full height; 40vh on top on phones): a real Leaflet map, one instance
   kept for the page's life and moved into each render (`world-map.ts`). `map/mini-map.ts` makes
-  it on the main map's terms: its CRS and frame from `map.ts`, the base picture the main map
-  shows as a plain copy (`baseCopy` in `tiles.ts`: baked light, and a failing tile there changes
-  nothing on the main map), and the biome cells (`regionCells` in `regions.ts`) when the picture
-  is plain. Node and pickup colours and sizes are the main map's (`markers.ts`, `pickups.ts`).
+  it on the main map's terms: its CRS and frame from `map.ts`, a base picture as a plain copy
+  (`baseCopy` in `tiles.ts`: baked light, and a failing tile there changes nothing on the main
+  map), and the biome cells (`regionCells` in `regions.ts`) only when no picture exists at all.
+  The picture (`copyMode`, rule in `copy-mode.ts`) is the main map's, else the default the main
+  map would open on, else the artwork, else any probed one. A main map still unopened (a page
+  loaded straight onto the dashboard) or set to plain still gets a picture: a mini map is for
+  orientation. It follows every mode change and probe (`onBaseChange`), not only its renders. Node and pickup colours and sizes are the main map's (`markers.ts`, `pickups.ts`).
   It draws only the rows listed, plus the player and the factory searched near, and refits only
   when the results change; a legend of glyphs and single words and the zoom buttons are its only
   chrome.
