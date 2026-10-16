@@ -14,6 +14,7 @@ from fastapi.responses import JSONResponse
 from typing_extensions import TypedDict
 
 from .....core.gamedata import search
+from .....core.gamedata.categories import item_categories
 from .....core.gamedata.model import Flow, GameData, Item, Recipe
 from .....core.gamedata.search import find_recipe, resolve_item
 from .....core.gamedata.unlocks import granted_by
@@ -28,11 +29,16 @@ ITEMS_MAX = 200
 
 
 class ItemRow(TypedDict):
+    """``category`` is one of ``categories.CATEGORIES``; ``locked`` is true when recipes make
+    the item and the save has none of them, null when no save could be read."""
+
     cls: str
     name: str
     fluid: bool
     energy_mj: float
     sink_points: int
+    category: str
+    locked: bool | None
 
 
 class ItemsResponse(TypedDict):
@@ -52,6 +58,7 @@ class RecipeRow(TypedDict):
     qty: float
     unlocked: bool | None
     spoiler: bool
+    product: str | None
 
 
 class Census(TypedDict):
@@ -98,10 +105,13 @@ class RecipeDetail(TypedDict):
 
 
 class MakerRow(TypedDict):
+    """``machine_icon`` is the machine's descriptor class, the key of its picture."""
+
     cls: str
     name: str
     alternate: bool
     machine: str | None
+    machine_icon: str | None
     power_mw: float
     ingredients: list[Rate]
     products: list[Rate]
@@ -196,13 +206,24 @@ def _census_without_locked(
     return _census(tally)
 
 
-def _item_row(item: Item) -> ItemRow:
+def _locked(game: GameData, item: Item, have: set[str] | None) -> bool | None:
+    if have is None:
+        return None
+    if item.is_resource:
+        return False
+    makers = game.producers_of(item.cls, "part") + game.producers_of(item.cls, "manual")
+    return bool(makers) and not any(recipe.cls in have for recipe in makers)
+
+
+def _item_row(game: GameData, item: Item, have: set[str] | None) -> ItemRow:
     return {
         "cls": item.cls,
         "name": item.name,
         "fluid": item.is_fluid,
         "energy_mj": float(item.energy_mj),
         "sink_points": int(item.sink_points),
+        "category": item_categories(game).get(item.cls, "other"),
+        "locked": _locked(game, item, have),
     }
 
 
@@ -212,6 +233,7 @@ def _maker_row(game: GameData, recipe: Recipe, unlocked: bool | None) -> MakerRo
         "name": recipe.name,
         "alternate": recipe.is_alternate,
         "machine": machine_name(game, recipe),
+        "machine_icon": building.descriptor if (building := game.machine(recipe)) else None,
         "power_mw": float(game.recipe_power_mw(recipe)),
         "ingredients": _rates(game, recipe.ingredients),
         "products": _rates(game, recipe.products),
@@ -222,12 +244,21 @@ def _maker_row(game: GameData, recipe: Recipe, unlocked: bool | None) -> MakerRo
 
 
 @router.get("/gamedata/items", response_model=ItemsResponse)
-def gamedata_items(request: Request, q: str = "", limit: int = ITEMS_MAX) -> ItemsResponse:
-    """Items whose name contains ``q``, the ``search_items`` order. Needs no save."""
-    hits = search.find_items(game_data(request), q.strip())
+def gamedata_items(
+    request: Request,
+    q: str = "",
+    limit: int = ITEMS_MAX,
+    save: str | None = None,
+    world: str | None = None,
+) -> ItemsResponse:
+    """Items whose name contains ``q``, the ``search_items`` order. Answers without a save,
+    with ``locked`` null then."""
+    game = game_data(request)
+    hits = search.find_items(game, q.strip())
+    have, _ = _unlocked_ids_or_note(request, save, world)
     return {
         "total": len(hits),
-        "items": [_item_row(item) for item in hits[: max(0, min(limit, ITEMS_MAX))]],
+        "items": [_item_row(game, item, have) for item in hits[: max(0, min(limit, ITEMS_MAX))]],
     }
 
 
@@ -289,6 +320,7 @@ def gamedata_recipes(
                 "qty": float(hit.qty),
                 "unlocked": hit.unlocked,
                 "spoiler": hit.unlocked is False,
+                "product": hit.recipe.main_product,
             }
             for hit in hits
         ],
@@ -367,7 +399,7 @@ def gamedata_alternates(
         ),
         None,
     )
-    found = _item_row(game.items[item_id])
+    found = _item_row(game, game.items[item_id], have)
     return {
         "item": item_id,
         "name": found["name"],

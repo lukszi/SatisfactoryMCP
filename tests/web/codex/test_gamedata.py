@@ -7,6 +7,7 @@ import pytest
 fastapi = pytest.importorskip("fastapi")
 
 from satisfactory_mcp.core.gamedata import search
+from satisfactory_mcp.core.gamedata.categories import item_categories
 from satisfactory_mcp.core.gamedata.search import find_recipe
 from satisfactory_mcp.core.gamedata.unlocks import granted_by
 from tests.support.web import failing_state_loader
@@ -189,3 +190,36 @@ def test_a_building_descriptor_points_at_its_build_recipe(client):
     assert body["build_recipe"] == "Recipe_AssemblerMk1_C"
     plate = client.get("/api/gamedata/alternates", params={"item": "Iron Plate"}).json()
     assert plate["build_recipe"] is None
+
+
+def test_items_carry_their_category_and_whether_the_save_can_make_them(client, game, state):
+    rows = {r["name"]: r for r in client.get("/api/gamedata/items").json()["items"]}
+    cats = item_categories(game)
+    assert all(r["category"] == cats[r["cls"]] for r in rows.values())
+    assert rows["Iron Plate"]["category"] == "standard parts"
+    assert rows["Iron Ore"]["locked"] is False
+    have = state.available_recipe_ids
+    for row in rows.values():
+        makers = game.producers_of(row["cls"], "part") + game.producers_of(row["cls"], "manual")
+        if makers and not game.items[row["cls"]].is_resource:
+            assert row["locked"] == (not any(m.cls in have for m in makers))
+    locks = [r["locked"] for r in rows.values()]
+    assert any(locks) and not all(locks), "the fixture must mix locked and unlocked items"
+
+
+def test_items_answer_without_a_save_with_locked_unknown(client, monkeypatch):
+    monkeypatch.setattr(client.app.state, "load_state", failing_state_loader)
+    rows = client.get("/api/gamedata/items", params={"q": "iron"}).json()["items"]
+    assert rows and all(r["locked"] is None for r in rows)
+
+
+def test_makers_name_the_machine_icon_and_users_their_main_product(client, game):
+    plate = client.get("/api/gamedata/alternates", params={"item": "Iron Plate"}).json()
+    makers = plate["recipes"]
+    for m in makers:
+        assert m["machine_icon"] == game.machine(game.recipes[m["cls"]]).descriptor
+    assert any(m["machine_icon"] == "Desc_ConstructorMk1_C" for m in makers)
+    users = client.get("/api/gamedata/recipes", params={"consumes": "Iron Plate"}).json()
+    assert users["recipes"]
+    for u in users["recipes"]:
+        assert u["product"] == game.recipes[u["cls"]].main_product

@@ -274,6 +274,10 @@ class Schematic:
     dependencies: tuple[str, ...]
     events: str
     grants_inventory_slots: int = 0
+    #: The AWESOME Shop category, ``SC_RSS_<name>_C`` as ``<name>``; "" off the shop.
+    shop_category: str = ""
+    #: Items the schematic hands over (``BP_UnlockGiveItem_C``), as shop entries do.
+    gives_items: tuple[str, ...] = ()
 
     @property
     def is_alternate(self) -> bool:
