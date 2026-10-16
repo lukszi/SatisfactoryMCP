@@ -75,14 +75,14 @@ export const RESOURCE_COLOUR: Record<string, string> = declareColours("markers",
 /* How big a node dot is, in pixels, by purity -- the grammar POLE_RADIUS_PX in power-wires.ts calls
  * "is there one here": a fixed size, because the question a dot answers is whether there is a
  * node, not how much room it takes up. */
-const PURITY_RADIUS: Record<string, number> = { impure: 3, normal: 4.5, pure: 6 };
+export const PURITY_RADIUS: Record<string, number> = { impure: 3, normal: 4.5, pure: 6 };
 
 /* Tone values (docs/frontend_vision.md §19). On a dark base near-black coal vanishes, so it
  * turns light grey. A locked dot keeps its ore colour, hollow and dashed, on a dark ring: at 35%
  * opacity it was invisible on every base. */
 const TONED = declareColours("markers", { "coal dark": "#8c8f96", "locked casing": "#262040" });
 
-function nodeColour(resource: string): string {
+export function nodeColour(resource: string): string {
   if (resource === "Desc_Coal_C") return byMapTone(RESOURCE_COLOUR[resource]!, TONED["coal dark"]);
   return RESOURCE_COLOUR[resource] || "#888";
 }
@@ -313,7 +313,7 @@ registerFetch<NodesResponse>({
 
 /* Near-white and warm, the one thing on the page that is not a colour ABOUT anything: it is
  * not an ore, not a tier and not a biome, so it is the value nothing else on the map spends. */
-const PLAYER_COLOUR = declareColours("markers", { player: "#f5f0e8" }).player;
+export const PLAYER_COLOUR = declareColours("markers", { player: "#f5f0e8" }).player;
 
 /* The player's last known position: the map's only you-are-here, and the reference every
  * "is this near me" judgement needs. Ring-styled so it reads as a position, not a node.

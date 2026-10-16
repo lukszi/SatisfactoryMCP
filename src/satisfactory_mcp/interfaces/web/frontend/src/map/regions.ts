@@ -134,12 +134,16 @@ export function regionLabels(): HTMLElement[] {
   return labels;
 }
 
-export function drawRegions(data: RegionsResponse): void {
-  tips = [];
-  // Adjacent slots at the top of the legend, because they are a pair: the biome fill is the
-  // ground every other layer is drawn over, and its names are the same thing said in words.
-  const regions = clearedLayer("regions", { on: true, rank: [BAND.chrome, 0, "regions"] });
-  const names = clearedLayer("region names", { on: true, rank: [BAND.chrome, 10, "region names"] });
+/** The last regions read, for a second map to paint the same ground. */
+let lastRegions: RegionsResponse | null = null;
+
+export function knownRegions(): RegionsResponse | null {
+  return lastRegions;
+}
+
+/** The biome cells as rectangles in `pane`, ready to add to any map. */
+export function regionCells(data: RegionsResponse, pane: string, renderer?: L.Renderer): L.Rectangle[] {
+  const out: L.Rectangle[] = [];
   const cell = data.cell_m;
   data.grid.forEach(function (row, j) {
     for (let i = 0; i < row.length; i++) {
@@ -149,9 +153,8 @@ export function drawRegions(data: RegionsResponse): void {
       const x = data.x0_m + i * cell;
       const y = data.y0_m + j * cell;
       // Cell (i, j) spans [x, x + cell] by [y, y + cell] in game metres; row 0 is the north edge.
-      L.rectangle(
-        boundsOfBbox([x, y, x + cell, y + cell]),
-        {
+      out.push(
+        L.rectangle(boundsOfBbox([x, y, x + cell, y + cell]), {
           // Stroked in its own fill colour so neighbouring cells of one biome merge into
           // a shape instead of showing a grid; interactive:false so the region fill never
           // eats a click meant for a node sitting on top of it.
@@ -161,10 +164,24 @@ export function drawRegions(data: RegionsResponse): void {
           fillColor: colour,
           fillOpacity: REGION_FILL,
           interactive: false,
-          pane: "regions",
-        }
-      ).addTo(regions);
+          pane: pane,
+          renderer: renderer,
+        })
+      );
     }
+  });
+  return out;
+}
+
+export function drawRegions(data: RegionsResponse): void {
+  lastRegions = data;
+  tips = [];
+  // Adjacent slots at the top of the legend, because they are a pair: the biome fill is the
+  // ground every other layer is drawn over, and its names are the same thing said in words.
+  const regions = clearedLayer("regions", { on: true, rank: [BAND.chrome, 0, "regions"] });
+  const names = clearedLayer("region names", { on: true, rank: [BAND.chrome, 10, "region names"] });
+  regionCells(data, "regions").forEach(function (rect) {
+    rect.addTo(regions);
   });
 
   Object.keys(data.regions).forEach(function (name) {
