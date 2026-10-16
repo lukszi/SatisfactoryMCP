@@ -7,15 +7,16 @@ import { loading } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
 import { keepFocus } from "../../kit/focus";
 import { onReload } from "../../app/load";
-import { dashParts, go } from "../../app/nav";
+import { dashParts, go, replaceDash } from "../../app/nav";
 import { onVitals } from "../../app/vitals";
 import { renderBench } from "./bench";
-import { altDash, openPlanKey, parsePlannerAddress, trackDash } from "./address";
+import { altDash, openPlanKey, parsePlannerAddress, plannerDraft, trackDash } from "./address";
 import { dropFeeders, forgetSolves, hideAlternates, loadAlternates, loadTrack, openRevision, showAlternates, stageHeadroom } from "./reads";
 import { actorWord, bench, changed, inbox, loadItems, onBench, pendingFocus, resetBench } from "./state";
 import { followHead, openPlan, redoLast, resyncHead, undoLast } from "./writes";
 import { scheduleFocus, wireFocusReports } from "./focus";
 import { renderPlansPage } from "./plans/page";
+import { prefillNewPlan } from "./plans/cards";
 import { loadActivity } from "./plans/timeline";
 import { loadList, planTitle } from "./plan-index";
 import { onPins } from "../../chat/pins";
@@ -198,6 +199,12 @@ function draw(): void {
 }
 
 export function renderPlanner(body: HTMLElement, at: string): void {
+  const draft = plannerDraft(at);
+  if (draft) {
+    prefillNewPlan(draft);
+    replaceDash("planner");
+    at = "";
+  }
   const wanted = parsePlannerAddress(at);
   const key = wanted.key;
   if (!state.world) {

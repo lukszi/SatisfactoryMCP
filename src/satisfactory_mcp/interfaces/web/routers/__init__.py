@@ -13,7 +13,14 @@ from fastapi import APIRouter
 from .assets import icons, maps, tiles
 from .bridge import asks, events, pins, settings
 from .codex import gamedata, search
-from .dashboard import advice, power_circuits, progress_boosts, progress_unlocks, stock
+from .dashboard import (
+    advice,
+    power_circuits,
+    progress_boosts,
+    progress_roadmap,
+    progress_unlocks,
+    stock,
+)
 from .factories import (
     factory_detail,
     factory_graph,
@@ -61,6 +68,7 @@ ALL_ROUTERS: tuple[APIRouter, ...] = (
     factory_health.router,
     power_circuits.router,
     progress_unlocks.router,
+    progress_roadmap.router,
     progress_boosts.router,
     factory_labels.router,
     plan_solve.router,

@@ -22,6 +22,13 @@ export function parsePlannerAddress(at: string): PlannerAddress {
   return { key: key, viewedRev: version ? Number(version[1]) : 0, alternatesItem: item, track: track, site: rest[1] === "site", stage: stage };
 }
 
+/** `?item=<name>&rate=<n>`: the new-plan card filled in (Progress links its steps here). */
+export function plannerDraft(at: string): { item: string; rate: string } | null {
+  if (at.charAt(0) !== "?") return null;
+  const params = new URLSearchParams(at.slice(1));
+  return { item: params.get("item") || "", rate: params.get("rate") || "" };
+}
+
 /** The plan the address bar has open: its key, "" on the plans list, null off the planner. */
 export function openPlanKey(): string | null {
   const at = dashParts();
