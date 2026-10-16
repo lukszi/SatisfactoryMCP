@@ -460,6 +460,22 @@
     display: none;
   }
 
+  /* the cells wrap into one line under the name, each with its column's word */
+  .l-gate .entry > .facts {
+    display: inline-flex;
+    grid-column: 2 / -1;
+    justify-content: flex-start;
+  }
+
+  .l-gate .entry > .facts::before {
+    content: attr(data-k);
+    color: var(--muted);
+  }
+
+  .l-gate .entry > .facts:empty {
+    display: none;
+  }
+
   .l-gate .entry > .lead-chk,
   .l-next .entry > .lead-rank {
     grid-row: 1;

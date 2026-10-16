@@ -32,8 +32,9 @@ function madeAt(makers: GateMaker[], world: number): Safe {
 
 function cells(who: Safe, need: string, time: string | null, machines: Safe | string): Safe {
   const labels = ["made at", "per minute to deliver in time", "time to cover", "machines in the chain"];
+  const keys = ["made at", "/min", "time", "machines"];
   return html`${[who, html`<em>${need}</em>`, time === null ? na() : time === "covered" ? html`<span class="muted">covered</span>` : time, machines].map(
-    (v, i) => html`<div class="${i ? "facts" : "facts start"}" title="${labels[i]!}">${v}</div>`
+    (v, i) => html`<div class="${i ? "facts" : "facts start"}" title="${labels[i]!}" data-k="${keys[i]!}">${v}</div>`
   )}`;
 }
 
