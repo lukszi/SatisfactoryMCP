@@ -967,6 +967,10 @@ me that graph for a detected factory".
 
 ## 10. Inventory (2026-09-27)
 
+Superseded 2026-10-16: Inventory and the Recipes tab below are one Items page now
+(`dash=items`, `frontend/src/dash/items/`); see docs/frontend_kit.md, "Items". The old
+addresses redirect there. What follows is the history.
+
 Roadmap phase 3: the `stock`, `storage` and `crates` tools as one dashboard section.
 
 - **Address:** `dash=inventory[/<item>]`. The subject is the item filter, so a link such as

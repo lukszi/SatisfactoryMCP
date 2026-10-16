@@ -9,6 +9,8 @@ import { friendlyError } from "../../kit/toast";
 import { counted, RECIPE_KIND } from "../../kit/words";
 import { circuitName } from "../../dash/power/readings";
 import { loadList, planIndex } from "../../dash/planner/plan-index";
+import { itemsDash } from "../../dash/items/address";
+import { itemDash } from "../../dash/items/stock";
 import { go } from "../nav";
 import { spoilerQuery } from "../settings";
 import { vitals } from "../vitals";
@@ -62,11 +64,11 @@ function serverHits(data: SearchResponse): Hit[] {
     out.push({ kind: "factories", name: f.name, ctx: counted(f.machines, "machine"), dash: "factories/" + f.name, lead: html`<i class="ic"></i>` });
   });
   data.items.slice(0, PER_KIND).forEach(function (i) {
-    out.push({ kind: "items", name: i.name, ctx: "", dash: "recipes/item/" + i.cls, lead: icon(i.cls, i.name) });
+    out.push({ kind: "items", name: i.name, ctx: "", dash: itemDash(i.cls, i.name), lead: icon(i.cls, i.name) });
   });
   data.recipes.slice(0, PER_KIND).forEach(function (r) {
     const what = (r.kind === "part" && r.machine) || RECIPE_KIND[r.kind] || r.kind;
-    out.push({ kind: "recipes", name: r.name, ctx: what + (r.alternate ? " · alt" : ""), dash: "recipes/recipe/" + r.cls, lead: icon(null, r.name) });
+    out.push({ kind: "recipes", name: r.name, ctx: what + (r.alternate ? " · alt" : ""), dash: itemsDash({ view: "all", rec: r.cls }), lead: icon(null, r.name) });
   });
   return out;
 }

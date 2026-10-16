@@ -1,0 +1,242 @@
+/* The Items page: slot grid and the pick's sheet beside it; a bottom sheet on phones. */
+
+.items-h {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-3);
+  align-items: center;
+}
+
+.items-h .dash-h {
+  margin: 0;
+}
+
+.items-page label.off {
+  color: var(--dim);
+}
+
+.items {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--item-sheet-w);
+  gap: var(--sp-5);
+  align-items: start;
+}
+
+.items:not(.has-pick) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.items-grid {
+  min-width: 0;
+}
+
+.sgrp + .sgrp {
+  margin-top: var(--sp-3);
+}
+
+.slab {
+  margin: 0 0 var(--sp-1);
+  color: var(--muted);
+  font-size: var(--t-group-size);
+  font-weight: var(--t-group-w);
+  line-height: var(--t-body-lh);
+  letter-spacing: var(--t-group-track);
+  text-transform: var(--t-group-case);
+}
+
+.slab .n {
+  color: var(--dim);
+}
+
+/* worked out from the game data, not sent: the dotted underline names the source */
+.cmp {
+  text-decoration: underline dotted var(--muted);
+  text-underline-offset: 2px;
+  cursor: help;
+}
+
+/* ---------- the sheet ---------- */
+.items .items-side {
+  max-height: calc(100vh - var(--hdr-h) - var(--strip-h) - var(--jobstrip-h) - 2 * var(--sp-3));
+}
+
+.side-head .ic,
+.side-head .mono {
+  width: 32px;
+  height: 32px;
+}
+
+.side-head .chip {
+  flex: none;
+}
+
+.hfig {
+  flex: none;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.hfig b {
+  font-size: var(--t-section-size);
+  font-weight: var(--t-section-w);
+  line-height: var(--t-section-lh);
+}
+
+.hfig span {
+  margin-left: var(--sp-1);
+  color: var(--muted);
+  font-size: var(--t-meta-size);
+}
+
+.items-side h3.dash-h {
+  margin: var(--sp-3) 0 var(--sp-1);
+}
+
+.items-side .slab {
+  margin-top: var(--sp-2);
+}
+
+.items-side .list.stacked {
+  margin: 0 calc(-1 * var(--sp-3));
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--line-soft);
+  border-radius: 0;
+}
+
+.items-side .empty {
+  padding: var(--sp-1) 0;
+}
+
+.items-side .sub-more {
+  margin: 0;
+  padding: var(--sp-1) 0 0 calc(24px + var(--sp-3) + var(--edge));
+  color: var(--muted);
+  font-size: var(--t-meta-size);
+}
+
+.side-where {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: center;
+  margin-top: var(--sp-1);
+}
+
+.side-where .ctx {
+  flex: 1;
+  min-width: 0;
+}
+
+.side-fill {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--sp-3);
+  align-items: center;
+  margin-top: var(--sp-2);
+}
+
+.kvs {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--sp-0) var(--sp-3);
+  margin-top: var(--sp-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.kvs .k {
+  color: var(--muted);
+  font-size: var(--t-meta-size);
+  line-height: var(--t-body-lh);
+}
+
+.kvs b,
+.kvs .na {
+  text-align: right;
+  font-size: var(--t-number-size);
+  font-weight: var(--t-number-w);
+  font-style: normal;
+}
+
+/* made by: inputs â†’ building and draw â†’ outputs, the building column fixed across rows */
+.l-mk .entry {
+  --cols: minmax(0, 1fr);
+  padding-block: var(--sp-2);
+}
+
+.mflow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto var(--cat-mach-w) auto minmax(0, 1fr);
+  gap: var(--sp-1);
+  align-items: center;
+}
+
+.mflow .min {
+  justify-content: flex-end;
+}
+
+.mach {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: var(--muted);
+  font-size: var(--t-meta-size);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.mach .ic,
+.mach .mono {
+  width: 24px;
+  height: 24px;
+}
+
+.items-side .arrow {
+  color: var(--dim);
+}
+
+a.pill {
+  color: var(--ink);
+  text-decoration: none;
+}
+
+a.pill:hover {
+  background-image: linear-gradient(var(--hover), var(--hover));
+}
+
+.l-use .entry {
+  --cols: 24px minmax(0, 1fr) 88px;
+}
+
+.l-place .entry {
+  --cols: 24px minmax(0, 1fr) auto 24px;
+}
+
+.l-cont .entry {
+  --cols: 24px minmax(0, 1fr) auto;
+}
+
+/* ---------- phones: 4 slots a row, the sheet a bottom sheet above the bottom bar ---------- */
+@media (max-width: 600px) {
+  .items,
+  .items:not(.has-pick) {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--sp-3);
+  }
+
+  .items .items-side {
+    position: fixed;
+    top: auto;
+    right: 0;
+    bottom: var(--bnav-h);
+    left: 0;
+    z-index: var(--z-dash);
+    max-height: var(--sheet-h);
+    border-width: 1px 0 0;
+    border-radius: 0;
+    box-shadow: var(--overlay-shadow);
+  }
+
+  .items.has-pick .items-grid {
+    padding-bottom: var(--sheet-h);
+  }
+}

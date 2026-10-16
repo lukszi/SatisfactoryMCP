@@ -74,11 +74,11 @@ rather than the one a game session is running against.
 | `src/map/drawn/` | the drawn layers: nodes and pickups, belts and pipes, placements, crates, power wires, plan sitings |
 | `src/map/floors/` | floor mode: one storey at a time, by filtering what is already drawn |
 | `src/map/tools/` | the map's tools: finder, lasso, trace |
-| `src/dash/` | the dashboard shell, the actions its tabs ask of it (`actions.ts`, so no tab imports the shell), and the tabs: overview, inventory, power, settings, the production graph, machine states and health |
+| `src/dash/` | the dashboard shell, the actions its tabs ask of it (`actions.ts`, so no tab imports the shell), and the tabs: overview, power, settings, the production graph, machine states and health |
 | `src/dash/factories/` | the Factories tab, the factory detail page and renaming |
 | `src/dash/world/` | the World section and its finders |
 | `src/dash/planner/` | the Planner tab: plan list, workbench, result, track, history, site and the pad drag |
-| `src/dash/progress/`, `src/dash/recipes/`, `src/dash/maps/` | the Progress section, the Recipes codex and the Maps settings |
+| `src/dash/progress/`, `src/dash/items/`, `src/dash/maps/` | the Progress section, the Items page (held, the catalogue, containers) and the Maps page |
 | `src/chat/` | what the page and chat share: advice, asks, pins and the store behind them |
 | `vite.config.ts` | where the build writes, the banner it stamps, the licence it copies out of `node_modules/leaflet/`, the dev proxy |
 | `node-fs.d.ts` | the one Node module the config imports, declared by hand instead of installing `@types/node` |

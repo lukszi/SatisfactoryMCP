@@ -145,6 +145,8 @@
   --slot-bar: 4px;
   --slot-locked: 0.45;
   --item-sheet-w: 480px;
+  /* the building column of a recipe flow on the item sheet */
+  --cat-mach-w: 64px;
   --sheet-h: 60vh;
 
   --z-controls: 1000;
