@@ -82,3 +82,14 @@ def test_worst_actionable_holds_only_machines_needing_action(labelled_client):
     for row in rows:
         assert all(i["state"] in ACTIONABLE for i in row["worst_actionable"])
         assert len(row["worst_actionable"]) == min(8, row["actionable"])
+
+
+def test_a_health_row_names_its_main_product_as_an_item_class(labelled_client, labelled):
+    rows = labelled_client.get("/api/factories/health").json()["factories"]
+    assert rows
+    for row in rows:
+        icon = row["product_icon"]
+        assert (icon is None) == (row["product"] is None)
+        if icon is not None:
+            assert icon in labelled.game.items
+            assert row["product"] == labelled.game.items[icon].name
