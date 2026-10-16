@@ -81,6 +81,33 @@ ATTACHMENT_HINTS = (
     "ConveyorAttachmentMerger",
 )
 
+#: The pieces a pipe run passes through: junctions, pumps and valves. Filed so the map can draw
+#: them; none runs a recipe, and the flow they carry is the ``pipes`` block's.
+FITTING_HINTS = (
+    "PipelineJunction",
+    "PipelinePump",
+    "Build_Valve",
+)
+
+#: One-off buildings that are neither machines nor storage: drawn on the map, counted nowhere
+#: else. Written out, because "Mam" or "Sink" as a pattern would catch other names.
+FACILITY_CLASSES = (
+    "Build_TradingPost_C",  # the HUB
+    "Build_SpaceElevator_C",
+    "Build_Mam_C",
+    "Build_ResourceSink_C",
+    "Build_ResourceSinkShop_C",
+    "Build_Workshop_C",
+    "Build_WorkBench_C",
+    "Build_BlueprintDesigner_C",
+    "Build_BlueprintDesigner_Mk2_C",
+    "Build_BlueprintDesigner_Mk3_C",
+    "Build_RadarTower_C",
+    "Build_PowerStorageMk1_C",
+    "Build_AlienPowerBuilding_C",
+    "Build_TreeGiftProducer_C",
+)
+
 #: The classes whose whole point is to hold items in a ``StorageInventory``. Listed, because
 #: every splitter and merger owns a component by that name holding items in transit. Machine
 #: buffers, the AWESOME Shop and the Space Elevator intake are reported elsewhere.

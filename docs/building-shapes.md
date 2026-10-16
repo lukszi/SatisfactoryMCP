@@ -1,24 +1,28 @@
 # Building shapes
 
-The web map draws machines, extractors, generators, storage boxes, fluid buffers and belt
-splitters/mergers as an approximation of their real top-down shape, with a notch at each belt
-and pipe port. This page says where those outlines and ports come from and how far to trust
-them.
+The web map draws machines, extractors, generators, storage boxes, fluid buffers, belt
+splitters/mergers, pipe fittings (junctions, pumps, valves) and the one-off facilities (the HUB,
+the AWESOME Sink, the MAM and the like) as an approximation of their real top-down shape: the
+footprint, up to two lighter height bands inside it, and a notch at each belt and pipe port.
+This page says where those outlines and ports come from and how far to trust them.
 
 ## Where they come from
 
 `tools/gen_building_shapes.py` reads the installed game (the `gen` extra, because the
 container needs `ooz`) and writes `data/building_shapes.json`. It is a committed table like the
 node tables: derived measurements (a few dozen vertices per class and the connector positions),
-not meshes, and the server needs no game assets to serve it. The `_meta` block carries the
+not meshes, and the server needs no game assets to serve it. It is written one line per class
+(56 KB for 61 classes), so a regeneration diffs by class rather than by number. The `_meta` block carries the
 build it was cut from, and `provenance.PINNED_ARTIFACTS` lists it, so a game update reports it
 as stale alongside the other tables. Rerun the tool after an update:
 
     uv run --extra gen python tools/gen_building_shapes.py
 
 The classes are every `Build_*` class under `FactoryGame/Buildable/` that the save projection
-files as a machine, extractor, generator or attachment (`registers.*_HINTS`) or lists as storage
-or a fluid buffer. A run takes a few seconds.
+files as a machine, extractor, generator, attachment or pipe fitting (`registers.*_HINTS`) or
+lists as storage, a fluid buffer or a facility. A class is keyed by the name its package
+generates, which is not always the package's own spelling: the Mk.2 pump's package is
+`Build_PipelinePumpMK2`, its class `Build_PipelinePumpMk2_C`. A run takes about 20 seconds.
 
 ### Components
 
@@ -53,6 +57,31 @@ onto the ground plane. `tools/building_shapes/silhouette.py` then
 
 Several blobs are sent as several rings and drawn as a multipolygon, never as a ring with
 holes. The closing bevels inside corners by about its radius.
+
+### Height bands
+
+An outline alone says how much ground a building takes, not what it looks like: a Refinery and
+a Coal Generator are both long rectangles. So the generator keeps each triangle's height, takes
+the highest point over every 10 cm cell, and cuts up to two bands out of that top-down height
+map, each traced like the footprint with its own vertex budget:
+
+| tier | parts above | budget | reads as |
+| --- | --- | --- | --- |
+| footprint | anything | 48 | the base plate, walkways, everything that stands on the floor |
+| 1 | 2 m | 32 | the body: the mass a player walks around |
+| 2 | 55% of the class's height, at least 4 m | 20 | chimneys, towers, tanks, hoppers |
+
+The class's height is the 99th percentile of its cell tops, so one antenna does not set it.
+Before closing, a band is opened over 30 cm: railings, thin pipes and cables over a walkway are
+not mass and would otherwise join the body to the edge of the footprint. A band with less than
+0.5 m² left, or covering more than 90% of the band kept below it, adds nothing and is left out:
+a storage container is a box, so it has no body band, and a Refinery's body above 2 m is
+nearly all of its footprint, so it gets its tall band only.
+
+Alternatives weighed: crease lines from the mesh (sharp edges seen from above) are dense and
+noisy on these meshes, where every bolt and grille is modelled; a small baked raster per class
+(32 x 32, 4-bit) would be about as large as the bands but needs a rotated image layer the canvas
+renderer does not have. Bands reuse the outline's pipeline and drawing.
 
 Seven building meshes (Assembler, Manufacturer, Refinery, Blender, Converter, Quantum Encoder,
 Particle Accelerator) carry more than 64 sockets, past the socket count `staticmesh` derives the
