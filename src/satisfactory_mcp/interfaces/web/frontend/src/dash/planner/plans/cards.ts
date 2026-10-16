@@ -77,6 +77,11 @@ export function planCard(row: PlanIndexRow): Safe {
   );
 }
 
+export function prefillNewPlan(draft: { item: string; rate: string }): void {
+  newPlan.draft = draft;
+  newPlan.problem = "";
+}
+
 export function newPlanCard(): Safe {
   const bad = newPlan.problem ? html` aria-invalid="true"` : "";
   return html`<div class="pnew"><form id="newplan" aria-label="new plan: an item at a rate"><span class="name">+ new plan</span>
