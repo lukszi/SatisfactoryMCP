@@ -46,6 +46,8 @@ export function miniMap(className: string): MiniMap {
       if (base) m.removeLayer(base);
       base = baseCopy("basemap");
       if (base) base.addTo(m);
+      /* the cells are opaque: left over from before the picture, they hide it */
+      ground.clearLayers();
       shownRegions = null;
     }
     const regions = base ? null : knownRegions();

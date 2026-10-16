@@ -95,7 +95,8 @@ two across. The order is the DOM order on both, picked at render by a 600 px med
 - **Map**: a real Leaflet map from `map/mini-map.ts` (`overview-map.ts`), kept across renders
   and refitted only when the factories or the player move. One dot per named factory at its
   centroid, coloured only when it needs action, the player from `/api/world/here`. It does not
-  pan or zoom; a dot opens the factory, anywhere else opens the main map there.
+  pan or zoom; a dot opens the factory, anywhere else opens the main map there. Its picture
+  is the World map's (`copyMode`, see "World"), never the biome cells while one exists.
 - The "worth a look" advice card left the Overview; it stays on a factory's page. The old
   tiles (`dashkit` `tile`) and tables are gone.
 
@@ -244,7 +245,8 @@ a second click on its slot, × or Esc clears it. Picking does not move the scrol
   kept for the page's life and moved into each render (`world-map.ts`). `map/mini-map.ts` makes
   it on the main map's terms: its CRS and frame from `map.ts`, a base picture as a plain copy
   (`baseCopy` in `tiles.ts`: baked light, and a failing tile there changes nothing on the main
-  map), and the biome cells (`regionCells` in `regions.ts`) only when no picture exists at all.
+  map), and the biome cells (`regionCells` in `regions.ts`) only when no picture exists at all;
+  they are opaque, so the picture arriving clears any drawn before it.
   The picture (`copyMode`, rule in `copy-mode.ts`) is the main map's, else the default the main
   map would open on, else the artwork, else any probed one. A main map still unopened (a page
   loaded straight onto the dashboard) or set to plain still gets a picture: a mini map is for
