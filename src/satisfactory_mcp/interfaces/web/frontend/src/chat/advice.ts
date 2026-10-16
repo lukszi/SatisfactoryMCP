@@ -8,6 +8,7 @@ import { openMenu, type MenuItem } from "../kit/overlay/menu";
 import { btn, moreBtn } from "../kit/ui/controls";
 import { acts, entry, expandBody, list, nameLine } from "../kit/ui/entry";
 import { chip } from "../kit/ui/marks";
+import { loadingLine } from "../kit/ui/states";
 import { dashH, emptyLine, toolrow, type Tone } from "../kit/ui/text";
 import { hashFor } from "../map/map";
 import { createListeners } from "../app/listeners";
@@ -338,7 +339,7 @@ export function adviceCard(parent: HTMLElement, filter?: AdviceFilter): void {
   const data = view.world === state.world ? view.data : null;
   if (!data) {
     const head = toolrow(dashH(WORDS.worthALook));
-    mount(card, view.loadError ? html`${head}${emptyLine("the advisories did not load", view.loadError)} ${btn("try again", { data: { advact: "retry" } })}` : html`${head}<p class="note" aria-busy="true">loading advisories…</p>`);
+    mount(card, view.loadError ? html`${head}${emptyLine("the advisories did not load", view.loadError)} ${btn("try again", { data: { advact: "retry" } })}` : html`${head}${loadingLine("advisories")}`);
     wireAdvice(card, []);
     return;
   }

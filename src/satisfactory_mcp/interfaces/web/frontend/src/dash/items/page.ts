@@ -6,7 +6,7 @@ import "./items.css";
 import { replaceDash } from "../../app/nav";
 import { settingOn } from "../../app/settings";
 import { state } from "../../app/state";
-import { error, loading } from "../../kit/dashkit";
+import { failedInto, loadingInto } from "../../kit/ui/states";
 import { html, mount, type Safe } from "../../kit/html";
 import { filterField, seg } from "../../kit/ui/controls";
 import { dashH, emptyLine, toolrow } from "../../kit/ui/text";
@@ -203,8 +203,8 @@ export function renderItems(body: HTMLElement, subject: string): void {
   mount(root, html`${head}${followed || ""}<div class="${sheet ? "items has-pick" : "items"}"><div class="items-grid" id="items-grid">${gridBody}</div>${sheet || ""}</div>`);
   if (!grid && !state.noSaves) {
     const holder = root.querySelector<HTMLElement>("#items-grid")!;
-    if (stock.failed) error(holder, "stock", "", retryStock);
-    else loading(holder, "stock");
+    if (stock.failed) failedInto(holder, "stock", "", retryStock);
+    else loadingInto(holder, "stock");
   }
   wire(root, a, function () {
     const again = gridOf(a, index, cat.data!.total);

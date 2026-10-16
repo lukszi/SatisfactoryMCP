@@ -39,6 +39,7 @@ phones are one `max-width: 600px` media query per stylesheet.
 | `kit/ui/controls.ts` | `btn`, `busyBtn`, `glyphBtn`, `moreBtn`, `seg`, `selectBox`, `sortSelect`, `filterField`, `filterChip`, `switchBox`, `check` |
 | `kit/ui/forms.ts` | `frow` (label column + one control column), `form` (groups split by a soft rule), `fnum`, `ftext`, `fadd`, `frange`, `checks` |
 | `kit/overlay/*` | `openMenu` / `wireMoreMenus` (the ⋯ menu), `modal` (native `<dialog>`), `sidePanel`, `toast` |
+| `kit/ui/states.ts` | `loadingLine` / `loadingInto` and `failedInto` (what could not be read, why, try again): a read in place of a page or block |
 | `kit/busy.ts` | `busy(el, work)` and `busyButton(button, work)` |
 
 The hidden route `#kit` (`dash/kit-gallery/`) renders every part in its states for screenshot

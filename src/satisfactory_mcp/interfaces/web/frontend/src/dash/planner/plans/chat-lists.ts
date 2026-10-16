@@ -14,6 +14,7 @@ import { fail, friendlyError, notify } from "../../../kit/toast";
 import { btn, glyphBtn, moreBtn } from "../../../kit/ui/controls";
 import { acts, entry, list, nameLine } from "../../../kit/ui/entry";
 import { chip } from "../../../kit/ui/marks";
+import { loadingLine } from "../../../kit/ui/states";
 import { dashH, emptyLine, toolrow } from "../../../kit/ui/text";
 import { ASK_STATE, objectiveText } from "../../../kit/words";
 import { hashFor } from "../../../map/map";
@@ -95,7 +96,7 @@ export function pinsBlock(): Safe {
   const rows = got.data ? got.data.pins.slice().sort((a, b) => a.n - b.n) : [];
   const head = toolrow(dashH("pins", got.data ? rows.length : undefined, "h2", "pin a plan, a process or a place, then name pin:N to chat"));
   if (got.error && !got.data) return html`${head}${emptyLine("the pins did not load", got.error)} ${btn("try again", { data: { cs: "pins-retry" } })}`;
-  if (!got.data) return html`${head}<p class="note" aria-busy="true">loading pins…</p>`;
+  if (!got.data) return html`${head}${loadingLine("pins")}`;
   if (!rows.length) return html`${head}${emptyLine("no pins yet", "pin a plan, a process, or a place on the map")}`;
   const shown = view.allPins ? rows : rows.slice(0, PINS_SHOWN);
   const more = rows.length > shown.length ? btn("show all " + rows.length, { data: { cs: "pins-all" } }) : "";
@@ -168,7 +169,7 @@ export function asksBlock(): Safe {
   const rows = got.data ? liveAsks().slice().sort((a, b) => b.n - a.n) : [];
   const head = toolrow(dashH("asks", got.data ? rows.length : undefined, "h2", "questions queued for chat from a plan's rows; paste ask:N into chat"));
   if (got.error && !got.data) return html`${head}${emptyLine("the asks did not load", got.error)} ${btn("try again", { data: { cs: "asks-retry" } })}`;
-  if (!got.data) return html`${head}<p class="note" aria-busy="true">loading asks…</p>`;
+  if (!got.data) return html`${head}${loadingLine("asks")}`;
   if (!rows.length) return html`${head}${emptyLine("no asks yet", "ask chat from any row of a plan")}`;
   return html`${head}${list("casks", "stacked", rows.map(askRow), "nolead")}`;
 }

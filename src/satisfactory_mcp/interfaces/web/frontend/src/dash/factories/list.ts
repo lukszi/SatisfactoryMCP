@@ -4,7 +4,7 @@
 import "./factories.css";
 import { loadOne } from "../../app/load";
 import { vitals } from "../../app/vitals";
-import { error, loading } from "../../kit/dashkit";
+import { failedInto, loadingInto } from "../../kit/ui/states";
 import { count, mw, pct } from "../../kit/format";
 import { html, mount, type Safe } from "../../kit/html";
 import { openMenu } from "../../kit/overlay/menu";
@@ -34,8 +34,8 @@ const issueAt = new Map<string, MachineIssue>();
 export function healthOr(body: HTMLElement): FactoryHealthResponse | null {
   const v = vitals();
   if (v.health) return v.health;
-  if (v.healthError) error(body, "factory health", v.healthError, () => loadOne("/api/factories/health"));
-  else loading(body, "factory health");
+  if (v.healthError) failedInto(body, "factory health", v.healthError, () => loadOne("/api/factories/health"));
+  else loadingInto(body, "factory health");
   return null;
 }
 

@@ -11,7 +11,7 @@ import { acts, entry, list } from "../../kit/ui/entry";
 import { chip } from "../../kit/ui/marks";
 import { dashH } from "../../kit/ui/text";
 import { bytes } from "../../kit/format";
-import { error, loading } from "../../kit/dashkit";
+import { failedInto, loadingInto } from "../../kit/ui/states";
 import { fetchMapRegistry, mapRegistry, onMapRegistry } from "../../app/map-types";
 import { hashFor } from "../../map/map";
 import { state } from "../../app/state";
@@ -103,9 +103,9 @@ function wirePage(root: HTMLElement): void {
 export function renderMapsPage(parent: HTMLElement): void {
   const data = mapRegistry.body;
   if (!data) {
-    if (mapRegistry.failed) error(parent, "the map list", mapRegistry.failed, fetchMapRegistry);
+    if (mapRegistry.failed) failedInto(parent, "the map list", mapRegistry.failed, fetchMapRegistry);
     else {
-      loading(parent, "the map list");
+      loadingInto(parent, "the map list");
       fetchMapRegistry();
     }
     return;
