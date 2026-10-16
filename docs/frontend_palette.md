@@ -110,7 +110,7 @@ disc or a ring, and are discharged.
 
 | key | hex | role | nearest cross-owner neighbour | constraint |
 | --- | --- | --- | --- | --- |
-| `band veil` | `#ffffff` | a building's height bands, laid over its fill at 0.09 to 0.42 | markers/player 6.7, discharged | never seen as itself: it lightens the fill it covers, inside that building's outline; the band edges reuse `routes/notch rim` |
+| `band veil` | `#ffffff` | a building's height bands, laid over its fill in steps of 0.15 up to 0.60 (0.06 to 0.24 on an idle building) | markers/player 6.7, discharged | never seen as itself: it lightens the fill it covers, inside that building's outline; the band edges reuse `routes/notch rim` |
 
 ### `routes` — the belts and the pipes (`drawn/belts.ts`, `drawn/pipes.ts`)
 

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
-from typing import NamedTuple
 
 import numpy as np
 from scipy import ndimage
@@ -18,16 +17,16 @@ from satisfactory_mcp.core.arrays import BoolMask, F64Grid
 
 __all__ = [
     "MAX_SAMPLES_PER_EDGE",
-    "Band",
-    "BandRule",
     "Ring",
-    "height_bands",
+    "blobs",
+    "disk_mask",
     "rasterise",
     "silhouette",
     "simplify_ring",
     "simplify_to_budget",
     "top_heights",
     "trace_outer",
+    "traced",
 ]
 
 #: A polygon as ``(x, y)`` vertices, first not repeated at the end.
@@ -85,7 +84,7 @@ def rasterise(triangles: F64Grid, cell: float) -> tuple[BoolMask, tuple[float, f
     return np.isfinite(top), corner
 
 
-def _disk(radius: int) -> BoolMask:
+def disk_mask(radius: int) -> BoolMask:
     span = np.arange(-radius, radius + 1)
     return (span[:, None] ** 2 + span[None, :] ** 2) <= radius * radius
 
@@ -211,16 +210,16 @@ def simplify_to_budget(ring: Ring, max_vertices: int, tolerance: float) -> Ring:
     return out
 
 
-def _blobs(mask: BoolMask, radius: int, opening: int = 0) -> BoolMask:
+def blobs(mask: BoolMask, radius: int, opening: int = 0) -> BoolMask:
     """``mask`` padded by ``radius``, opened (thin parts dropped), closed and hole-filled."""
     grid = np.pad(mask, radius)
     if opening:
-        grid = ndimage.binary_opening(grid, structure=_disk(opening))
-    grid = ndimage.binary_closing(grid, structure=_disk(radius))
+        grid = ndimage.binary_opening(grid, structure=disk_mask(opening))
+    grid = ndimage.binary_closing(grid, structure=disk_mask(radius))
     return ndimage.binary_fill_holes(grid)
 
 
-def _traced(
+def traced(
     grid: BoolMask,
     corner: tuple[float, float],
     cell: float,
@@ -264,66 +263,4 @@ def silhouette(
     grid, (x0, y0) = rasterise(triangles, cell)
     radius = max(1, round(close / cell))
     corner = (x0 - radius * cell, y0 - radius * cell)
-    return _traced(_blobs(grid, radius), corner, cell, max_vertices, min_fraction)
-
-
-class Band(NamedTuple):
-    """One height band: the parts higher than ``floor`` (same unit as the mesh), cut by
-    ``rules[tier - 1]``."""
-
-    tier: int
-    floor: float
-    rings: list[Ring]
-
-
-class BandRule(NamedTuple):
-    """How a band above the footprint is cut: its threshold rule and its own budget."""
-
-    #: An absolute floor, and a share of the class's top height; the higher of the two wins.
-    floor: float
-    share: float
-    max_vertices: int
-
-
-def height_bands(
-    triangles: F64Grid,
-    cell: float,
-    close: float,
-    rules: list[BandRule],
-    *,
-    opening: float = 0.0,
-    min_area: float = 0.0,
-    max_overlap: float = 0.9,
-    min_fraction: float = 0.02,
-) -> list[Band]:
-    """The parts of ``triangles`` (``(n, 3, 3)``) standing above each rule's floor.
-
-    The class's top height is the 99th percentile of the per-cell tops, so one antenna does not
-    set it. Each band is opened by ``opening`` first (railings and thin pipes are not mass), then
-    closed and traced like the footprint; a band with less than ``min_area`` left, or covering
-    more than ``max_overlap`` of the band kept below it, adds nothing and is dropped.
-    """
-    if len(triangles) == 0:
-        return []
-    top, (x0, y0) = top_heights(triangles, cell)
-    covered = np.isfinite(top)
-    if not covered.any():
-        return []
-    height = float(np.percentile(top[covered], 99))
-    radius = max(1, round(close / cell))
-    open_cells = round(opening / cell)
-    corner = (x0 - radius * cell, y0 - radius * cell)
-    below = int(_blobs(covered, radius).sum())
-    bands: list[Band] = []
-    for tier, rule in enumerate(rules, start=1):
-        floor = max(rule.floor, rule.share * height)
-        grid = _blobs(covered & (top >= floor), radius, open_cells)
-        area = int(grid.sum())
-        if area * cell * cell < min_area or area > max_overlap * below:
-            continue
-        min_cells = math.ceil(min_area / (cell * cell))
-        rings = _traced(grid, corner, cell, rule.max_vertices, min_fraction, min_cells)
-        if rings:
-            bands.append(Band(tier, floor, rings))
-            below = area
-    return bands
+    return traced(blobs(grid, radius), corner, cell, max_vertices, min_fraction)

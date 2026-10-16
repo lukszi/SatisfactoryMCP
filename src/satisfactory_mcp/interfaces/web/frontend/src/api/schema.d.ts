@@ -2436,7 +2436,7 @@ export interface components {
         /**
          * BandRow
          * @description The parts of a class standing higher than ``z_m`` above its floor, as outline rings.
-         *     ``tier`` is the rule that cut it: 1 the body above 2 m, 2 the tall parts.
+         *     ``tier`` is the rank of its break in the class's own heights, 1 the lowest, up to 4.
          */
         BandRow: {
             /** Tier */

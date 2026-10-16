@@ -29,16 +29,27 @@ export function placeRings(x: number, y: number, yaw: number | null | undefined,
   });
 }
 
-/* How strongly each height band's light veil covers its building: the body above 2 m, then the
- * tall parts. A tier past the table reads as the tallest. docs/building-shapes.md. */
-export const BAND_VEIL: readonly number[] = [0.22, 0.42];
-/* The share of the veil an idle building keeps, matching its faded fill. */
+/* How much lighter each height band reads than the building's fill: tier n (1-based) is
+ * n * BAND_STEP covered by the veil in all, up to BAND_TIERS; a tier past that reads as the
+ * tallest. docs/building-shapes.md. */
+export const BAND_STEP = 0.15;
+export const BAND_TIERS = 4;
+/* The share of the lightening an idle building keeps, matching its faded fill. */
 export const FADED_VEIL_SHARE = 0.4;
 
-/** The veil opacity of a band of `tier` (1-based), faded with its building. */
-export function bandVeil(tier: number, faded: boolean): number {
-  const veil = BAND_VEIL[Math.min(Math.max(tier, 1), BAND_VEIL.length) - 1]!;
-  return faded ? veil * FADED_VEIL_SHARE : veil;
+/** How far a band of `tier` lightens its building in all, faded with an idle one. */
+export function bandLightness(tier: number, faded: boolean): number {
+  const steps = Math.min(Math.max(tier, 0), BAND_TIERS);
+  return steps * BAND_STEP * (faded ? FADED_VEIL_SHARE : 1);
+}
+
+/** The veil opacity a band of `tier` needs over the band below it (`under`, 0 for the bare
+ *  fill) to reach its own lightness: bands nest and their veils stack, and a dropped tier in
+ *  between must not leave the one above it darker. */
+export function bandVeil(tier: number, under: number, faded: boolean): number {
+  const target = bandLightness(tier, faded);
+  const below = bandLightness(Math.min(under, tier), faded);
+  return below >= 1 ? 0 : (target - below) / (1 - below);
 }
 
 /** Rows in drawing order, lowest first, so a building on an upper deck is painted over the one
