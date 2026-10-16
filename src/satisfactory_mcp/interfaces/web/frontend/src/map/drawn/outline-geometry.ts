@@ -29,6 +29,21 @@ export function placeRings(x: number, y: number, yaw: number | null | undefined,
   });
 }
 
+/** Rows in drawing order, lowest first, so a building on an upper deck is painted over the one
+ *  under it; a row with no height counts as the ground. Stable, and a new array. */
+export function lowestFirst<T extends { z_m: number | null }>(rows: readonly T[]): T[] {
+  return rows
+    .map(function (row, at) {
+      return { row: row, at: at };
+    })
+    .sort(function (a, b) {
+      return (a.row.z_m ?? -Infinity) - (b.row.z_m ?? -Infinity) || a.at - b.at;
+    })
+    .map(function (entry) {
+      return entry.row;
+    });
+}
+
 /* A notch's size in metres: about a belt's width across, so it reads as the belt's mouth. */
 export const NOTCH_HALF_WIDTH_M = 0.8;
 const NOTCH_OUT_M = 0.7;

@@ -18,7 +18,8 @@ import { L } from "../leaflet";
 import { BAND, clearedLayer } from "../layers";
 import { footprintCorners, hashFor } from "../map";
 import { raiseNodeDots } from "./markers";
-import { addNotches, outlineLatLngs } from "./outlines";
+import { addNotches, addXray, outlineLatLngs } from "./outlines";
+import { lowestFirst } from "./outline-geometry";
 import { showMachine } from "../map-highlight";
 import { declareColours } from "../palette";
 import { registerFetch } from "../../app/registry";
@@ -133,7 +134,9 @@ export function drawMachines(data: MachinesResponse): void {
       colour: KIND_COLOUR[kind],
       rank: [BAND.built, MACHINE_SLOT[kind], kind],
     });
-    data[kind].forEach(function (m) {
+    // Lowest first, so a building on an upper deck is painted over the one under it; the x-ray
+    // line keeps the lower one findable (docs/building-shapes.md).
+    lowestFirst(data[kind]).forEach(function (m) {
       // One guard, on x only. The row type says `y_m` can be null too, and the assertion below
       // is that claim not being acted on: if the projection ever sends half a position it
       // should be visible rather than silently skipped.
@@ -205,6 +208,7 @@ export function drawMachines(data: MachinesResponse): void {
       };
       piece.addTo(group);
       addNotches(group, m.x_m, m.y_m!, m.yaw, shape, piece._floor);
+      addXray(group, piece, piece._floor);
     });
   });
   raiseNodeDots();
@@ -312,7 +316,7 @@ export function drawStorage(data: StorageResponse): void {
   // scatter of specks. Near the bottom of the built band, because the row is off by default
   // and the bottom of the list is where a reader who wants it goes looking.
   const group = clearedLayer("storage", { on: false, colour: STORAGE_COLOUR, rank: [BAND.built, 70, "storage"] });
-  data.storage.forEach(function (s) {
+  lowestFirst(data.storage).forEach(function (s) {
     if (s.x_m === null || s.y_m === null) return;
     const colour = s.kind === "fluid" ? STORAGE_FLUID_COLOUR : STORAGE_COLOUR;
     const w = (s.w_m || STORAGE_FALLBACK_M) / 2;
@@ -334,6 +338,7 @@ export function drawStorage(data: StorageResponse): void {
     box._floor = { x_m: s.x_m, y_m: s.y_m, z_m: s.z_m === null ? undefined : s.z_m };
     box.addTo(group);
     addNotches(group, s.x_m, s.y_m, s.yaw, shape, box._floor);
+    addXray(group, box, box._floor);
   });
   raiseNodeDots();
 }

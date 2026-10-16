@@ -1,4 +1,6 @@
-/* Buildings drawn as their own top-down outline, with a notch at each belt and pipe port.
+/* Buildings drawn as their own top-down outline, with a notch at each belt and pipe port and a
+ * dashed x-ray line above everything else, which keeps a building under an upper deck's one
+ * findable.
  *
  * The outline comes with the payload, once per class (`shapes`); a class without one falls back
  * to the measured rectangle. Notches are hidden below NOTCH_MIN_PPM, where they would be specks.
@@ -23,6 +25,12 @@ const NOTCH = declareColours("routes", {
 
 /* Pixels per metre at which a 1.6 m notch is about five pixels across. */
 export const NOTCH_MIN_PPM = 3;
+
+/* The pane x-ray lines are drawn in: over every building, belt and pipe, under the markers. */
+export const XRAY_PANE = "xray";
+map.createPane(XRAY_PANE);
+map.getPane(XRAY_PANE)!.style.zIndex = "450";
+map.getPane(XRAY_PANE)!.style.pointerEvents = "none";
 
 /* The layers that carry notches; restyled together on zoom. */
 const NOTCHED_LAYERS = ["machines", "extractors", "generators", "storage", "belts"];
@@ -79,6 +87,23 @@ export function addNotches(
     mark._floor = { id: floor.id, x_m: floor.x_m, y_m: floor.y_m, z_m: floor.z_m };
     mark.addTo(group);
   });
+}
+
+/** A dashed copy of a building's outline in the x-ray pane, in its outline colour: invisible on
+ *  the building itself, and the one line left of it where an upper deck's building covers it.
+ *  Joined to the floor filter like a notch. */
+export function addXray(group: L.LayerGroup, outline: L.Polygon, floor: FloorMark): void {
+  const xray = L.polygon(outline.getLatLngs() as L.LatLng[], {
+    pane: XRAY_PANE,
+    color: outline.options.color,
+    weight: 1,
+    opacity: 0.9,
+    dashArray: "4,3",
+    fill: false,
+    interactive: false,
+  });
+  xray._floor = { id: floor.id, x_m: floor.x_m, y_m: floor.y_m, z_m: floor.z_m };
+  xray.addTo(group);
 }
 
 /** Show or hide every notch for the current zoom, skipping a piece the floor filter has ghosted. */

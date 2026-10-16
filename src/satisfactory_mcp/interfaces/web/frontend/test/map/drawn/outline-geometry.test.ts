@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { notchLocal, placeLocal, placeRings } from "../../../src/map/drawn/outline-geometry";
+import { lowestFirst, notchLocal, placeLocal, placeRings } from "../../../src/map/drawn/outline-geometry";
 
 import type { PortRow } from "../../../src/api/shapes";
 
@@ -48,5 +48,18 @@ describe("notchLocal", () => {
 
   it("draws a two-way port as a diamond", () => {
     expect(notchLocal(port("any")).length).toBe(4);
+  });
+});
+
+describe("lowestFirst", () => {
+  it("orders by height, keeps ties in place and puts an unknown height on the ground", () => {
+    const rows = [
+      { id: "upper", z_m: 15.4 },
+      { id: "a", z_m: -16.6 },
+      { id: "none", z_m: null },
+      { id: "b", z_m: -16.6 },
+    ];
+    expect(lowestFirst(rows).map((r) => r.id)).toEqual(["none", "a", "b", "upper"]);
+    expect(rows[0]!.id).toBe("upper");
   });
 });
