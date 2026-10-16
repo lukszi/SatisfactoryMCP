@@ -225,7 +225,13 @@ def test_only_a_running_node_has_an_elapsed_share(client):
 
 @pytest.mark.parametrize(
     ("time_s", "left_s", "pct"),
-    [(600.0, 150.0, 75.0), (600.0, 600.0, 0.0), (600.0, 900.0, 0.0), (0.0, 10.0, None), (60.0, None, None)],
+    [
+        (600.0, 150.0, 75.0),
+        (600.0, 600.0, 0.0),
+        (600.0, 900.0, 0.0),
+        (0.0, 10.0, None),
+        (60.0, None, None),
+    ],
 )
 def test_elapsed_share_is_the_research_time_passed(time_s, left_s, pct):
     from satisfactory_mcp.interfaces.web.routers.dashboard.progress_unlocks import _elapsed_pct

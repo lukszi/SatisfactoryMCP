@@ -172,6 +172,15 @@ export type SloopsResponse = Body<"SloopsResponse">;
 export type DriveRow = Schema["DriveRow"];
 export type HardDrivesResponse = Body<"HardDrivesResponse">;
 
+/* ---------------------------------------------------- /api/progress/{gate,alternates} */
+
+export type GatePart = Schema["GatePart"];
+export type GateMaker = Schema["GateMaker"];
+export type NextStep = Schema["NextStep"];
+export type GateView = Body<"GateView">;
+export type AlternateRow = Schema["AlternateRow"];
+export type AlternatesView = Body<"AlternatesView">;
+
 /* ------------------------------------------------------------------ /api/stock */
 
 export type StockPile = Schema["StockPile"];

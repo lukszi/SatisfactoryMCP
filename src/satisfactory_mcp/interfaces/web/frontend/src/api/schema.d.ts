@@ -784,6 +784,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/progress/gate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Progress Gate
+         * @description Each part the target phase bills: held, short, who makes it, its locked recipe's
+         *     unlock, its inputs and its chain at the rate that delivers it in ``horizon_h`` hours;
+         *     then at most five next steps.
+         */
+        get: operations["progress_gate_api_progress_gate_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/progress/alternates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Progress Alternates
+         * @description Every alternate for an item of the bill's chains that cuts machines, power or raw,
+         *     with what it changes and where it comes from: unlocked, a drive on hand, or neither.
+         */
+        get: operations["progress_alternates_api_progress_alternates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/progress/shards": {
         parameters: {
             query?: never;
@@ -2150,6 +2193,39 @@ export interface components {
             /** By */
             by: number;
         };
+        /**
+         * AlternateRow
+         * @description An alternate for an item the bill's chains make, and what having it changes in the
+         *     whole bill at the horizon's rates: whole machines, nameplate MW, raw per minute (water
+         *     left out). ``source`` is unlocked, drive (offered by ``drive`` beside ``other``) or pool
+         *     (on no drive on hand yet).
+         */
+        AlternateRow: {
+            /** Recipe */
+            recipe: string;
+            /** Name */
+            name: string;
+            /** Item */
+            item: string;
+            /** Item Name */
+            item_name: string;
+            /** Machine */
+            machine: string | null;
+            /** Source */
+            source: string;
+            /** Drive */
+            drive: number | null;
+            /** Other */
+            other: string | null;
+            /** Machines */
+            machines: number;
+            /** Mw */
+            mw: number;
+            /** Raw */
+            raw: number;
+            /** Parts */
+            parts: string[];
+        };
         /** AlternatesBody */
         AlternatesBody: {
             /** Key */
@@ -2180,6 +2256,21 @@ export interface components {
             build_recipe: string | null;
             /** Recipes */
             recipes: components["schemas"]["MakerRow"][];
+        };
+        /**
+         * AlternatesView
+         * @description ``base`` is the bill's chains with the save's recipes and every default one.
+         */
+        AlternatesView: {
+            /** Phase */
+            phase: number | null;
+            /** Horizon H */
+            horizon_h: number;
+            base: components["schemas"]["ChainFigures"] | null;
+            /** Alternates */
+            alternates: components["schemas"]["AlternateRow"][];
+            /** Solves */
+            solves: number;
         };
         /**
          * AmendBody
@@ -2778,6 +2869,15 @@ export interface components {
             pedestal_of: string | null;
             /** Spoiler */
             spoiler: boolean;
+        };
+        /** ChainFigures */
+        ChainFigures: {
+            /** Machines */
+            machines: number;
+            /** Mw */
+            mw: number;
+            /** Raw */
+            raw: number;
         };
         /**
          * CircuitRow
@@ -3833,6 +3933,96 @@ export interface components {
             spoiler: boolean;
         };
         /**
+         * GateInput
+         * @description One input of a part's recipe: per part made, needed for what is short, held.
+         */
+        GateInput: {
+            /** Item */
+            item: string;
+            /** Name */
+            name: string;
+            /** Per Unit */
+            per_unit: number;
+            /** Needed */
+            needed: number;
+            /** Held */
+            held: number;
+            /** Made Per Min */
+            made_per_min: number;
+            /** Makers */
+            makers: components["schemas"]["GateMaker"][];
+        };
+        /**
+         * GateMaker
+         * @description A named factory with a nameplate surplus of the item, per minute at saved clocks.
+         */
+        GateMaker: {
+            /** Factory */
+            factory: string;
+            /** Per Min */
+            per_min: number;
+        };
+        /**
+         * GatePart
+         * @description One part the target phase still bills.
+         *
+         *     ``made_per_min`` is the world's nameplate surplus (named factories or not);
+         *     ``need_per_min`` what delivers ``short`` in the horizon; ``machines`` and ``mw`` size the
+         *     whole chain at that rate (null when nothing is short or no plan makes it). ``unlock`` is
+         *     the milestone or MAM node granting a locked recipe.
+         */
+        GatePart: {
+            /** Item */
+            item: string;
+            /** Name */
+            name: string;
+            /** Owed */
+            owed: number;
+            /** Held */
+            held: number;
+            /** Short */
+            short: number;
+            /** Recipe */
+            recipe: string | null;
+            /** Machine */
+            machine: string | null;
+            /** Recipe Unlocked */
+            recipe_unlocked: boolean;
+            /** Unlock */
+            unlock: string | null;
+            /** Unlock System */
+            unlock_system: string | null;
+            /** Made Per Min */
+            made_per_min: number;
+            /** Makers */
+            makers: components["schemas"]["GateMaker"][];
+            /** Need Per Min */
+            need_per_min: number;
+            /** Machines */
+            machines: number | null;
+            /** Mw */
+            mw: number | null;
+            /** Inputs */
+            inputs: components["schemas"]["GateInput"][];
+        };
+        /**
+         * GateView
+         * @description ``phase`` is the target phase number, null on a save with none; ``solves`` the
+         *     planner solves this answer took.
+         */
+        GateView: {
+            /** Phase */
+            phase: number | null;
+            /** Horizon H */
+            horizon_h: number;
+            /** Parts */
+            parts: components["schemas"]["GatePart"][];
+            /** Steps */
+            steps: components["schemas"]["NextStep"][];
+            /** Solves */
+            solves: number;
+        };
+        /**
          * GeneratorGroup
          * @description One generator type, counted and summed; ``starved_mw`` is the part of ``mw`` standing on
          *     starved generators, ``icon`` the descriptor ``/api/icons/`` files its picture under.
@@ -4262,6 +4452,9 @@ export interface components {
         /**
          * MamRow
          * @description ``status`` is DONE, RUNNING, TREE SHUT, BLOCKED, short or READY, as ``mam_research``.
+         *
+         *     ``running_s`` is the research time left on a RUNNING node and ``elapsed_pct`` how much of
+         *     the node's research time has passed, null when not running or the node has no time.
          */
         MamRow: {
             /** Cls */
@@ -4274,6 +4467,8 @@ export interface components {
             status: string;
             /** Running S */
             running_s: number | null;
+            /** Elapsed Pct */
+            elapsed_pct: number | null;
             /** Capability */
             capability: string | null;
             /** Cost */
@@ -4282,6 +4477,8 @@ export interface components {
             short: components["schemas"]["ItemAmount"][];
             /** Unlocks */
             unlocks: number;
+            /** Unlock Names */
+            unlock_names: string[];
             /** Blocked By */
             blocked_by: string[];
             /** Spoiler */
@@ -4681,7 +4878,8 @@ export interface components {
          * MilestoneRow
          * @description ``status`` is ``Rung.status``: DONE, BLOCKED, short or READY.
          *
-         *     ``opens_at`` is the Space Elevator phase that opens a tier the save has not reached yet.
+         *     ``opens_at`` is the Space Elevator phase that opens a tier the save has not reached yet;
+         *     ``unlock_names`` names the ``unlocks`` recipes, buildings by their recipe's name.
          */
         MilestoneRow: {
             /** Cls */
@@ -4698,6 +4896,8 @@ export interface components {
             short: components["schemas"]["ItemAmount"][];
             /** Unlocks */
             unlocks: number;
+            /** Unlock Names */
+            unlock_names: string[];
             /** Blocked By */
             blocked_by: string[];
             /** Opens At */
@@ -4846,6 +5046,41 @@ export interface components {
             distance_m: number;
             /** Touches */
             touches: string[];
+        };
+        /**
+         * NextStep
+         * @description One ranked step. ``kind``: make (an item no machine makes, for unlocks), line (a
+         *     part with an unlocked recipe nothing makes), grow (a part made slower than the horizon
+         *     needs), unlock (a milestone or MAM node a part's recipe waits on). ``after`` holds the
+         *     1-based numbers of listed steps this one waits on; ``parts`` the bill parts it opens.
+         */
+        NextStep: {
+            /** Kind */
+            kind: string;
+            /** Item */
+            item: string | null;
+            /** Name */
+            name: string;
+            /** Amount */
+            amount: number;
+            /** Per Min */
+            per_min: number;
+            /** Made Per Min */
+            made_per_min: number;
+            /** System */
+            system: string | null;
+            /** Status */
+            status: string | null;
+            /** For Unlocks */
+            for_unlocks: string[];
+            /** Parts */
+            parts: string[];
+            /** After */
+            after: number[];
+            /** Inputs Held */
+            inputs_held: boolean | null;
+            /** Short */
+            short: components["schemas"]["ShortItem"][];
         };
         /** NodeChoices */
         NodeChoices: {
@@ -6746,6 +6981,18 @@ export interface components {
             by_place: components["schemas"]["PlaceRow"][];
             /** Holders */
             holders: components["schemas"]["ShardHolder"][];
+        };
+        /**
+         * ShortItem
+         * @description An item an unlock's bill is short of, and by how much.
+         */
+        ShortItem: {
+            /** Item */
+            item: string;
+            /** Name */
+            name: string;
+            /** Short */
+            short: number;
         };
         /**
          * SiteBuilt
@@ -9319,6 +9566,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HardDrivesResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    progress_gate_api_progress_gate_get: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+                horizon_h?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GateView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    progress_alternates_api_progress_alternates_get: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+                horizon_h?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlternatesView"];
                 };
             };
             /** @description Validation Error */
