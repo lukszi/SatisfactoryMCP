@@ -31,12 +31,6 @@ export function ratesText(rows: SolveRate[]): string {
   );
 }
 
-export function withoutPower(rows: SolveRate[]): SolveRate[] {
-  return rows.filter(function (r) {
-    return r.item !== POWER;
-  });
-}
-
 function resultFactsText(data: SolveResponse): string {
   const net = data.mw_net;
   const parts = [

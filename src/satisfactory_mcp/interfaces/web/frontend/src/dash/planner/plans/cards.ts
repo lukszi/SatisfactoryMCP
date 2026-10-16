@@ -16,20 +16,19 @@ import { OBJECTIVES } from "../../../kit/words";
 import { hashFor } from "../../../map/map";
 import { factoryDash } from "../../factories/address";
 import { openIconPicker } from "../../factories/factory-actions";
-import { iconLead, iconStore } from "../../factories/icon-choice";
+import { choiceOf, iconLead, type IconStore } from "../../factories/icon-choice";
+import { browserStore, takeLocalChoices } from "../../factories/local-icons";
 import { trackDash } from "../address";
 import { toggleProgress } from "../built";
 import { loadList, planIndex } from "../plan-index";
 import { actorWord, changed, commitWords, itemClass, knownItem, NAME_MAX } from "../state";
 import { createPlan, duplicatePlan, pushOpsTo } from "../writes";
-import { builtOf, exportItems, factoryOf, productItem, statusOf } from "./model";
+import { builtOf, exportItems, factoryOf, planIcon, productItem, statusOf } from "./model";
 import { loadActivity } from "./timeline";
 
 import type { PlanIndexRow } from "../../../api/shapes";
 
 const MENU = ["rename", "change icon", "duplicate", "pin", "forget"];
-
-export const planIcons = iconStore("satisfactory.planIcons");
 
 const newPlan = { creating: false, draft: { item: "", rate: "" }, problem: "" };
 
@@ -37,10 +36,8 @@ const newPlan = { creating: false, draft: { item: "", rate: "" }, problem: "" };
 let renaming = "";
 
 function planLead(row: PlanIndexRow): Safe {
-  const chosen = planIcons.chosen(row.key);
-  if (chosen !== undefined) return iconLead(chosen || null, "chosen icon");
   const item = productItem(row);
-  return iconLead(item ? itemClass(item) : null, item ? "exports " + item : "");
+  return iconLead(planIcon(row, itemClass), row.icon !== null ? "chosen icon" : item ? "exports " + item : "");
 }
 
 function exportPills(row: PlanIndexRow): Safe {
@@ -173,9 +170,40 @@ function runAction(label: string, row: PlanIndexRow, button: HTMLElement): void 
   }
 }
 
-/* The picker titles the dialog by name and stores by key. */
-function keyedStore(key: string): typeof planIcons {
-  return { chosen: () => planIcons.chosen(key), choose: (_name, icon) => planIcons.choose(key, icon), move: planIcons.move };
+function setIcon(row: PlanIndexRow, icon: string | null): Promise<void> {
+  row.icon = icon;
+  return pushOpsTo(row.key, row.rev, [{ op: "set", field: "icon", value: icon }]);
+}
+
+/* The picker titles the dialog by name and stores by key, as plan state. */
+function keyedStore(key: string): IconStore {
+  return {
+    chosen: () => choiceOf(rowOf(key)?.icon),
+    choose(_name, icon) {
+      const row = rowOf(key);
+      if (!row) return;
+      setIcon(row, icon)
+        .catch((reason) => fail("the icon for “" + row.name + "” was not saved: " + friendlyError(reason)))
+        .then(reread);
+    },
+  };
+}
+
+const adopted = new Set<string>();
+
+/** A plan icon an older page kept in this browser moves to the plan once, unless it has one. */
+export function adoptLocalPlanIcons(): void {
+  const data = planIndex.data;
+  if (!data || !planIndex.world || adopted.has(planIndex.world)) return;
+  adopted.add(planIndex.world);
+  const local = takeLocalChoices(browserStore(), "satisfactory.planIcons", planIndex.world);
+  const rows = Object.keys(local)
+    .map((key) => data.index.filter((r) => r.key === key && r.icon === null)[0])
+    .filter((row): row is PlanIndexRow => !!row);
+  if (!rows.length) return;
+  rows
+    .reduce((done: Promise<void>, row) => done.then(() => setIcon(row, local[row.key]!)).catch(() => undefined), Promise.resolve())
+    .then(reread);
 }
 
 /** Cards' clicks, menu, rename field, built toggle and the new-plan form inside `root`. */

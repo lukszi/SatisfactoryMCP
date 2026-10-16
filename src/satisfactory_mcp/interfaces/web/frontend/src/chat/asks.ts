@@ -57,10 +57,20 @@ export function askLabel(about: AskAbout): string {
   return (ASK_KIND[about.kind] || about.kind) + " “" + about.label + "”";
 }
 
-export function askButton(about: AskAbout, ctl: string, text?: string): HTMLButtonElement {
+function subjectOf(about: AskAbout): AskAbout {
   const subject: AskAbout = { kind: about.kind, label: truncateChars(about.label, LABEL_MAX), ref: truncateChars(about.ref, REF_MAX) };
   if (about.plan) subject.plan = about.plan;
   if (about.rev) subject.rev = about.rev;
+  return subject;
+}
+
+/** Opens the ask bar about `about`; focus returns to the control `ask:<ctl>` once it shuts. */
+export function openAsk(about: AskAbout, ctl: string): void {
+  openBar(subjectOf(about), "ask:" + ctl);
+}
+
+export function askButton(about: AskAbout, ctl: string, text?: string): HTMLButtonElement {
+  const subject = subjectOf(about);
   const id = "ask:" + ctl;
   const askBtn = button(
     text || "ask",

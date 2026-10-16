@@ -73,8 +73,6 @@ export const WORDS = {
   },
 } as const;
 
-export const NODE_KIND: Record<string, string> = { node: "node", well_sat: "well satellite", geyser: "geyser" };
-
 export const TRACK_VERB: Record<string, string> = {
   ok: "–",
   unpause: "unpause",

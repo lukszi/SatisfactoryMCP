@@ -19,6 +19,7 @@ from fastapi.responses import JSONResponse
 from typing_extensions import TypedDict
 
 from .....core.filelock import LockTimeout
+from .....core.gamedata.constants import ICON_CHOICE_RE
 from .....domain.factories import candidates, edits, fed, flowgraph, naming
 from .....domain.factories.cohere import Proposal
 from .....domain.factories.labels import (
@@ -128,6 +129,19 @@ class RenamedResponse(TypedDict):
     stuck_reason: str
     version: int
     stored_in: str
+
+
+class IconBody(TypedDict):
+    """``icon`` is a descriptor class, "" for a chosen blank, or null to forget the choice."""
+
+    name: str
+    icon: str | None
+
+
+class IconSetResponse(TypedDict):
+    name: str
+    icon: str | None
+    version: int
 
 
 class LabelErrorResponse(TypedDict):
@@ -375,6 +389,25 @@ def forget_label(
         "version": written,
         "stored_in": str(st.labels.path_for(st.world_id)),
     }
+
+
+@router.post("/labels/icon", response_model=IconSetResponse, responses=_REFUSALS)
+def set_label_icon(
+    request: Request,
+    body: Annotated[IconBody, Body()],
+    save: str | None = None,
+    world: str | None = None,
+) -> IconSetResponse | JSONResponse:
+    """Choose the icon a named factory shows. Not versioned: an icon never conflicts."""
+    icon = body["icon"]
+    if icon is not None and not ICON_CHOICE_RE.match(icon):
+        return error_response(f"{icon!r} is not a descriptor class such as Desc_IronPlate_C", 400)
+    st = require_world(request, save, world)
+    try:
+        label, written = edits.set_icon(st.world_id, st.session_name, body["name"], icon)
+    except (LabelError, LockTimeout) as exc:
+        return _refused(exc)
+    return {"name": label.name, "icon": label.icon, "version": written}
 
 
 class AmendedResponse(TypedDict):

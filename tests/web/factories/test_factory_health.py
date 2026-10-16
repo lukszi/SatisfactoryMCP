@@ -93,3 +93,12 @@ def test_a_health_row_names_its_main_product_as_an_item_class(labelled_client, l
         if icon is not None:
             assert icon in labelled.game.items
             assert row["product"] == labelled.game.items[icon].name
+
+
+def test_a_machine_issue_names_its_building_and_its_icon(labelled_client, labelled):
+    rows = labelled_client.get("/api/factories/health").json()["factories"]
+    issues = [i for row in rows for i in row["worst"] + row["worst_actionable"]]
+    assert issues
+    for issue in issues:
+        assert issue["building_icon"] == labelled.game.building_icon(issue["building"])
+    assert any(i["building_icon"] for i in issues), "a machine class with a descriptor"

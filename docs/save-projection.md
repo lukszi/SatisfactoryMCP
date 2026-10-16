@@ -573,6 +573,10 @@ it is stored data rather than presentation. `signature` is a building-class cens
 as a re-match hint after a full rebuild; it is advisory and never used to match
 automatically.
 
+`icon`, present only once the page's "change icon" chose one, is a descriptor class as
+`/api/icons/` takes it, or `""` for a chosen blank; absent means the page shows the
+factory's main product. It stays with the label through renames.
+
 `list_factories` prints the path, because reverse-engineering platformdirs to find it is
 not a reasonable ask.
 

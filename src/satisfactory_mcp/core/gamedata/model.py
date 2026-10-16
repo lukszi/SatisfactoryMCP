@@ -341,6 +341,13 @@ class GameData:
             return it.name
         return CLASS_NAMES.get(cls or "") or pretty_class(cls)
 
+    def building_icon(self, cls: str | None) -> str | None:
+        """The descriptor ``/api/icons/`` files a building class's picture under, or None."""
+        b = self.buildings.get(cls or "") or self.buildings.get(
+            BUILDING_CLASS_ALIASES.get(cls or "", "")
+        )
+        return b.descriptor if b is not None and b.descriptor else None
+
     def clock_shards(self) -> dict[str, float]:
         """Item class -> max-clock added per unit slotted, for every shard that overclocks.
         ``FGPowerShardDescriptor`` holds two classes and only the Power Shard has

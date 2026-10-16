@@ -2,17 +2,15 @@
  * phones stack them. docs/frontend_kit.md, "Planner". */
 
 import "./plans.css";
-import { renderAsks } from "../../../chat/asks-card";
-import { renderPins } from "../../../chat/pins-card";
 import { state } from "../../../app/state";
 import { html, mount } from "../../../kit/html";
 import { sortSelect } from "../../../kit/ui/controls";
 import { list } from "../../../kit/ui/entry";
 import { dashH, emptyLine, toolrow } from "../../../kit/ui/text";
-import { renderChatSolveCard } from "../chat-card";
 import { loadList, planIndex } from "../plan-index";
 import { changed, itemList, loadItems } from "../state";
-import { focusRename, newPlanCard, planCard, wireCards } from "./cards";
+import { adoptLocalPlanIcons, focusRename, newPlanCard, planCard, wireCards } from "./cards";
+import { asksBlock, focusPinRename, pinsBlock, solveCard, wireChatLists } from "./chat-lists";
 import { SORTS, sortPlans, type PlanSort } from "./model";
 import { timeline, wireTimeline } from "./timeline";
 
@@ -33,19 +31,17 @@ export function renderPlansPage(parent: HTMLElement): void {
     planIndex.data = null;
     loadList();
   }
+  if (planIndex.world === state.world) adoptLocalPlanIcons();
   loadItems();
   const root = document.createElement("div");
   root.className = "plans";
   mount(
     root,
-    html`<h1 class="dk-hidden">Planner</h1><div class="pchat"></div><div class="psplit"><section class="pcards" aria-label="plans">${cards()}<div class="pextra"></div></section><aside class="ptl" aria-label="activity">${timeline()}</aside></div>`
+    html`<h1 class="dk-hidden">Planner</h1><div class="pchat">${solveCard()}</div><div class="psplit"><section class="pcards" aria-label="plans">${cards()}<div class="pextra"><section aria-label="pins">${pinsBlock()}</section><section aria-label="asks">${asksBlock()}</section></div></section><aside class="ptl" aria-label="activity">${timeline()}</aside></div>`
   );
   root.appendChild(itemList());
-  renderChatSolveCard(root.querySelector<HTMLElement>(".pchat")!);
-  const extra = root.querySelector<HTMLElement>(".pextra")!;
-  renderPins(extra, changed);
-  renderAsks(extra, changed);
   wireCards(root);
+  wireChatLists(root);
   wireTimeline(root);
   root.addEventListener("change", function (event) {
     const select = event.target as HTMLSelectElement;
@@ -55,4 +51,5 @@ export function renderPlansPage(parent: HTMLElement): void {
   });
   parent.appendChild(root);
   focusRename(root);
+  focusPinRename(root);
 }

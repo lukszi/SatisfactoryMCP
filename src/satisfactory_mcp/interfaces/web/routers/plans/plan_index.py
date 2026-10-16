@@ -67,6 +67,7 @@ class PlanIndexRow(TypedDict):
 
     ``status`` is what moved under it (``manage.plan_status``): "world moved", "field N->M",
     "broken: ..."; empty with ``recorded`` false means the field was never checked.
+    ``icon`` is the one chosen on the page ("" a chosen blank), null for no choice.
     """
 
     key: str
@@ -79,6 +80,7 @@ class PlanIndexRow(TypedDict):
     sited: bool
     factory: str
     plan_id: str
+    icon: str | None
     last: PlanLast
     status: list[str]
     recorded: bool
@@ -109,6 +111,7 @@ def _index(log: PlanLog, st: WorldState) -> list[PlanIndexRow]:
                 "sited": bool(state.siting),
                 "factory": state.factory,
                 "plan_id": state.plan_id,
+                "icon": state.icon,
                 "last": {
                     "rev": newest.rev,
                     "ts": newest.ts,

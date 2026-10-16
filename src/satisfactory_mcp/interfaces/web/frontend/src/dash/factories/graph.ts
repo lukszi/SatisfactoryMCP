@@ -20,10 +20,6 @@ const canvas = newCanvas("card");
 const placed: Record<string, Positions> = {};
 const views = new WeakMap<FactoryGraphResponse, ProdGraph>();
 
-export function factoryGraphPath(name: string): string {
-  return q("/api/factories/graph", { factory: name });
-}
-
 export function candidateGraphPath(index: number, token: string): string {
   return q("/api/factories/graph", { candidate: "proposal:" + index, token });
 }

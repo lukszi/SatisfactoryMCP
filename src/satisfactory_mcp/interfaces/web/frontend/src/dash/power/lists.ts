@@ -13,6 +13,7 @@ import { showCircuit, showFactory } from "../../map/panel";
 import { showMachine } from "../../map/map-highlight";
 import { leaveDashThen } from "../actions";
 import { factoryDash } from "../factories/address";
+import { factoryLead, iconLead } from "../factories/icon-choice";
 import { circuitDark, factoriesOn, ratedCircuit, readHeadroomFull, readHeadroomNow, unrated } from "./readings";
 import { utilBar } from "./supply";
 import { utilScale, worstFirst, type Problem } from "./model";
@@ -115,7 +116,8 @@ export function factoryList(names: string[], health: FactoryHealthRow[]): Safe {
         ? html`<div class="metric bad" title="${WORDS.needAction}"><b>${row.actionable}</b><span>${WORDS.needAction}</span></div>`
         : html`<div class="metric"><b>${pct(row.uptime)}</b><span>up</span></div>`;
     const map = row && row.bbox_m ? mapBtn("factory:" + name, name, () => showFactory(name)) : noMap();
-    return entry({ tone: row && row.actionable ? "bad" : "", href }, html`<div class="id">${nameLine(link, ctx)}</div>${metric}${acts(map)}`);
+    const lead = row ? factoryLead(row) : iconLead(null, "");
+    return entry({ tone: row && row.actionable ? "bad" : "", href }, html`${lead}<div class="id">${nameLine(link, ctx)}</div>${metric}${acts(map)}`);
   });
-  return list("ofac", "stacked", entries, "nolead");
+  return list("ofac", "stacked", entries);
 }

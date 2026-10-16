@@ -8,6 +8,11 @@ the evidence lives in DESIGN.md §5.6, ``docs/fluids_model.md`` and ``docs/plann
 from __future__ import annotations
 
 import math
+import re
+
+#: An icon a player chose for a factory or plan: a descriptor class as ``/api/icons/`` takes
+#: it, or "" for a chosen blank.
+ICON_CHOICE_RE = re.compile(r"\A[A-Za-z0-9_]{0,128}\Z")
 
 #: Extraction multiplier by node purity; proven by every extractor's ``mDescription`` (§5.6).
 PURITY_MULT: dict[str, float] = {"impure": 0.5, "normal": 1.0, "pure": 2.0}

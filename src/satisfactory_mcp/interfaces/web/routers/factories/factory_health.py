@@ -28,12 +28,15 @@ WORST_PER_FACTORY = 8
 
 
 class MachineIssue(TypedDict):
-    """``x_m``/``y_m`` are null for a record the projection placed nowhere."""
+    """``x_m``/``y_m`` are null for a record the projection placed nowhere. ``building`` is
+    the machine's class, ``building_icon`` the descriptor ``/api/icons/`` files it under."""
 
     instance: str
     state: str
     uptime: float | None
     what: str
+    building: str
+    building_icon: str | None
     cause: list[str]
     x_m: float | None
     y_m: float | None
@@ -44,7 +47,8 @@ class FactoryHealthRow(TypedDict):
     ``worst`` is the machines not fine, paused included; ``worst_actionable`` only those in
     an ``actionable_states`` state, of which there are ``actionable`` in all.
     ``product`` / ``product_icon`` are the main product's name and item class (the
-    factory's default icon), null when no single product stands out."""
+    factory's default icon), null when no single product stands out. ``icon`` is the one
+    chosen on the page: a descriptor class, "" for a chosen blank, null for no choice."""
 
     name: str
     centroid_m: tuple[float, float]
@@ -65,6 +69,7 @@ class FactoryHealthRow(TypedDict):
     attention: int
     product: str | None
     product_icon: str | None
+    icon: str | None
 
 
 class FactoryHealthResponse(TypedDict):
@@ -86,6 +91,8 @@ def _issue_row(st: WorldState, placed: Placed, machine: MachineHealth) -> Machin
         "state": machine.state,
         "uptime": None if machine.uptime is None else round(machine.uptime, 3),
         "what": machine.recipe or st.game.building_name(machine.building) or machine.building,
+        "building": machine.building,
+        "building_icon": st.game.building_icon(machine.building),
         "cause": list(machine.cause),
         "x_m": cm_to_m(at[0]) if at else None,
         "y_m": cm_to_m(at[1]) if at else None,
@@ -125,6 +132,7 @@ def _factory_row(
         "attention": sum(1 for machine in report.machines if machine.state not in OK),
         "product": st.game.item_name(product) if product else None,
         "product_icon": product,
+        "icon": label.icon,
     }
 
 

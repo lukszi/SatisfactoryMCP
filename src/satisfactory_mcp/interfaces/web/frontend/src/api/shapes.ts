@@ -84,7 +84,6 @@ export type HypertubesResponse = Body<"HypertubesResponse">;
 /** The two closed vocabularies `/api/pipes` publishes, read off the row's own fields rather
  *  than restated. `PIPE_FLOW_BASIS` in map/drawn/pipes.ts is a `Record` keyed by the second, so a
  *  fifth basis in `domain/world/flow.py` is a missing key and a compile error here. */
-export type PipeDirection = PipeRow["direction"];
 export type PipeFlowBasis = PipeRow["basis"];
 
 /* --------------------------------------------------------------- /api/storage */
@@ -281,7 +280,6 @@ export type AskAbout = Schema["AskAbout"];
 export type AskRow = Schema["AskRow"];
 export type AsksResponse = Body<"AsksResponse">;
 export type AskCreateBody = Schema["AskCreateBody"];
-export type AskDropBody = Schema["RevBody"];
 export type AskDropped = Body<"Dropped">;
 export type AskStaleResponse = Body<"AskStaleResponse">;
 
@@ -333,7 +331,6 @@ export type TraceResponse = Body<"TraceResponse">;
 
 export type AspectBalance = Schema["AspectBalance"];
 export type AspectMachine = Schema["AspectMachine"];
-export type AspectCount = Schema["NameCount"];
 export type AspectNode = Schema["AspectNode"];
 export type AspectLink = Schema["AspectLink"];
 export type FactoryAspectsResponse = Body<"FactoryAspectsResponse">;

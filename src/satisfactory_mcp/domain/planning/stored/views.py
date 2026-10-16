@@ -114,6 +114,7 @@ class PlanStateRecord(TypedDict, total=False):
     args: PlanArgsBody
     headroom_mw: float | None
     node_positions: dict[str, list[float]]
+    icon: str | None
 
 
 #: Who wrote a commit: ``kind``, ``client`` and ``pid``, as ``planlog.Actor.to_dict`` gives it.

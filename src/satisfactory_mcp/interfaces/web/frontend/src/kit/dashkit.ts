@@ -16,15 +16,6 @@ export function link(dash: string, text: string, className?: string): HTMLAnchor
   return a;
 }
 
-/* "<before>Settings<after>" as a note, the link being the way to the setting that hid something. */
-export function settingsLinkNote(parent: HTMLElement, before: string, after: string, tag?: "p" | "span"): HTMLElement {
-  const line = make(tag || "p", "dash-note", before);
-  line.appendChild(link("settings", "Settings"));
-  if (after) line.appendChild(document.createTextNode(after));
-  parent.appendChild(line);
-  return line;
-}
-
 export function cell(tr: HTMLElement, content: string | number | HTMLElement, className?: string): void {
   const td = make("td", className);
   if (content instanceof HTMLElement) td.appendChild(content);
@@ -446,29 +437,8 @@ export function error(parent: HTMLElement, thing: string, reason: unknown, retry
   parent.appendChild(box);
 }
 
-/* A read that has not landed: still loading, or failed and worth a retry. */
-export function pendingNotice(parent: HTMLElement, label: string, failure: unknown, failed: boolean, retry: () => void): void {
-  if (failed) error(parent, label, failure, retry);
-  else loading(parent, label);
-}
-
 export function statusChip(status: "free" | "tapped" | "locked"): HTMLElement {
   return chip(WORDS[status], status === "free" ? "ok" : "muted");
-}
-
-export function capRows(card: HTMLElement, grid: HTMLElement, rows: number, shown: 25 | 50, label: string, open: boolean, onOpen: () => void): void {
-  if (rows <= shown || open) return;
-  const cls = "dk-capped-" + shown;
-  grid.classList.add(cls);
-  const more = make("div", "dk-more");
-  more.appendChild(
-    button(label, function () {
-      onOpen();
-      grid.classList.remove(cls);
-      more.remove();
-    })
-  );
-  card.appendChild(more);
 }
 
 export function chip(text: string, tone?: "ok" | "bad" | "blocked" | "remove" | "mid" | "muted", title?: string): HTMLElement {

@@ -389,22 +389,6 @@ export function startAt(kind: FindKind, x: number, y: number): void {
   fetchPoint(true);
 }
 
-/** List rows another page found, ringed on the map; `selectedIndex` picks one of them. */
-export function showRows(results: FinderResults, title: string, dash: string, selectedIndex?: number): void {
-  openFinder(title, dash);
-  view.at = null;
-  view.ref = "";
-  view.results = results;
-  if (selectedIndex !== undefined && selectedIndex >= 0) {
-    selectResult(selectedIndex);
-    return;
-  }
-  view.selectedIndex = -1;
-  const bounds = drawResults(results, -1);
-  renderFinder();
-  flyToResults(results, -1, bounds);
-}
-
 function parsePoint(text: string): { x: number; y: number; r: number } | null {
   const match = /^(?:near:)?(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)(?:@(\d+(?:\.\d+)?))?$/.exec(text.trim());
   if (!match) return null;
