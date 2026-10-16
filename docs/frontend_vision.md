@@ -486,9 +486,8 @@ fragment key reuses all of that, and a bookmark still lands on the view.
 - **Deep links:** a dashboard **map** button returns to the map and calls the panel's own
   `showFactory` / `showCircuit` / `showPoint`, so the panel row is selected as well. A
   selected panel row offers **open in dashboard ›**.
-- **Overview:** tiles for factories (with the state mix), generation (with the draw bar),
-  headroom now, headroom at full rate, machines needing action, power problems and milestones. Below them:
-  factories needing action, machines needing action, and power per circuit.
+- **Overview:** five blocks (factories, power, do next, progress, map); docs/frontend_kit.md,
+  "Overview".
 - **Factories:** a sortable table (click or Enter on a heading). The detail view shows state
   counts, the eight worst machines, and label review.
 - **Power:** the world ledger, the circuits table, a detail view per circuit, and the

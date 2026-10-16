@@ -67,6 +67,37 @@ land elsewhere. A bare first word is a shorthand (`#maps` is `#dash=maps`).
   last; `#dash=settings/maps` goes to `#maps`.
 - Map types, jobs, the generate form and inputs are the `#maps` page (`dash/maps/`).
 
+## Overview
+
+`dash/overview/` is the Overview (`#dash=overview`, and where an unknown `dash=` lands): five
+glanceable blocks, each clicking through to the page with the detail. Headline figures sit in
+the block heading at heading size; no list runs past three rows. Desktop has two independent
+column stacks (factories and map left, about two thirds; power, do next and progress right);
+phones get one column in the order do next, factories, power, progress, map, factory cells
+two across. The order is the DOM order on both, picked at render by a 600 px media query.
+
+- **Factories**: machines and need action in the heading; one cell per named factory, worst
+  first (need action, then blocked, then most machines, lowest uptime): the factory's icon
+  (`icon-choice.ts`), name, the need-action count or uptime, the state mix bar.
+- **Power**: headroom now as the figure and headroom if all run under it (`headroomFigs`); the
+  three worst circuits as label, utilisation bar (`utilBar`, one shared scale) and headroom
+  now, as on Power, then "+N more".
+- **Do next** (`model.ts` `todoOf`): power problems that stop machines (no wire, no
+  generator), then machine groups needing action (`machine-health.ts` `issueGroups`), starved
+  generators, blocked machines; most machines first within a rank. Three rows, "+N more" to
+  Factories when a factory row is left out, else Power. A power row opens its factory's power
+  aspect or its circuit; a machine row its factory's machines.
+- **Progress**: the phase gate as held of owed (each part counted up to what is owed) from
+  `/api/progress/gate` at the default horizon (the same read the Progress page makes), the
+  first next step, and the plans as machines built of planned (`/api/plan/built`, plans whose
+  figure counts machines at their current version).
+- **Map**: a real Leaflet map from `map/mini-map.ts` (`overview-map.ts`), kept across renders
+  and refitted only when the factories or the player move. One dot per named factory at its
+  centroid, coloured only when it needs action, the player from `/api/world/here`. It does not
+  pan or zoom; a dot opens the factory, anywhere else opens the main map there.
+- The "worth a look" advice card left the Overview; it stays on a factory's page. The old
+  tiles (`dashkit` `tile`) and tables are gone.
+
 ## Power
 
 `dash/power/` is the Power page (`#dash=power`) and a circuit's page (`#dash=power/<n>`), both
@@ -86,8 +117,7 @@ from `/api/power/circuits` (circuit pages also read factory health for the facto
   headroom per MW generated). The bar's 100% is that circuit's own generation, and every bar
   shares one overflow room (`utilScale`, up to 150%), so overdraw reads alike across rows.
 - `readings.ts` reads a ledger for every surface (the header, the map's side panel, the
-  planner); `ledger-bar.ts` is the compact DOM bar the side panel and the old Overview tiles
-  still use.
+  planner); `ledger-bar.ts` is the compact DOM bar the side panel uses.
 
 ## Factories
 
@@ -280,4 +310,4 @@ MAM and phase feeds (`feeds.ts`).
   machines. Old addresses redirect (`model.ts` `legacyProgressDash`): milestones and mam to
   reference, elevator to gate, drives to alternates, shards and sloops to the Power Shard and
   Somersloop sheets on Items; `progress-<section>` lands on that section.
-- Overview's milestone tile and the status strip's "affordable" count read `summary.ts`.
+- The status strip's "affordable" count reads `summary.ts`.

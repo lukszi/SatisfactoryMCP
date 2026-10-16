@@ -34,7 +34,7 @@ function missing(body: HTMLElement): boolean {
 }
 
 /** Headroom now as the figure, headroom if all run under it. */
-function headroomFigs(rated: Rated): Safe {
+export function headroomFigs(rated: Rated): Safe {
   const now = readHeadroomNow(rated);
   const full = readHeadroomFull(rated);
   return html`${fig(now.value, WORDS.headroomNow, now.bad ? "bad" : undefined)}${figSub(html`<span class="${full.bad ? "bad-t" : ""}" title="${"headroom " + WORDS.ifAllRun + ": " + WORDS.ifAllRunTip}">${full.value} ${WORDS.ifAllRun}</span>`)}`;

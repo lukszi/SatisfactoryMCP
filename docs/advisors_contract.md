@@ -168,9 +168,10 @@ the newest reply wins. A chat dismissal reached an open page in 0.7 s (§10).
 
 ## 8. The page
 
-- **Overview:** the card `worth a look` sits first under the tile row. **Factory detail:** the
-  same card, filtered to that factory, under its tiles; no second fetch. Nothing else: no tile,
-  nothing in the status strip, nothing on the map panel.
+- **Factory detail:** the card `worth a look`, filtered to that factory, under its tiles. The
+  Overview had it first under its tile row until its rebuild; it now lists the top problems
+  as "do next" (docs/frontend_kit.md, "Overview"). Nothing else: no tile, nothing in the
+  status strip, nothing on the map panel.
 - A row is one line at desktop width: chip (`chip(word, tone)`), `new` (an id not seen in this
   browser before, kept in `localStorage` `advice.seen`; nothing is new on a first visit),
   `back`, the text, then actions. Clicking the line (a button with `aria-expanded`) opens its
