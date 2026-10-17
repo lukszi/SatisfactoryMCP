@@ -5,7 +5,8 @@
   max-width: var(--page-w-wide);
 }
 
-.plans {
+.plans,
+.ppage {
   /* the timeline's dot, time and who columns, and its rail */
   --tl-dot: 8px;
   --tl-time-w: 40px;

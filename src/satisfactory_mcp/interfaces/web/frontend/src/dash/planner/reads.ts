@@ -2,22 +2,18 @@
  * alternates drawer. A reply lands only while the bench still holds the plan it was asked for. */
 
 import { get, latest, send } from "../../api/client";
-import { go } from "../../app/nav";
 import { settingChoice, spoilerQuery } from "../../app/settings";
-import { state } from "../../app/state";
 import { friendlyError } from "../../kit/toast";
 import { WORDS } from "../../kit/words";
 import { biomassQuery } from "../power/readings";
-import { trackDash } from "./address";
 import { bench, changed } from "./state";
 
 import type { ApiPath, ApiUrl } from "../../api/client";
-import type { DeltaResponse, FeedersResponse, PlanAlternatesResponse, PlanStateBody, SolveResponse, TrackResponse, VersionsResponse } from "../../api/shapes";
-import type { FeedersView, Partition, ResultTab } from "./state";
+import type { DeltaResponse, PlanAlternatesResponse, PlanStateBody, SolveResponse, TrackResponse, VersionsResponse } from "../../api/shapes";
+import type { Partition } from "./state";
 
 const ALTERNATES: ApiPath = "/api/plan/alternates";
 const TRACK: ApiPath = "/api/plan/track";
-const FEEDERS: ApiPath = "/api/plan/feeders";
 const LOOKBACK_REVS = 20;
 
 let solveSeq = 0;
@@ -163,12 +159,6 @@ export function loadVersions(): void {
     });
 }
 
-export function toggleVersions(): void {
-  bench.versionsOpen = !bench.versionsOpen;
-  if (bench.versionsOpen) loadVersions();
-  changed();
-}
-
 /* -------------------------------------------------------------------- track */
 
 function partition(data: TrackResponse): Partition {
@@ -229,7 +219,7 @@ export function stageHeadroom(): string {
 
 export function loadTrack(): void {
   const plan = bench.plan;
-  if (!plan || bench.tab !== "track" || bench.viewedRev) return;
+  if (!plan || bench.tab !== "build" || bench.viewedRev) return;
   const key = bench.key;
   const view = bench.track;
   const ticket = latest("planner-track");
@@ -244,8 +234,6 @@ export function loadTrack(): void {
       view.error = "";
       view.asked = 0;
       if (view.stage > data.stages.length) view.stage = 0;
-      const here = trackDash(key, view.stage);
-      if (state.dash.indexOf(trackDash(key, 0)) === 0 && state.dash !== here) go(here, true);
       changed();
     })
     .catch(function (reason) {
@@ -254,52 +242,6 @@ export function loadTrack(): void {
       view.asked = 0;
       changed();
     });
-}
-
-export function dropFeeders(): void {
-  bench.track.feeders = null;
-}
-
-export function loadFeeders(): void {
-  const view = bench.track;
-  const key = bench.key;
-  const feeders: FeedersView = { data: null, error: "", busy: true };
-  const ticket = latest("planner-feeders");
-  view.feeders = feeders;
-  changed();
-  get<FeedersResponse>(`${FEEDERS}?${biomassQuery()}` as ApiUrl)
-    .then(function (data) {
-      if (!ticket.fresh() || bench.key !== key || view.feeders !== feeders) return;
-      feeders.data = data;
-      feeders.busy = false;
-      changed();
-    })
-    .catch(function (reason) {
-      if (!ticket.fresh() || bench.key !== key || view.feeders !== feeders) return;
-      feeders.error = friendlyError(reason);
-      feeders.busy = false;
-      changed();
-    });
-}
-
-export function pickStage(n: number): void {
-  const view = bench.track;
-  const total = view.data ? view.data.count : 0;
-  view.stage = view.stage === n ? 0 : n;
-  bench.selection = view.stage ? { kind: "stage", label: WORDS.stage(view.stage, total), ref: String(view.stage) } : null;
-  go(trackDash(bench.key, view.stage), true);
-  changed();
-}
-
-export function pickTab(tab: ResultTab): void {
-  const was = bench.tab;
-  bench.tab = tab;
-  if (tab === "track") {
-    go(trackDash(bench.key, bench.track.stage), true);
-    loadTrack();
-  } else if (tab === "site") go("planner/" + bench.key + "/site", true);
-  else if (was === "track" || was === "site") go("planner/" + bench.key, true);
-  changed();
 }
 
 /* --------------------------------------------------------------- alternates */

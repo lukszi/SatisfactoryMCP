@@ -45,7 +45,7 @@ function planPopup(p: PlanSiting): Row[] {
     ["origin", p.origin_label || null],
     ["factory", p.factory || null],
     ["selector", code("plan:" + p.name)],
-    ["", html('<a class="btn" href="' + esc(hashFor("planner/" + p.key + "/site")) + '">move</a>')],
+    ["", html('<a class="btn" href="' + esc(hashFor("planner/" + p.key + "/place")) + '">move</a>')],
   ];
 }
 

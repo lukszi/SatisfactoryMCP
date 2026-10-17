@@ -265,9 +265,9 @@ a second click on its slot, × or Esc clears it. Picking does not move the scrol
 
 ## Planner
 
-`dash/planner/plans/` is the Planner page (`#dash=planner`); a plan's own pages
-(`#dash=planner/<key>[/…]`) are still the old workbench in `dash/planner/` until their design is
-settled. `planner.ts` mounts either, and holds a redraw while a field there has an unsaved value.
+`dash/planner/plans/` is the Planner page (`#dash=planner`); `dash/planner/plan/` is a plan's own
+page (`#dash=planner/<key>[/…]`, see "Plan page"). `planner.ts` mounts either, and holds a redraw
+while a field there has an unsaved value.
 
 - **Cards** (`cards.ts`, `model.ts`), two across, "+ new plan" first: an item (from the game
   data's names) and a rate make a plan named "<item> <rate>/min" (least raw, then power) and
@@ -295,8 +295,57 @@ settled. `planner.ts` mounts either, and holds a redraw while a field there has 
   Pins and asks follow the cards as lists, one line per row: the `pin:N` or `ask:N` chip and
   the label or question, what it is about inline, one state chip (gone; waiting, seen,
   answered), ◎ or → for a pin's place, the rest in ⋯ (rename in place, copy, ask chat,
-  delete). Phones keep the name and ⋯ on the first line and the chip under them. A plan's
-  own pages still use the old cards (`chat-card.ts`, `chat/asks-card.ts`).
+  delete). Phones keep the name and ⋯ on the first line and the chip under them. The plan
+  page shows chat's solve the same way, with "apply to this plan" (or "replace this plan's
+  request" when chat did not solve from it).
+
+## Plan page
+
+`dash/planner/plan/` is one plan, shaped as a bill: the factory page's header card and tab row,
+then the tab. The reads and writes are the planner's own (`reads.ts`, `writes.ts`, the bench in
+`state.ts`); the page only draws them.
+
+- **Addresses** (`routes.ts`, pure): `planner/<key>/<tab>` with the tabs machines, flows, site,
+  build (to build, `?stage=<n|all>`, `&pick=1` for "which factory?") and versions; `v<n>` a
+  version read-only on machines, `alt/<item>` the alternates drawer on machines, `place` the
+  pad editor beside the main map. A bare `planner/<key>` lands on the plan's step once the plan
+  and its built figure are read (`settleLanding` in `planner.ts`, rule in `plan/model.ts`): no
+  site and no named factory → machines; every machine built → flows; else to build. The
+  address then names that tab. Old `graph` and `track[/<n>]` links redirect (`legacyPlannerDash`).
+- **Header** (`head.ts`): breadcrumb Planner, the plan's icon (as on its card) and name, at most
+  one status chip, ◎ to the pad on the map when sited, ⋯ (rename in place, change icon,
+  duplicate, copy id `plan:<name>`, delete, which forgets; restore when forgotten); one note
+  line: goal, version, the named factory, and "pushing…" or "conflict" while a write is out.
+  No figures. "to build" carries the machines left to place (`to_build`, else built of total).
+  Strips above every tab: forgotten, conflict lines (keep theirs or use mine), chat's solve,
+  and the versions others made since the page opened the plan, each with undo.
+- **Machines** (`machines.ts`): the result band (inputs → one pill per building with its count
+  → exports, an MW export signed; net MW as its figure; "targets" folds the form open) or the
+  server's cause when it does not solve, then the last solvable version greyed. The targets form
+  (`targets.ts`) holds every request field, one version per change, plus the payback slider, the
+  overclock-last switch and the plan's own stage headroom. Build rows grouped "step N" by
+  `depth`, or sorted by building, machines or power: building icon, recipe (required, chat,
+  pin and ask chips), in → out pills at the planned rate, "n × 100%" with the last machine's
+  clock under it, signed MW, alternates and ⋯ (ban, pin, ask chat, the row's overclock choice).
+  A row click picks it for chat. The drawer (`alternates.ts`) lists every recipe for the item
+  with Δ machines, Δ draw and Δ raw pills, and require, ban or let the solver choose.
+- **Flows** (`flows.ts`): the factory's graph canvas in its card style, from `SolveResponse.graph`,
+  cards dragged to place them (stored as `place` ops, "reset layout" puts them back); the
+  balance per item under it grouped in, out, leftover, internal. A card opens machines with its
+  row picked; hovering a row or line lights that item.
+- **Site** (`site.ts`): a mini map (`map/mini-map.ts`) of the stored pad, the nodes its trunks
+  draw from (dots by the node's purity, which the preview now sends) and straight lines from
+  them to the pad; beside it the pad's facts and the trunks, all from one
+  `/api/plan/site-preview?first=1`. "move the pad on the map" opens `place`.
+- **To build** (`build.ts`, `/api/plan/track`): built x of y and headroom now as the heading's
+  figures, where it counts as built with a "change" link, then the stages on the Progress
+  band's rail (state, starved, built of machines, draw, made and headroom after), the jobs of
+  the stage shown (to do, then standing: tick, building, the verb and its count, have of need,
+  ◎), and what is short. No site: a link to place the pad. Unsure where it is built, or `pick`:
+  "which factory?" with the candidates and a scope select; an unnamed cluster is named first.
+- **Versions** (`versions.ts`): the Planner timeline for one plan, with each version's delta
+  against the one before (`/api/plan/delta`, the newest 30, read one at a time); view and
+  restore.
 
 ## Progress
 

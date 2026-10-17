@@ -37,7 +37,7 @@ export interface PageHead {
   figs?: Hole;
   note?: Hole;
   /** The object's own tabs, an underline row on the card's bottom edge. */
-  tabs?: { label: string; href: string; on: boolean }[];
+  tabs?: { label: Hole; href: string; on: boolean }[];
   tabsLabel?: string;
 }
 

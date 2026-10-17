@@ -34,7 +34,7 @@ function focusTab(planKey: string | null): string {
     return cut < 0 ? state.dash : state.dash.slice(0, cut);
   }
   if (!planKey) return "list";
-  return bench.tab === "graph" || bench.tab === "track" || bench.tab === "site" ? bench.tab : "workbench";
+  return bench.tab === "build" ? "to build" : bench.tab;
 }
 
 function focusView(planner: boolean): string {

@@ -1,4 +1,5 @@
-/* The Planner tab: mounting, redrawing without stepping on an edit, and following chat. See
+/* The Planner tab: mounting the plans list or a plan's page, landing a bare plan address on its
+ * tab, redrawing without stepping on an edit, and following chat. See
  * docs/planner_slice_contract.md §12. */
 
 import { get } from "../../api/client";
@@ -9,27 +10,27 @@ import { keepFocus } from "../../kit/focus";
 import { onReload } from "../../app/load";
 import { dashParts, go, replaceDash } from "../../app/nav";
 import { onVitals } from "../../app/vitals";
-import { renderBench } from "./bench";
-import { altDash, openPlanKey, parsePlannerAddress, plannerDraft, trackDash } from "./address";
-import { dropFeeders, forgetSolves, hideAlternates, loadAlternates, loadTrack, openRevision, showAlternates, stageHeadroom } from "./reads";
+import { renderPlanPage } from "./plan/page";
+import { landingTab } from "./plan/model";
+import { altDash, buildDash, openPlanKey, parsePlannerAddress, planDash, plannerDraft } from "./address";
+import { forgetSolves, hideAlternates, loadAlternates, loadTrack, loadVersions, openRevision, showAlternates, stageHeadroom } from "./reads";
 import { actorWord, bench, changed, inbox, loadItems, onBench, pendingFocus, resetBench } from "./state";
 import { followHead, openPlan, redoLast, resyncHead, undoLast } from "./writes";
 import { scheduleFocus, wireFocusReports } from "./focus";
 import { renderPlansPage } from "./plans/page";
 import { prefillNewPlan } from "./plans/cards";
 import { loadActivity } from "./plans/timeline";
-import { loadList, planTitle } from "./plan-index";
+import { loadList, planIndex, planTitle } from "./plan-index";
+import { builtOf } from "./plans/model";
 import { onPins } from "../../chat/pins";
-import { clearPick } from "./result";
 import { showGhost } from "./site";
-import { focusStartup, revealStage, settleTrackFocus } from "./track/track";
 import { onBiomass } from "../power/readings";
 import { onSetting, settingChoice, settingNumber, settingOn } from "../../app/settings";
 import { isSincePageOpened, state } from "../../app/state";
 import { notify, offer } from "../../kit/toast";
 import { objectiveText } from "../../kit/words";
 
-import type { ActivityResponse, FocusSelection, PlansResponse } from "../../api/shapes";
+import type { ActivityResponse, PlansResponse } from "../../api/shapes";
 import type { PlannerAddress } from "./address";
 import type { ActivityEvent, PlansEvent } from "./state";
 
@@ -45,8 +46,6 @@ let drawTimer = 0;
 let pointerDown = false;
 let refocusCtl = "";
 let lastFocusSignature = "";
-let focusStartupPending = false;
-let stageToReveal = 0;
 
 /** One chat activity the page may follow, and whether the follow setting only offers it. */
 interface Followed {
@@ -61,18 +60,34 @@ function powerDefaults(): string {
 }
 
 function syncTab(wanted: PlannerAddress): void {
-  if (wanted.alternatesItem) return;
-  if (wanted.track) {
-    const entering = bench.tab !== "track";
-    bench.tab = "track";
+  bench.place = wanted.place;
+  if (!wanted.tab) return;
+  const entering = bench.tab !== wanted.tab;
+  bench.tab = wanted.tab;
+  if (wanted.tab === "build") {
     bench.track.stage = wanted.stage;
-    if (entering) loadTrack();
-  } else if (wanted.site) bench.tab = "site";
-  else if (bench.tab === "track" || bench.tab === "site") bench.tab = "build list";
+    if (entering || !bench.track.data) loadTrack();
+  } else if (wanted.tab === "versions" && entering) loadVersions();
+}
+
+/** A bare `planner/<key>` lands on the plan's current step once the plan and its built
+ *  figure are read; the address then names that tab. */
+function settleLanding(): void {
+  const at = parsePlannerAddress(dashParts().subject);
+  if (!at.key || at.tab || at.place || bench.key !== at.key || !bench.plan) return;
+  const sited = !!bench.plan.siting;
+  const named = bench.plan.factory && bench.plan.factory[0] !== "/" ? bench.plan.factory : "";
+  const listed = !!planIndex.data && planIndex.world === state.world;
+  const row = listed ? planIndex.data!.index.filter((r) => r.key === at.key)[0] : undefined;
+  const waiting = listed ? !!row && !planIndex.builtDone : !planIndex.error;
+  if ((sited || named) && waiting) return;
+  const built = row ? builtOf(row, planIndex.built[row.key]) : ({ kind: "pending" } as const);
+  replaceDash(planDash(at.key, landingTab(sited, named, built)));
+  syncTab(parsePlannerAddress(dashParts().subject));
 }
 
 function trackShowing(): boolean {
-  return !!openPlanKey() && bench.tab === "track" && !!bench.plan && !bench.viewedRev;
+  return !!openPlanKey() && bench.tab === "build" && !!bench.plan && !bench.viewedRev;
 }
 
 function goToAlternates(plan: string, at: string): void {
@@ -85,7 +100,7 @@ function closeAlternates(): void {
   const back = bench.alternatesCloseGoesBack && dashParts().rest[1] === "alt";
   refocusCtl = hideAlternates();
   if (back) history.back();
-  else go(bench.tab === "track" ? trackDash(bench.key, bench.track.stage) : "planner/" + bench.key, true);
+  else go(planDash(bench.key, "machines"), true);
   changed();
 }
 
@@ -99,10 +114,6 @@ function typing(): boolean {
   if (!active || !FORM_FIELD.test(active.tagName)) return false;
   if (!root.contains(active)) return true;
   return active.tagName !== "SELECT" && active.value !== active.defaultValue;
-}
-
-function inField(): boolean {
-  return isFormField(document.activeElement);
 }
 
 function showHeldHint(): void {
@@ -127,24 +138,9 @@ function runHeldActions(): void {
   if (drawPending) draw();
 }
 
-function selectInPlan(selection: FocusSelection): void {
-  bench.selection = selection;
-  changed();
-  scheduleFocus();
-}
-
 function scheduleDraw(): void {
   clearTimeout(drawTimer);
   drawTimer = window.setTimeout(draw, 0);
-}
-
-function revealTrackTargets(): void {
-  if (focusStartupPending && trackShowing() && focusStartup(root)) focusStartupPending = false;
-  settleTrackFocus(root);
-  if (stageToReveal && trackShowing() && bench.track.data && !bench.track.asked) {
-    if (!inField() && bench.track.stage === stageToReveal) revealStage(root, stageToReveal);
-    stageToReveal = 0;
-  }
 }
 
 function focusCtl(ctl: string): HTMLElement | null {
@@ -185,14 +181,14 @@ function draw(): void {
     return;
   }
   drawPending = false;
+  if (mountedKey) settleLanding();
   keepFocus(root, function () {
     root.textContent = "";
     renderAskBar(root);
-    if (mountedKey) renderBench(root, selectInPlan, closeAlternates);
+    if (mountedKey) renderPlanPage(root, parsePlannerAddress(dashParts().subject), closeAlternates);
     else renderPlansPage(root);
   });
   settleAskFocus(root);
-  revealTrackTargets();
   restoreFocus();
   reportFocusIfChanged();
   if (heldActions.length && !typing()) runHeldActions();
@@ -224,8 +220,10 @@ export function renderPlanner(body: HTMLElement, at: string): void {
   }
   if (key !== mountedKey) {
     mountedKey = key;
-    if (key) openPlan(key);
-    else {
+    if (key) {
+      openPlan(key);
+      loadList();
+    } else {
       resetBench("");
       loadList();
       loadActivity();
@@ -247,7 +245,7 @@ export function onPlansEvent(event: PlansEvent): void {
     if (openPlanKey() === "") {
       loadList();
       loadActivity();
-    }
+    } else if (openPlanKey() === event.key) loadList();
     followHead(event);
   });
 }
@@ -281,11 +279,8 @@ function withPlanName(key: string, given: string | null | undefined, then: (name
 function followTrackView(plan: string, followed: Followed): void {
   const args = followed.args;
   const stage = typeof args.stage === "number" && args.stage >= 1 ? Math.floor(args.stage) : 0;
-  const there = trackDash(plan, stage);
-  const startup = args.section === "startup";
+  const there = buildDash(plan, stage);
   const open = function () {
-    focusStartupPending = startup;
-    stageToReveal = startup ? 0 : stage;
     if (state.dash === there) changed();
     else go(there);
   };
@@ -306,7 +301,7 @@ function followTrackView(plan: string, followed: Followed): void {
 }
 
 function followSiteView(plan: string, followed: Followed): void {
-  const spot = "planner/" + plan + "/site";
+  const spot = planDash(plan, "place");
   const look = function () {
     showGhost(plan, followed.args, followed.who);
     if (state.dash !== spot) go(spot);
@@ -407,7 +402,6 @@ export function resyncPlanner(replay: (entries: ActivityEvent[]) => void): void 
 export function onSaveEvent(): void {
   if (bench.plan) forgetSolves();
   if (bench.alternates) loadAlternates();
-  dropFeeders();
   if (trackShowing()) loadTrack();
 }
 
@@ -435,7 +429,12 @@ function onEscape(event: KeyboardEvent): void {
   if (bench.alternates) {
     event.preventDefault();
     closeAlternates();
-  } else if (clearPick()) event.preventDefault();
+  } else if (bench.picked) {
+    event.preventDefault();
+    bench.picked = "";
+    bench.selection = null;
+    changed();
+  }
 }
 
 function onPlannerKeydown(event: KeyboardEvent): void {
@@ -456,7 +455,6 @@ function wire(): void {
   onPins(scheduleDraw);
   onAsks(scheduleDraw);
   onBiomass(function () {
-    dropFeeders();
     if (trackShowing()) loadTrack();
   });
   let powerWas = powerDefaults();

@@ -18,7 +18,7 @@ import { factoryDash } from "../../factories/address";
 import { openIconPicker } from "../../factories/factory-actions";
 import { choiceOf, iconLead, type IconStore } from "../../factories/icon-choice";
 import { browserStore, takeLocalChoices } from "../../factories/local-icons";
-import { trackDash } from "../address";
+import { buildDash } from "../routes";
 import { toggleProgress } from "../built";
 import { loadList, planIndex } from "../plan-index";
 import { actorWord, changed, commitWords, itemClass, knownItem, NAME_MAX } from "../state";
@@ -51,7 +51,7 @@ function builtLine(row: PlanIndexRow): Safe {
   if (b.kind === "pending") return html`<div class="pbuilt"><span class="dim" aria-busy="true">…</span></div>`;
   if (b.kind === "nosite") return html`<div class="pbuilt"><span title="the plan has no site yet">no site</span></div>`;
   if (b.kind === "nosolve") return html`<div class="pbuilt"><span>${b.text}</span></div>`;
-  if (b.kind === "ask") return html`<div class="pbuilt"><a href="${hashFor(trackDash(row.key, 0))}" title="${b.text || "open Track to say which factory this plan is"}">which factory?</a></div>`;
+  if (b.kind === "ask") return html`<div class="pbuilt"><a href="${hashFor(buildDash(row.key, 0, true))}" title="${b.text || "say which factory this plan is"}">which factory?</a></div>`;
   const percent = settingChoice("progress") === "percent" && b.percent !== null;
   const fig = percent ? html`<b>${Math.round(b.percent!)}%</b><span> of planned rate</span>` : html`<b>${b.figure}</b><span> built</span>`;
   return html`<div class="pbuilt"><button type="button" class="pb-fig" data-builtmode="1" title="${b.text + " · click to switch machines and percent"}">${fig}</button>${bar(b.pct, "progress", Math.round(b.pct) + "% built")}</div>`;

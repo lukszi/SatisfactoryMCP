@@ -31,6 +31,11 @@ export function hasPushInFlight(): boolean {
   return inflight > 0;
 }
 
+/** Resolves once every write queued so far has landed or failed: an async button's wait. */
+export function writesSettled(): Promise<void> {
+  return chain;
+}
+
 export function syncStatus(): string {
   if (inflight) return "pushing…";
   if (bench.conflictChips.length) return "conflict";
@@ -87,7 +92,7 @@ function adopt(plan: PlanStateBody): void {
   changed();
   solveHead();
   if (moved) {
-    if (bench.versionsOpen) loadVersions();
+    if (bench.tab === "versions") loadVersions();
     deltaForStrip();
     if (bench.viewedRev) deltaForView();
     if (bench.alternates) loadAlternates();
