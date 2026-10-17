@@ -29,6 +29,27 @@ Text uses role tokens `--t-<role>-size / -w / -lh`: title 18, section 14, group 
 bold, number 12 bold tabular, body 12, meta 11, figure 18. `kit/styles/kit.css` styles the parts;
 phones are one `max-width: 600px` media query per stylesheet.
 
+- **Radii**: three values only: `--r` (3 px; `--r-card` is the same), `--r-chip` (8 px pill),
+  `--r-round` (circle).
+- **Strokes**: hairlines are a literal `1px`; `--ring` (2 px) is the focus outline and its
+  offset, `--mark-w` (2 px) the selected-tab underline, a picked row's edge and marker lines;
+  `--edge` (3 px) the status edge.
+- **Squares**: `--ic-s` / `--ic-m` / `--ic-l` (20 / 24 / 32) size icons and glyph buttons,
+  `--dot` a status dot. **Bars**: `--bar-s` / `-m` / `-l` (4 / 6 / 8). **Heights**: `--ctl-h`
+  (a control: line height plus two hairlines), `--row-h` (a list row), `--row-h-card`,
+  `--touch-h` (a phone sheet row).
+- **List columns** (`--col-*`): a list's `--cols` template is built from these, so the same kind
+  of column has the same width on every page: `icon` 24, `icon-l` 32, `act` 24 (one glyph
+  button), `short` 56 (a count, a percentage, a distance), `num` 72 (a number with its unit),
+  `num-l` 96 (a long figure or a state word), `label` 112 (a bar, or a figure over a bar),
+  `text` 150 (a short phrase), `name` 180 (the least a flexible name column gets). The flexible
+  column is `minmax(0, 1fr)`. `--card-min-w` is the narrowest card in an auto-fill grid.
+- **Motion**: `--dur` with `--ease` for state changes, `--dur-fade` for a busy fade,
+  `--flash-turn` for one beat of a node flash; spinners and sweeps keep `linear`.
+- A value that belongs to one page only (a map block's height, a roadmap node) is a custom
+  property declared at the top of that page's stylesheet on its root class, built from tokens
+  where it can be.
+
 ## Parts
 
 | module | parts |

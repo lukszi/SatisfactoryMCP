@@ -56,6 +56,8 @@
   --thumb-light: #a6ad9c;
 
   /* sizes and type roles: four sizes, 11 / 12 / 14 / 18 */
+  --font-ui: "Segoe UI", system-ui, sans-serif;
+  --font-mono: Consolas, monospace;
   --fs-s: 11px;
   --fs-m: 12px;
   --fs-l: 14px;
@@ -106,10 +108,40 @@
   --r-card: var(--r);
   --r-round: 50%;
   --edge: 3px;
+  --ring: 2px;
+  --mark-w: 2px;
+
+  /* squares: icons, glyph buttons, status dots */
   --ic-s: 20px;
+  --ic-m: 24px;
+  --ic-l: 32px;
+  --dot: 8px;
+
+  /* bars, control and row heights */
+  --bar-s: 4px;
+  --bar-m: 6px;
+  --bar-l: 8px;
+  --ctl-h: 22px;
+  --row-h: 40px;
+  --row-h-card: 72px;
+  --touch-h: 44px;
+
+  /* list columns: one width per kind of column, the same on every page */
+  --col-icon: var(--ic-m);
+  --col-icon-l: var(--ic-l);
+  --col-act: var(--ic-m);
+  --col-short: 56px;
+  --col-num: 72px;
+  --col-num-l: 96px;
+  --col-label: 112px;
+  --col-text: 150px;
+  --col-name: 180px;
+  --card-min-w: 320px;
 
   /* motion, overlays, loading */
   --dur: 120ms;
+  --dur-fade: 200ms;
+  --flash-turn: 1s;
   --ease: cubic-bezier(0.2, 0, 0, 1);
   --overlay-shadow: 0 4px 12px rgb(0 0 0 / 0.35);
   --backdrop: rgb(0 0 0 / 0.55);
@@ -119,6 +151,10 @@
   --spin-pulse: 1600ms;
   --sweep: 1200ms;
   --job-h: 2px;
+  --expand-max: 40em;
+  --load-min-h: 240px;
+  --menu-w: 160px;
+  --toast-w: 340px;
 
   /* shell: top bar, the strips under it, the phone bottom bar */
   --hdr-h: 40px;
@@ -137,13 +173,14 @@
   --form-label-w: 112px;
   --form-ctl-max: 480px;
   --num-w: 96px;
+  --num-w-s: 72px;
   --unit-w: 40px;
-  --title-ic: 32px;
+  --title-ic: var(--ic-l);
 
   /* slots and the side panel */
   --slot-w: 80px;
   --slot-ic: 40px;
-  --slot-bar: 4px;
+  --slot-bar: var(--bar-s);
   --slot-locked: 0.45;
   --item-sheet-w: 480px;
   /* the building column of a recipe flow on the item sheet */
