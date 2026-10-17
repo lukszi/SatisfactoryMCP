@@ -639,11 +639,11 @@
 
 /* ---------- the icon picker ---------- */
 .icdlg {
-  --icdlg-w: 560px;
+  --icdlg-max: 560px;
   --icgrid-h: 360px;
 
-  width: min(var(--icdlg-w), calc(100vw - 2 * var(--sp-5)));
-  max-height: min(var(--icdlg-w), calc(100vh - 2 * var(--sp-5)));
+  width: min(var(--icdlg-max), calc(100vw - 2 * var(--sp-5)));
+  max-height: min(var(--icdlg-max), calc(100vh - 2 * var(--sp-5)));
   padding: var(--sp-3);
   background: var(--panel);
   color: var(--ink);
