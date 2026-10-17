@@ -4,7 +4,7 @@
 import "./power.css";
 import { html, mount, type Safe } from "../../kit/html";
 import { blockHead, dashH, emptyLine, fig, figSub, note, pageHead } from "../../kit/ui/text";
-import { error, loading } from "../../kit/dashkit";
+import { failedInto, loadingInto } from "../../kit/ui/states";
 import { counted, WORDS } from "../../kit/words";
 import { count } from "../../kit/format";
 import { loadOne } from "../../app/load";
@@ -28,8 +28,8 @@ export function retryCircuits(): void {
 function missing(body: HTMLElement): boolean {
   const v = vitals();
   if (v.circuits) return false;
-  if (v.circuitsError) error(body, "power circuits", "", retryCircuits);
-  else loading(body, "power circuits");
+  if (v.circuitsError) failedInto(body, "power circuits", "", retryCircuits);
+  else loadingInto(body, "power circuits");
   return true;
 }
 

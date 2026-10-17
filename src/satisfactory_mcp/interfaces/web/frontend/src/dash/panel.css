@@ -1089,12 +1089,6 @@ path.lasso-area {
   margin-bottom: 0;
 }
 
-.pin-rename {
-  width: var(--ctl-w);
-  max-width: 100%;
-  min-width: 0;
-}
-
 .graph-badge rect {
   fill: var(--bg);
   stroke: var(--line);
@@ -1112,11 +1106,6 @@ path.lasso-area {
     stroke: var(--accent-hi);
     stroke-width: 3;
   }
-}
-
-.pin-place {
-  display: inline-flex;
-  min-width: var(--col-num-l);
 }
 
 .pin-tag {

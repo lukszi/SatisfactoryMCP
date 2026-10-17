@@ -54,8 +54,10 @@ export function aspectHref(c: Pick<FCtx, "name" | "floorQ">, aspect: string, flo
   return hashFor(factoryDash(c.name, aspect, floorQ === undefined ? c.floorQ : floorQ));
 }
 
-/** The building icons the graph names, else the naming rule. */
+/** The building icons the health read or the graph names, else the naming rule. */
 export function iconFor(c: FCtx, cls: string, building: string): string | null {
+  const issue = c.row.worst.concat(c.row.worst_actionable).filter((i) => i.building === cls && i.building_icon)[0];
+  if (issue) return issue.building_icon;
   if (c.graph) {
     const node = c.graph.nodes.filter((n) => n.building === building && n.building_icon)[0];
     if (node) return node.building_icon;

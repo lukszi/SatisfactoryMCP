@@ -9,6 +9,8 @@ export interface IssueGroup {
   factory: string;
   state: string;
   what: string;
+  /** The building's icon descriptor, from the group's first machine. */
+  icon: string | null;
   cause: string;
   issues: MachineIssue[];
 }
@@ -31,7 +33,7 @@ export function issueGroups(rows: { name: string; worst_actionable: MachineIssue
         return group.factory === row.name && group.state === issue.state && group.what === issue.what && group.cause === cause;
       })[0];
       if (same) same.issues.push(issue);
-      else found.push({ factory: row.name, state: issue.state, what: issue.what, cause: cause, issues: [issue] });
+      else found.push({ factory: row.name, state: issue.state, what: issue.what, icon: issue.building_icon, cause: cause, issues: [issue] });
     });
   });
   return found;

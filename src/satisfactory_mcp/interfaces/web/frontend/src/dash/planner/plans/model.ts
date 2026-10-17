@@ -31,6 +31,13 @@ export function productItem(row: PlanIndexRow): string | null {
   return exportItems(row)[0]?.name ?? null;
 }
 
+/** The plan's icon: the one chosen ("" none), else the first export's item. */
+export function planIcon(row: PlanIndexRow, itemClass: (name: string) => string | null): string | null {
+  if (row.icon !== null) return row.icon || null;
+  const item = productItem(row);
+  return item ? itemClass(item) : null;
+}
+
 /** A factory name the plan is tied to, or "" for the automatic, world, none and cluster scopes. */
 export function factoryOf(row: PlanIndexRow): string {
   const f = row.factory || "";

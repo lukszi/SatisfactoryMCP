@@ -215,6 +215,10 @@ def test_milestones_and_mam_nodes_name_what_they_unlock(client, state, game):
             granted = state.unlocks.schematic_recipes(game.schematics[row["cls"]])
             assert row["unlock_names"] == list(dict.fromkeys(r.name for r in granted))
             assert len(row["unlock_names"]) <= row["unlocks"]
+            firsts = {}
+            for r in granted:
+                firsts.setdefault(r.name, r.main_product)
+            assert row["unlock_icons"] == list(firsts.values())
 
 
 def test_only_a_running_node_has_an_elapsed_share(client):

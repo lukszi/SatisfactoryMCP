@@ -933,6 +933,26 @@ export interface paths {
         patch: operations["rename_label_api_labels__name__patch"];
         trace?: never;
     };
+    "/api/labels/icon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set Label Icon
+         * @description Choose the icon a named factory shows. Not versioned: an icon never conflicts.
+         */
+        post: operations["set_label_icon_api_labels_icon_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/labels/amend": {
         parameters: {
             query?: never;
@@ -3454,7 +3474,8 @@ export interface components {
          *     ``worst`` is the machines not fine, paused included; ``worst_actionable`` only those in
          *     an ``actionable_states`` state, of which there are ``actionable`` in all.
          *     ``product`` / ``product_icon`` are the main product's name and item class (the
-         *     factory's default icon), null when no single product stands out.
+         *     factory's default icon), null when no single product stands out. ``icon`` is the one
+         *     chosen on the page: a descriptor class, "" for a chosen blank, null for no choice.
          */
         FactoryHealthRow: {
             /** Name */
@@ -3503,6 +3524,8 @@ export interface components {
             product: string | null;
             /** Product Icon */
             product_icon: string | null;
+            /** Icon */
+            icon: string | null;
         };
         /** FactoryHit */
         FactoryHit: {
@@ -4179,6 +4202,25 @@ export interface components {
             };
         };
         /**
+         * IconBody
+         * @description ``icon`` is a descriptor class, "" for a chosen blank, or null to forget the choice.
+         */
+        IconBody: {
+            /** Name */
+            name: string;
+            /** Icon */
+            icon: string | null;
+        };
+        /** IconSetResponse */
+        IconSetResponse: {
+            /** Name */
+            name: string;
+            /** Icon */
+            icon: string | null;
+            /** Version */
+            version: number;
+        };
+        /**
          * InspectAt
          * @description The coordinate that was asked about, rounded to the decimetre it was answered at.
          */
@@ -4331,7 +4373,8 @@ export interface components {
         };
         /**
          * MachineIssue
-         * @description ``x_m``/``y_m`` are null for a record the projection placed nowhere.
+         * @description ``x_m``/``y_m`` are null for a record the projection placed nowhere. ``building`` is
+         *     the machine's class, ``building_icon`` the descriptor ``/api/icons/`` files it under.
          */
         MachineIssue: {
             /** Instance */
@@ -4342,6 +4385,10 @@ export interface components {
             uptime: number | null;
             /** What */
             what: string;
+            /** Building */
+            building: string;
+            /** Building Icon */
+            building_icon: string | null;
             /** Cause */
             cause: string[];
             /** X M */
@@ -4479,6 +4526,8 @@ export interface components {
             unlocks: number;
             /** Unlock Names */
             unlock_names: string[];
+            /** Unlock Icons */
+            unlock_icons: (string | null)[];
             /** Blocked By */
             blocked_by: string[];
             /** Spoiler */
@@ -4879,7 +4928,8 @@ export interface components {
          * @description ``status`` is ``Rung.status``: DONE, BLOCKED, short or READY.
          *
          *     ``opens_at`` is the Space Elevator phase that opens a tier the save has not reached yet;
-         *     ``unlock_names`` names the ``unlocks`` recipes, buildings by their recipe's name.
+         *     ``unlock_names`` names the ``unlocks`` recipes, buildings by their recipe's name, and
+         *     ``unlock_icons`` holds each name's icon descriptor (its main product), null when none.
          */
         MilestoneRow: {
             /** Cls */
@@ -4898,6 +4948,8 @@ export interface components {
             unlocks: number;
             /** Unlock Names */
             unlock_names: string[];
+            /** Unlock Icons */
+            unlock_icons: (string | null)[];
             /** Blocked By */
             blocked_by: string[];
             /** Opens At */
@@ -5910,6 +5962,7 @@ export interface components {
          *
          *     ``status`` is what moved under it (``manage.plan_status``): "world moved", "field N->M",
          *     "broken: ..."; empty with ``recorded`` false means the field was never checked.
+         *     ``icon`` is the one chosen on the page ("" a chosen blank), null for no choice.
          */
         PlanIndexRow: {
             /** Key */
@@ -5934,6 +5987,8 @@ export interface components {
             factory: string;
             /** Plan Id */
             plan_id: string;
+            /** Icon */
+            icon: string | null;
             last: components["schemas"]["PlanLast"];
             /** Status */
             status: string[];
@@ -6464,13 +6519,16 @@ export interface components {
         /**
          * RecipeHit
          * @description ``unlocked`` is null when no save could be read; ``spoiler`` means locked. ``kind`` is
-         *     part, building or manual; ``machine`` names a part recipe's machine.
+         *     part, building or manual; ``machine`` names a part recipe's machine; ``icon`` is the main
+         *     product's class, the recipe's picture.
          */
         RecipeHit: {
             /** Cls */
             cls: string;
             /** Name */
             name: string;
+            /** Icon */
+            icon: string | null;
             /** Kind */
             kind: string;
             /** Machine */
@@ -9895,6 +9953,69 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RenamedResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LabelRefusedResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_label_icon_api_labels_icon_post: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IconBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IconSetResponse"];
                 };
             };
             /** @description Bad Request */

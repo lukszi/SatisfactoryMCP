@@ -466,7 +466,11 @@ case-insensitively, because five items spell a directory differently from the co
 (BC3) on 634 of the 747 icons and `PF_B8G8R8A8` on 113, with no BC7; both decoders hand back
 BGRA, which read as RGBA turns a copper ingot cyan instead of raising. On build 495413, 747 of
 the 750 classes carrying `mForm` name an icon and all 747 decode; the other three name no
-texture, so the page's text tile is their correct rendering. The default `--px 256` writes
+texture, so the page's text tile is their correct rendering. Five items a save holds have no
+docs class at all (Hard Drive, FICSIT Coupon, Boombox, Coffee Cup, Golden Cup); the item
+packages name their icon only by hash, but each cooks an `_256` texture in a `UI/` folder
+beside its own `Desc_` package, and `UNDOCUMENTED_ICONS` names those. The coupon's is
+`IconDesc_Ficsit_Coupon_256`, not the trading post's `TXUI_SIcon_Coupon`. The default `--px 256` writes
 41.1 MB of PNG; `--help` lists the smaller sides.
 
 ## Data provenance

@@ -8,7 +8,7 @@ import type { CircuitsResponse, FactoryHealthRow, GateView, MachineIssue, Machin
 learnStates({ ok_states: ["saturated", "unmonitored"], actionable_states: ["starved", "blocked", "no recipe"] });
 
 function issue(state: string, what: string): MachineIssue {
-  return { instance: what + state, state, uptime: null, what, cause: [], x_m: null, y_m: null };
+  return { instance: what + state, state, uptime: null, what, building: "Build_" + what + "_C", building_icon: "Desc_" + what + "_C", cause: [], x_m: null, y_m: null };
 }
 
 function factory(name: string, states: [string, number][], over?: Partial<FactoryHealthRow>): FactoryHealthRow {
@@ -64,6 +64,7 @@ describe("do next", () => {
     expect(todo[1]!.dash).toBe("factories/Plates/machines");
     expect(todo[2]!.dash).toBe("power/1");
     expect(todo[3]!.n).toBe(2);
+    expect(todo[1]!.icon).toBe("Desc_Constructor_C");
   });
 
   it("works from either read alone and sends +N more where the rest is", () => {

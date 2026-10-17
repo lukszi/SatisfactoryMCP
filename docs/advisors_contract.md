@@ -32,7 +32,7 @@ Backend paths are relative to `src/satisfactory_mcp/`; frontend paths to
 | `domain/advice/__init__.py` | `current(st, …)`: the shared settings read, the rows cached, the store applied. The page and chat both read through it |
 | `interfaces/web/routers/dashboard/advice.py` | `GET /api/advice`, `POST /api/advice/hidden`, `DELETE /api/advice/hidden/{adv_id}` |
 | `presenters/text/advice.py` | The `ui_context` line, the `world_summary` block, the `dismissed=` grammar |
-| `advice.ts` | The store, the card (`adviceCard(parent, {factory}?)`), the snooze split button, restore, the `new` marks |
+| `advice.ts` | The store, the block (`adviceCard(parent, {factory}?)`) in the kit, its ⋯ menu with snooze and restore, the `new` marks |
 
 `domain/advice` may import `domain.factories`, `domain.power`, `domain.planning`,
 `domain.spatial` and `domain.collectibles`; nothing in `domain` imports it.
@@ -172,22 +172,22 @@ the newest reply wins. A chat dismissal reached an open page in 0.7 s (§10).
   Overview had it first under its tile row until its rebuild; it now lists the top problems
   as "do next" (docs/frontend_kit.md, "Overview"). Nothing else: no tile, nothing in the
   status strip, nothing on the map panel.
-- A row is one line at desktop width: chip (`chip(word, tone)`), `new` (an id not seen in this
+- A row is one kit entry on one line: chip (`chip(word, tone)`), `new` (an id not seen in this
   browser before, kept in `localStorage` `advice.seen`; nothing is new on a first visit),
-  `back`, the text, then actions. Clicking the line (a button with `aria-expanded`) opens its
-  evidence lines; a hidden row's first line says how it is hidden and for how much more play.
-- Actions: **map** (one machine: fly and pin it; more: fly to the box and outline it; the row's
-  `reveal` layers turn on), **trace** (K1, K3, K6, box: what feeds the seed), **power** (K4, K5,
-  a link), **open plan** (K8, a link), **ask** (queues `about advice`; the ask bar opens inside
-  the card), and the split button **snooze 1 h ▾**. The ▾ opens a menu: 30 min, 1 h, 4 h,
-  10 h, until it gets worse. Arrow keys move in it, Escape closes it and returns focus to ▾,
-  a click outside closes it. A hidden row has **restore** instead of ask and snooze.
+  `back`, the text; a hidden row says how it is hidden and for how much more play. Then ◎,
+  ⋯ and the chevron, which opens its evidence lines in the row's expand.
+- ◎ is **map** (one machine: fly and pin it; more: fly to the box and outline it; the row's
+  `reveal` layers turn on). The ⋯ menu (the kit's: arrows move, Escape closes and refocuses
+  ⋯) holds **trace** (K1, K3, K6, box: what feeds the seed), **open power** (K4, K5),
+  **open plan** (K8), **ask chat** (queues `about advice`; the ask bar opens inside the block),
+  then snooze 30 min, 1 h, 4 h, 10 h and hide until it gets worse. A hidden row's ⋯ has
+  **restore** instead of ask and snooze.
 - `+N more (…)` and `N hidden · show` are text links. The card is never hidden: an empty list
   says `nothing worth a look in this save` (or `in this factory`).
 - Tones: act → `blocked` yellow, consider → `mid`, note → `muted`. No red; the verifier counts
   zero `--bad` colours in the card.
-- Below 600 px a row wraps: chip and text first, actions on the next line, every control at
-  least 44 px tall. No sideways scroll at 390 px.
+- Below 600 px the row keeps chip, text and its controls on the first line (the text
+  ellipsised, the full text in the tooltip). No sideways scroll at 390 px.
 - Settings › advisors › *note emptied hand-fed boxes* is the shared `advice_box_fed` switch.
 
 ## 9. Cost (measured)

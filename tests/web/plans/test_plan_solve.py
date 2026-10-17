@@ -511,6 +511,26 @@ def test_the_conflict_bodies_reach_the_published_schema(fresh_state_client):
 # ------------------------------------------------------------------ track (P4)
 
 
+def test_a_chosen_icon_is_plan_state_listed_undoable_and_checked(fresh_state_client):
+    key = create_plan(fresh_state_client)["key"]
+    index = fresh_state_client.get("/api/plans").json()["index"]
+    assert [r["icon"] for r in index] == [None]
+    pushed = push_ops(
+        fresh_state_client, key, 1, {"op": "set", "field": "icon", "value": "Desc_Rotor_C"}
+    )
+    assert pushed.json()["text"] == 'plan "rip 5" is now v2'
+    index = fresh_state_client.get("/api/plans").json()["index"]
+    assert [r["icon"] for r in index] == ["Desc_Rotor_C"]
+    undone = fresh_state_client.post(
+        f"/api/plans/{key}/undo", json={"base_rev": 2, "rev": 2}, headers=PAGE_ORIGIN
+    )
+    assert undone.status_code == 200, undone.text
+    assert [r["icon"] for r in fresh_state_client.get("/api/plans").json()["index"]] == [None]
+    push_ops(
+        fresh_state_client, key, 3, {"op": "set", "field": "icon", "value": "../x"}, expect=400
+    )
+
+
 def _headroom(value):
     return {"op": "set", "field": "headroom_mw", "value": value}
 

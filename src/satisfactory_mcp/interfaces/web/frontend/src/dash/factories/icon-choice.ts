@@ -1,62 +1,47 @@
-/* An icon chosen with "change icon", kept in this browser only (per world), else the default the
- * page works out. A stored choice "" means "no icon". Factories and plans keep separate stores. */
+/* The icon a factory or plan shows: the one chosen with "change icon", kept on the server (in
+ * the factory's label, or as plan state), else the default the page works out. A chosen ""
+ * means "no icon". docs/frontend_kit.md, "Factories". */
 
+import { send } from "../../api/client";
+import { loadOne } from "../../app/load";
 import { state } from "../../app/state";
+import { onVitals, vitals } from "../../app/vitals";
 import { cls, html, type Safe } from "../../kit/html";
+import { fail, friendlyError } from "../../kit/toast";
+import { requestRender } from "../actions";
+import { browserStore, takeLocalChoices } from "./local-icons";
 
 import type { FactoryHealthRow } from "../../api/shapes";
 
-type Choices = Record<string, Record<string, string>>;
-
 export interface IconStore {
   /** The chosen icon class, "" for a chosen blank, undefined for no choice. */
-  chosen(name: string): string | undefined;
-  /** null forgets the choice. */
-  choose(name: string, icon: string | null): void;
-  /** Follows a rename so the choice stays with its owner. */
-  move(was: string, to: string): void;
+  chosen(id: string): string | undefined;
+  /** Saves the choice; null forgets it. Shows at once, rereads after. */
+  choose(id: string, icon: string | null): void;
 }
 
-export function iconStore(key: string): IconStore {
-  let choices: Choices = {};
-  try {
-    const raw = localStorage.getItem(key);
-    const parsed: unknown = raw ? JSON.parse(raw) : {};
-    if (parsed && typeof parsed === "object") choices = parsed as Choices;
-  } catch (_e) {
-    /* nothing kept */
-  }
-  const store: IconStore = {
-    chosen(name) {
-      const world = choices[state.world];
-      return world ? world[name] : undefined;
-    },
-    choose(name, icon) {
-      const world = (choices[state.world] = choices[state.world] || {});
-      if (icon === null) delete world[name];
-      else world[name] = icon;
-      try {
-        localStorage.setItem(key, JSON.stringify(choices));
-      } catch (_e) {
-        /* kept for this page session only */
-      }
-    },
-    move(was, to) {
-      const icon = store.chosen(was);
-      if (icon === undefined) return;
-      store.choose(to, icon);
-      store.choose(was, null);
-    },
-  };
-  return store;
+/** A row's choice as the store reads it: null (no choice) becomes undefined. */
+export function choiceOf(icon: string | null | undefined): string | undefined {
+  return icon === null ? undefined : icon;
 }
 
-export const factoryIcons = iconStore("satisfactory.factoryIcons");
+function healthRow(name: string): FactoryHealthRow | undefined {
+  return vitals().health?.factories.filter((r) => r.name === name)[0];
+}
 
-export function factoryIcon(row: Pick<FactoryHealthRow, "name" | "product_icon">): string | null {
-  const chosen = factoryIcons.chosen(row.name);
-  if (chosen !== undefined) return chosen || null;
-  return row.product_icon;
+export const factoryIcons: IconStore = {
+  chosen: (name) => choiceOf(healthRow(name)?.icon),
+  choose(name, icon) {
+    const row = healthRow(name);
+    if (row) row.icon = icon;
+    send("POST", "/api/labels/icon", { name, icon })
+      .catch((failure) => fail("the icon for “" + name + "” was not saved: " + friendlyError(failure)))
+      .then(() => loadOne("/api/factories/health"));
+  },
+};
+
+export function factoryIcon(row: Pick<FactoryHealthRow, "icon" | "product_icon">): string | null {
+  return row.icon !== null ? row.icon || null : row.product_icon;
 }
 
 /** The lead slot: the icon, or an empty slot of the same size, never letters. */
@@ -65,7 +50,25 @@ export function iconLead(icon: string | null, title: string, extra?: string): Sa
   return html`<img class="${cls("ic", extra)}" src="/api/icons/${encodeURIComponent(icon)}" alt="" title="${title}" loading="lazy">`;
 }
 
-export function factoryLead(row: Pick<FactoryHealthRow, "name" | "product_icon" | "product">, extra?: string): Safe {
-  const title = factoryIcons.chosen(row.name) !== undefined ? "chosen icon" : row.product ? "main product: " + row.product : "";
+export function factoryLead(row: Pick<FactoryHealthRow, "icon" | "product_icon" | "product">, extra?: string): Safe {
+  const title = row.icon !== null ? "chosen icon" : row.product ? "main product: " + row.product : "";
   return iconLead(factoryIcon(row), title, extra);
 }
+
+const adopted = new Set<string>();
+
+/* A factory choice kept in this browser moves to its label, unless the label has one. */
+function adoptFactoryIcons(): void {
+  const health = vitals().health;
+  if (!health || !state.world || adopted.has(state.world)) return;
+  adopted.add(state.world);
+  const local = takeLocalChoices(browserStore(), "satisfactory.factoryIcons", state.world);
+  Object.keys(local).forEach(function (name) {
+    const row = healthRow(name);
+    if (row && row.icon === null) factoryIcons.choose(name, local[name]!);
+  });
+  if (Object.keys(local).length) requestRender();
+}
+
+onVitals(adoptFactoryIcons);
+adoptFactoryIcons();

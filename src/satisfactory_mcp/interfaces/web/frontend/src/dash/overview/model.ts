@@ -62,7 +62,7 @@ export function todoOf(circuits: CircuitsResponse | null, rows: FactoryHealthRow
   if (rows) {
     issueGroups(rows).forEach(function (g) {
       const blocked = g.state === BLOCKED;
-      out.push({ rank: blocked ? 3 : 1, tone: blocked ? "blocked" : "bad", icon: null, what: g.state, sub: g.what + (g.cause ? " · " + g.cause : ""), where: g.factory, whereDash: factoryDash(g.factory, ""), n: g.issues.length, dash: factoryDash(g.factory, "machines"), power: false });
+      out.push({ rank: blocked ? 3 : 1, tone: blocked ? "blocked" : "bad", icon: g.icon, what: g.state, sub: g.what + (g.cause ? " · " + g.cause : ""), where: g.factory, whereDash: factoryDash(g.factory, ""), n: g.issues.length, dash: factoryDash(g.factory, "machines"), power: false });
     });
   }
   return out.sort((a, b) => a.rank - b.rank || b.n - a.n);

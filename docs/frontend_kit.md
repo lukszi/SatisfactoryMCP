@@ -60,6 +60,7 @@ phones are one `max-width: 600px` media query per stylesheet.
 | `kit/ui/controls.ts` | `btn`, `busyBtn`, `glyphBtn`, `moreBtn`, `seg`, `selectBox`, `sortSelect`, `filterField`, `filterChip`, `switchBox`, `check` |
 | `kit/ui/forms.ts` | `frow` (label column + one control column), `form` (groups split by a soft rule), `fnum`, `ftext`, `fadd`, `frange`, `checks` |
 | `kit/overlay/*` | `openMenu` / `wireMoreMenus` (the ⋯ menu), `modal` (native `<dialog>`), `sidePanel`, `toast` |
+| `kit/ui/states.ts` | `loadingLine` / `loadingInto` and `failedInto` (what could not be read, why, try again): a read in place of a page or block |
 | `kit/busy.ts` | `busy(el, work)` and `busyButton(button, work)` |
 
 The hidden route `#kit` (`dash/kit-gallery/`) renders every part in its states for screenshot
@@ -115,7 +116,8 @@ two across. The order is the DOM order on both, picked at render by a 600 px med
 - **Map**: a real Leaflet map from `map/mini-map.ts` (`overview-map.ts`), kept across renders
   and refitted only when the factories or the player move. One dot per named factory at its
   centroid, coloured only when it needs action, the player from `/api/world/here`. It does not
-  pan or zoom; a dot opens the factory, anywhere else opens the main map there.
+  pan or zoom; a dot opens the factory, anywhere else opens the main map there. Its picture
+  is the World map's (`copyMode`, see "World"), never the biome cells while one exists.
 - The "worth a look" advice card left the Overview; it stays on a factory's page. The old
   tiles (`dashkit` `tile`) and tables are gone.
 
@@ -154,8 +156,12 @@ from `/api/power/circuits` (circuit pages also read factory health for the facto
 - **Icon** (`icon-choice.ts`): the main product the health read names (`product_icon`: of the
   surpluses a recipe makes, the highest sink value, then the larger surplus; an extraction-only
   factory shows its main resource; a tie or nothing is no icon, an empty slot, never letters;
-  `domain/factories/product.py`). "change icon" in ⋯ picks any item or none; the choice is kept
-  in this browser only (localStorage, per world) and follows a rename made here.
+  `domain/factories/product.py`). "change icon" in ⋯ picks any item or none; the choice is the
+  label's `icon` in the world's label file (`POST /api/labels/icon`, the health row's `icon`),
+  so it follows every rename and shows wherever the factory does: overview cells, the list and
+  page, a circuit's factories and the jump search. A choice an older page kept in this
+  browser's localStorage moves to the server once, unless the label already has one
+  (`local-icons.ts`).
 - **Page** (`page.ts`, `ctx.ts`): the header carries need action (x of machines) and uptime as
   figures and the aspect tabs. The plan sits left (sticky; on top on phones), the aspect right;
   flows takes the whole width. `ctx.ts` joins the reads once per render: the factory's rows of
@@ -180,6 +186,11 @@ from `/api/power/circuits` (circuit pages also read factory health for the facto
   recipe and ×n beside it, the measured ring round the disc, line width in four rate steps), at
   1:1 and scrolled rather than fitted; the balance per item below, grouped by verdict. A floor
   shown elsewhere is only noted. Hovering a balance row or a line lights that item.
+- **Worth a look** (`chat/advice.ts`), under the overview aspect: the advisories about this
+  factory, one line each (kind chip, "new" or "back", the text; a hidden one says for how
+  long), ◎ to the machines, the evidence in the row's expand, and ⋯ for trace, power, the plan,
+  ask chat, snooze (30 min to 10 h of play) or hide until it gets worse, restore when hidden.
+  Five rows, at most three of a kind, then "+N more"; hidden ones fold under the list.
 - **Machines** per recipe (count, worst state, clock as "100% clock", shards and sloops from the
   progress reads when any are held) or per machine (state, clock, uptime; six per group, then
   "more"). Power is the draw rows of the supply block and the circuit links. Nodes, links,
@@ -253,10 +264,14 @@ a second click on its slot, × or Esc clears it. Picking does not move the scrol
     (`mode=nearest` from the player, so the server measures) or collected (measured on the page).
 - **Map** (right, sticky, full height; 40vh on top on phones): a real Leaflet map, one instance
   kept for the page's life and moved into each render (`world-map.ts`). `map/mini-map.ts` makes
-  it on the main map's terms: its CRS and frame from `map.ts`, the base picture the main map
-  shows as a plain copy (`baseCopy` in `tiles.ts`: baked light, and a failing tile there changes
-  nothing on the main map), and the biome cells (`regionCells` in `regions.ts`) when the picture
-  is plain. Node and pickup colours and sizes are the main map's (`markers.ts`, `pickups.ts`).
+  it on the main map's terms: its CRS and frame from `map.ts`, a base picture as a plain copy
+  (`baseCopy` in `tiles.ts`: baked light, and a failing tile there changes nothing on the main
+  map), and the biome cells (`regionCells` in `regions.ts`) only when no picture exists at all;
+  they are opaque, so the picture arriving clears any drawn before it.
+  The picture (`copyMode`, rule in `copy-mode.ts`) is the main map's, else the default the main
+  map would open on, else the artwork, else any probed one. A main map still unopened (a page
+  loaded straight onto the dashboard) or set to plain still gets a picture: a mini map is for
+  orientation. It follows every mode change and probe (`onBaseChange`), not only its renders. Node and pickup colours and sizes are the main map's (`markers.ts`, `pickups.ts`).
   It draws only the rows listed, plus the player and the factory searched near, and refits only
   when the results change; a legend of glyphs and single words and the zoom buttons are its only
   chrome.
@@ -284,9 +299,10 @@ settled. `planner.ts` mounts either, and holds a redraw while a field there has 
   setting), else "no site", "which factory?" (to Track) or why it does not solve. At most one
   status chip: the first of `status` (all of them in the tooltip), else "done", uncoloured.
   Sort: last change, name, built (unplaced last).
-- **Icon**: the first export's item, unless "change icon" in ⋯ chose one; the choice is kept in
-  this browser only, per world and plan key (`iconStore` in `factories/icon-choice.ts`, the same
-  picker as factories). The other ⋯ actions: rename in place, duplicate (opens the copy), pin,
+- **Icon**: the first export's item, unless "change icon" in ⋯ chose one; the choice is plan
+  state (`set icon`, so it is a version and undo takes it back; the index row's `icon`), with
+  the same picker as factories. The jump search shows it too. A choice an older page kept in
+  this browser moves to the plan once, as for factories. The other ⋯ actions: rename in place, duplicate (opens the copy), pin,
   forget. Renames and forgets go against the version the list read; if the plan moved on
   meanwhile the write is refused and the list says to try again.
 - **Activity** (`timeline.ts`): `/api/activity` (last 50), newest first, grouped by day in the
@@ -295,7 +311,13 @@ settled. `planner.ts` mounts either, and holds a redraw while a field there has 
   (a new version, from the plan's head); open on chat's solves (the solve card above the
   cards) and finds (the World query). A filter shows all, you or chat. Sticky beside the cards;
   under 1100 px and on phones it goes below them, cards one per row.
-- Chat's pins and asks cards sit under the plan cards until they are ported.
+- **Chat** (`chat-lists.ts`): chat's last solve sits above the cards as one row (what chat
+  asked for, its settings as chips, "not saved", then open its plan, new plan from it, ×).
+  Pins and asks follow the cards as lists, one line per row: the `pin:N` or `ask:N` chip and
+  the label or question, what it is about inline, one state chip (gone; waiting, seen,
+  answered), ◎ or → for a pin's place, the rest in ⋯ (rename in place, copy, ask chat,
+  delete). Phones keep the name and ⋯ on the first line and the chip under them. A plan's
+  own pages still use the old cards (`chat-card.ts`, `chat/asks-card.ts`).
 
 ## Progress
 

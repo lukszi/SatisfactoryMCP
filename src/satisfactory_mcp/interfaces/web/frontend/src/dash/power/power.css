@@ -226,7 +226,7 @@
 }
 
 .l-ofac .entry {
-  --cols: minmax(0, 1fr) var(--col-num-l) var(--col-act);
+  --cols: var(--col-icon) minmax(0, 1fr) var(--col-num-l) var(--col-act);
 }
 
 .metric.sm b {

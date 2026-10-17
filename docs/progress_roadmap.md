@@ -63,5 +63,7 @@ of the page does not.
 ## Milestones and MAM
 
 `/api/progress/milestones` and `/api/progress/mam` rows carry `unlock_names`: the names of
-the recipes a node grants that the save does not have yet (a building by its recipe's name).
+the recipes a node grants that the save does not have yet (a building by its recipe's name),
+and `unlock_icons`, one per name: the recipe's main product, which is the icon of an item, a
+piece of equipment or a building alike (the Buy now pills show it).
 MAM rows carry `elapsed_pct` for a running node: (research time − time left) ÷ research time.

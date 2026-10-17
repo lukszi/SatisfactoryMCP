@@ -83,6 +83,8 @@ def describe_op(op: PlanOp) -> str:
     if kind == "set":
         if name == "notes":
             return "notes changed"
+        if name == "icon":
+            return "icon changed"
         if name == "factory":
             return "count as built: " + factory_words(op.get("value"))
         if name == "headroom_mw":

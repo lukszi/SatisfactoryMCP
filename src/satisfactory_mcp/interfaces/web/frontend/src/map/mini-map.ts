@@ -1,18 +1,17 @@
-/* A second, small Leaflet map on the main one's terms: the same CRS and frame, the base picture
- * the main map shows (as a plain copy, see `baseCopy` in tiles.ts), and the biome ground when
- * that picture is plain. No layer control, no inspector, no address: what it draws is the
+/* A second, small Leaflet map on the main one's terms: the same CRS and frame, a base picture
+ * (a plain copy, see `copyMode` in tiles.ts: the main map's, else its default), and the biome
+ * ground only when there is no picture at all. No layer control, no inspector, no address: what it draws is the
  * caller's. The World page holds one and moves its element between renders. */
 
 import { L } from "./leaflet";
 import { BOUND, CRS_SHEET_PX, HOME_VIEW, map as mainMap } from "./map";
 import { knownRegions, regionCells } from "./regions";
-import { baseCopy } from "./tiles";
-import { state } from "../app/state";
+import { baseCopy, copyMode, onBaseChange } from "./tiles";
 
 export interface MiniMap {
   el: HTMLElement;
   map: L.Map;
-  /** Follows the main map's base picture; cheap when nothing changed. */
+  /** Follows `copyMode`; cheap when nothing changed, and also run on every base change. */
   sync(): void;
 }
 
@@ -41,11 +40,14 @@ export function miniMap(className: string): MiniMap {
   let base: L.Layer | null = null;
 
   function sync(): void {
-    if (state.mode !== shownMode) {
-      shownMode = state.mode;
+    const mode = copyMode();
+    if (mode !== shownMode) {
+      shownMode = mode;
       if (base) m.removeLayer(base);
       base = baseCopy("basemap");
       if (base) base.addTo(m);
+      /* the cells are opaque: left over from before the picture, they hide it */
+      ground.clearLayers();
       shownRegions = null;
     }
     const regions = base ? null : knownRegions();
@@ -55,5 +57,6 @@ export function miniMap(className: string): MiniMap {
     if (regions) regionCells(regions, "regions", groundRenderer).forEach((cell) => cell.addTo(ground));
   }
 
+  onBaseChange(sync);
   return { el, map: m, sync };
 }

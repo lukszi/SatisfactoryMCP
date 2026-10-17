@@ -14,11 +14,11 @@ function alt(name: string, source: string, machines: number, mw: number, raw: nu
 }
 
 function ms(name: string, over: Partial<MilestoneRow>): MilestoneRow {
-  return { cls: name, tier: 8, name, status: "READY", cost: [], short: [], unlocks: 0, unlock_names: [], blocked_by: [], opens_at: null, spoiler: false, ...over };
+  return { cls: name, tier: 8, name, status: "READY", cost: [], short: [], unlocks: 0, unlock_names: [], unlock_icons: [], blocked_by: [], opens_at: null, spoiler: false, ...over };
 }
 
 function node(name: string, over: Partial<MamRow>): MamRow {
-  return { cls: name, name, tree: "Quartz", status: "READY", running_s: null, elapsed_pct: null, capability: null, cost: [], short: [], unlocks: 0, unlock_names: [], blocked_by: [], spoiler: false, ...over };
+  return { cls: name, name, tree: "Quartz", status: "READY", running_s: null, elapsed_pct: null, capability: null, cost: [], short: [], unlocks: 0, unlock_names: [], unlock_icons: [], blocked_by: [], spoiler: false, ...over };
 }
 
 const short1 = [{ item: "Desc_S_C", name: "Supercomputer", amount: 50 }];
@@ -93,11 +93,12 @@ describe("alternates", () => {
 
 describe("buy now", () => {
   it("mixes affordable milestones and MAM nodes; almost is short of one item", () => {
-    const m = [ms("Hoverpack", { tier: 7 }), ms("Nuclear Power", { status: "short", short: short1 }), ms("Two Short", { status: "short", short: [...short1, ...short1] }), ms("Shut", { opens_at: 4 }), ms("Done", { status: "DONE" })];
+    const m = [ms("Hoverpack", { tier: 7, unlock_names: ["Hoverpack", "Drone"], unlock_icons: ["BP_Hover_C", null] }), ms("Nuclear Power", { status: "short", short: short1 }), ms("Two Short", { status: "short", short: [...short1, ...short1] }), ms("Shut", { opens_at: 4 }), ms("Done", { status: "DONE" })];
     const r = [node("Signal Systems", {}), node("Busy", { status: "RUNNING" }), node("Fabric", { status: "short", short: short1, tree: "Mycelia" })];
     const lists = buyLists(m, r);
     expect(lists.now.map((b) => b.name + "|" + b.system + "|" + b.group)).toEqual(["Hoverpack|milestone|tier 7", "Signal Systems|MAM|quartz"]);
     expect(lists.almost.map((b) => b.name)).toEqual(["Nuclear Power", "Fabric"]);
+    expect(lists.now[0]!.unlocks).toEqual([{ name: "Hoverpack", icon: "BP_Hover_C" }, { name: "Drone", icon: null }]);
     expect(lists.almost[0]!.short).toEqual({ name: "Supercomputer", item: "Desc_S_C", amount: 50 });
   });
 

@@ -181,11 +181,20 @@ export function altGroups(rows: AlternateRow[], sort: AltSort): [string, Alterna
     .filter((g) => g[1].length > 0);
 }
 
+export interface Unlock {
+  name: string;
+  icon: string | null;
+}
+
+function unlocksOf(row: { unlock_names: string[]; unlock_icons: (string | null)[] }): Unlock[] {
+  return row.unlock_names.map((name, i) => ({ name, icon: row.unlock_icons[i] ?? null }));
+}
+
 export interface Buy {
   name: string;
   system: "milestone" | "MAM";
   group: string;
-  unlocks: string[];
+  unlocks: Unlock[];
   /** The one item an "almost" row is short of. */
   short: { name: string; item: string; amount: number } | null;
   key: string;
@@ -193,12 +202,12 @@ export interface Buy {
 
 function milestoneBuy(m: MilestoneRow): Buy {
   const s = m.short[0];
-  return { name: m.name, system: "milestone", group: "tier " + m.tier, unlocks: m.unlock_names, short: m.status === "short" && s ? { name: s.name, item: s.item, amount: s.amount } : null, key: slug(m.name) };
+  return { name: m.name, system: "milestone", group: "tier " + m.tier, unlocks: unlocksOf(m), short: m.status === "short" && s ? { name: s.name, item: s.item, amount: s.amount } : null, key: slug(m.name) };
 }
 
 function mamBuy(r: MamRow): Buy {
   const s = r.short[0];
-  return { name: r.name, system: "MAM", group: (r.tree || "MAM").toLowerCase(), unlocks: r.unlock_names, short: r.status === "short" && s ? { name: s.name, item: s.item, amount: s.amount } : null, key: slug(r.name) };
+  return { name: r.name, system: "MAM", group: (r.tree || "MAM").toLowerCase(), unlocks: unlocksOf(r), short: r.status === "short" && s ? { name: s.name, item: s.item, amount: s.amount } : null, key: slug(r.name) };
 }
 
 /** Affordable now, and short of exactly one item: milestones in open tiers and MAM nodes in

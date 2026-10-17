@@ -8,7 +8,14 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, cast
 
 from .....core.jsontypes import JsonObject, JsonValue
-from ..plan_args import InvalidOp, PlanArgs, PlanLogError, checked_headroom, legacy_hours
+from ..plan_args import (
+    InvalidOp,
+    PlanArgs,
+    PlanLogError,
+    checked_headroom,
+    checked_icon,
+    legacy_hours,
+)
 from ..views import (
     ActorRecord,
     CommitRecord,
@@ -82,6 +89,13 @@ def _stored_headroom(value: object) -> float | None:
         return None
 
 
+def _stored_icon(value: object) -> str | None:
+    try:
+        return checked_icon("icon", value)
+    except InvalidOp:
+        return None
+
+
 @dataclass
 class PlanState:
     key: str
@@ -100,6 +114,8 @@ class PlanState:
     headroom_mw: float | None = None
     #: Graph node id to ``[x, y]``; layout only, never a solve input.
     node_positions: dict[str, list[float]] = field(default_factory=dict[str, list[float]])
+    #: The icon chosen on the page: a descriptor class, "" for none, None for no choice.
+    icon: str | None = None
 
     def kwargs(self) -> PlanKwargs:
         return self.args.kwargs()
@@ -125,11 +141,12 @@ class PlanState:
             args=PlanArgs.from_dict(raw.get("args")),
             headroom_mw=_stored_headroom(raw.get("headroom_mw")),
             node_positions=stored_layout(raw.get("node_positions")),
+            icon=_stored_icon(raw.get("icon")),
         )
 
     def body(self) -> PlanStateRecord:
-        """The ``create`` op's ``state``: everything but key and rev."""
-        return {
+        """The ``create`` op's ``state``: everything but key and rev; ``icon`` once chosen."""
+        body: PlanStateRecord = {
             "name": self.name,
             "forgotten": self.forgotten,
             "notes": self.notes,
@@ -142,6 +159,9 @@ class PlanState:
             "headroom_mw": self.headroom_mw,
             "node_positions": copy.deepcopy(self.node_positions),
         }
+        if self.icon is not None:
+            body["icon"] = self.icon
+        return body
 
 
 _CLIENT_NAMES = {"claude-code": "Claude Code", "claude-ai": "Claude Desktop"}

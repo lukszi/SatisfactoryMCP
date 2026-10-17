@@ -2,7 +2,8 @@
  * recipes, and for an export its minimum rate, edited in place. */
 
 import { make } from "../../../kit/dom";
-import { count, mw, pct } from "../../../kit/format";
+import { mw, pct } from "../../../kit/format";
+import { counted } from "../../../kit/words";
 import { askButton } from "../../../chat/asks";
 import { recipesButton } from "../alternates";
 import { banButton, clockText, copyIdButton, pinProcessButton, processAsk } from "../row-actions";
@@ -66,7 +67,7 @@ function rowFor(data: SolveResponse, node: PlanNode): SolveRow | undefined {
 function processCard(card: HTMLElement, acts: HTMLElement, node: PlanNode, row: SolveRow, view: PlanGraphView): void {
   const power = node.mw ? " · " + mw(node.mw, { signed: true }) : "";
   const clock = node.rows.length > 1 ? pct(node.clock, 1) + " mean" : clockText(row);
-  card.appendChild(make("p", "plan-facts", (node.building || row.building) + " ×" + count(node.built) + " · " + clock + power));
+  card.appendChild(make("p", "plan-facts", (node.building || row.building) + " · " + counted(node.built, "machine") + " · clock " + clock + power));
   tipLines(view, node)
     .slice(2)
     .forEach(function (line) {

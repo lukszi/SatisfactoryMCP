@@ -14,7 +14,6 @@ import "./map/drawn.css";
 import "./dash/panel.css";
 import "./dash/planner/site.css";
 import "./dash/prodgraph/prod-graph.css";
-import "./chat/advice.css";
 import "./map/live-light.css";
 import "./kit/styles/kit.css";
 import "./app/shell/shell.css";

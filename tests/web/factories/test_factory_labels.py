@@ -542,3 +542,31 @@ def test_a_rename_is_journalled_with_was_and_to(
         ("page", {"was": "old name", "to": "mid name"}),
         ("chat", {"was": "mid name", "to": "new name"}),
     ]
+
+
+def _icon(client, name, icon):
+    return client.post("/api/labels/icon", json={"name": name, "icon": icon}, headers=PAGE_ORIGIN)
+
+
+def test_a_chosen_icon_is_stored_follows_a_rename_and_can_be_forgotten(
+    fresh_state_client, store_dir
+):
+    body, row = _first(fresh_state_client)
+    _name(fresh_state_client, body, row, name="plates")
+    assert "icon" not in _stored(store_dir)["labels"][0], "no choice, no key"
+    reply = _icon(fresh_state_client, "plates", "Desc_IronPlate_C")
+    assert reply.status_code == 200, reply.text
+    assert reply.json() == {"name": "plates", "icon": "Desc_IronPlate_C", "version": 2}
+    _rename(fresh_state_client, "plates", "more plates", _version(fresh_state_client))
+    rows = fresh_state_client.get("/api/factories/health").json()["factories"]
+    assert [(r["name"], r["icon"]) for r in rows] == [("more plates", "Desc_IronPlate_C")]
+    assert _icon(fresh_state_client, "more plates", "").json()["icon"] == ""
+    assert _icon(fresh_state_client, "more plates", None).json()["icon"] is None
+    assert "icon" not in _stored(store_dir)["labels"][0]
+
+
+def test_an_icon_that_is_no_class_or_a_missing_factory_is_refused(fresh_state_client):
+    body, row = _first(fresh_state_client)
+    _name(fresh_state_client, body, row, name="plates")
+    assert _icon(fresh_state_client, "plates", "../x").status_code == 400
+    assert _icon(fresh_state_client, "nowhere", "Desc_IronPlate_C").status_code == 404

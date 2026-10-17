@@ -185,8 +185,3 @@ export function lightMark(key: string | null): void {
   lit = key;
   restyle();
 }
-
-/** Forget what was drawn, so the next attach draws and fits again. */
-export function resetMap(): void {
-  drawn = "";
-}

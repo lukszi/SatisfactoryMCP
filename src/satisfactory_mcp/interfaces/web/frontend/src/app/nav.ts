@@ -56,30 +56,6 @@ export function goToMapThen(action: () => void): void {
   go("");
 }
 
-export interface SubjectQuery {
-  head: string;
-  params: Record<string, string>;
-}
-
-export function decodeOrKeep(text: string): string {
-  try {
-    return decodeURIComponent(text);
-  } catch (_e) {
-    return text;
-  }
-}
-
-export function subjectQuery(subject: string): SubjectQuery {
-  const cut = subject.indexOf("?");
-  const params: Record<string, string> = {};
-  (cut < 0 ? "" : subject.slice(cut + 1)).split("&").forEach(function (pair) {
-    if (!pair) return;
-    const eq = pair.indexOf("=");
-    params[eq < 0 ? pair : pair.slice(0, eq)] = eq < 0 ? "" : decodeOrKeep(pair.slice(eq + 1));
-  });
-  return { head: cut < 0 ? subject : subject.slice(0, cut), params: params };
-}
-
 export function withQuery(head: string, params: Record<string, string>): string {
   const pairs: string[] = [];
   Object.keys(params).forEach(function (key) {
