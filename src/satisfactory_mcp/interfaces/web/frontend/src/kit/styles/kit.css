@@ -528,8 +528,8 @@ a.bh:hover .dash-h {
 .noic {
   display: inline-block;
   flex: none;
-  width: 24px;
-  height: 24px;
+  width: var(--ic-m);
+  height: var(--ic-m);
 }
 
 .mono {

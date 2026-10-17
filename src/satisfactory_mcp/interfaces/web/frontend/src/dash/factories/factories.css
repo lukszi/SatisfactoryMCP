@@ -180,8 +180,8 @@
 
 .sub .sw > .ic,
 .sub .sw > .mono {
-  width: 20px;
-  height: 20px;
+  width: var(--ic-s);
+  height: var(--ic-s);
   margin-right: var(--sp-1);
 }
 
