@@ -5,11 +5,11 @@
 }
 
 .l-mt .entry {
-  --cols: 56px minmax(0, 1fr) 64px;
+  --cols: var(--col-short) minmax(0, 1fr) var(--col-num);
 }
 
 .l-inp .entry {
-  --cols: 100px minmax(0, 1fr) 180px;
+  --cols: var(--col-label) minmax(0, 1fr) var(--col-name);
 }
 
 .l-inp .acts .ctx {
@@ -17,8 +17,10 @@
 }
 
 .thumb {
-  width: 56px;
-  height: 40px;
+  --thumb-h: 40px;
+
+  width: var(--col-short);
+  height: var(--thumb-h);
   padding: 0;
   overflow: hidden;
   background: var(--thumb-terrain);
@@ -59,6 +61,6 @@
 
 @media (max-width: 600px) {
   .l-mt .entry {
-    --cols: 56px minmax(0, 1fr) auto !important;
+    --cols: var(--col-short) minmax(0, 1fr) auto !important;
   }
 }

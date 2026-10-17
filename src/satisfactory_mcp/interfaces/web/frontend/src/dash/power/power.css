@@ -21,8 +21,10 @@
 
 /* supply and demand: key | bar | value, one scale; the generation line spans the three rows */
 .sd {
+  --hatch: 3px;
+
   display: grid;
-  grid-template-columns: 6.5em minmax(0, 1fr) 6.5em;
+  grid-template-columns: var(--col-num-l) minmax(0, 1fr) var(--col-num-l);
   column-gap: var(--sp-3);
   row-gap: var(--sp-2);
   align-items: center;
@@ -44,7 +46,7 @@
 .sd > .tr {
   position: relative;
   grid-column: 2;
-  height: 10px;
+  height: var(--bar-l);
   overflow: hidden;
   border-radius: var(--r);
   background: var(--bg-deep);
@@ -59,7 +61,7 @@
 
 .sd > .tr.g {
   display: flex;
-  height: 22px;
+  height: var(--ctl-h);
 }
 
 .sd > .v {
@@ -105,7 +107,7 @@
 }
 
 .sg .ha {
-  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--ink-soft) 34%, transparent) 0 3px, transparent 3px 6px);
+  background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--ink-soft) 34%, transparent) 0 var(--hatch), transparent var(--hatch) calc(2 * var(--hatch)));
 }
 
 .sg .lb {
@@ -124,8 +126,8 @@
 
 .sg .lb .ic,
 .sg .lb .mono {
-  width: 20px;
-  height: 20px;
+  width: var(--ic-s);
+  height: var(--ic-s);
 }
 
 .tr.g .none {
@@ -166,7 +168,7 @@
   position: absolute;
   top: calc(-1 * var(--sp-1));
   bottom: calc(-1 * var(--sp-1));
-  width: 2px;
+  width: var(--mark-w);
   margin-left: -1px;
   background: var(--ink-hi);
   pointer-events: auto;
@@ -195,7 +197,7 @@
 /* circuit utilisation: 100% = that circuit's generation, one shared scale, overflow in --bad */
 .ubar {
   position: relative;
-  height: 8px;
+  height: var(--bar-l);
   border-radius: var(--r);
   background: var(--bg-deep);
 }
@@ -216,15 +218,15 @@
 
 /* per-list column templates */
 .l-pcirc .entry {
-  --cols: minmax(180px, 1.4fr) minmax(80px, 1fr) 90px 80px 24px;
+  --cols: minmax(var(--col-name), 1.4fr) minmax(var(--col-num), 1fr) var(--col-num-l) var(--col-num-l) var(--col-act);
 }
 
 .l-prob .entry {
-  --cols: 24px minmax(0, 1fr) 150px 84px 24px;
+  --cols: var(--col-icon) minmax(0, 1fr) var(--col-text) var(--col-num-l) var(--col-act);
 }
 
 .l-ofac .entry {
-  --cols: minmax(0, 1fr) 96px 24px;
+  --cols: minmax(0, 1fr) var(--col-num-l) var(--col-act);
 }
 
 .metric.sm b {
@@ -244,7 +246,7 @@
 
 @media (max-width: 600px) {
   .sd {
-    grid-template-columns: 5.5em minmax(0, 1fr) 5em;
+    grid-template-columns: var(--col-num) minmax(0, 1fr) var(--col-num);
     column-gap: var(--sp-2);
   }
 

@@ -51,7 +51,7 @@
 /* worked out from the game data, not sent: the dotted underline names the source */
 .cmp {
   text-decoration: underline dotted var(--muted);
-  text-underline-offset: 2px;
+  text-underline-offset: var(--sp-0);
   cursor: help;
 }
 
@@ -62,8 +62,8 @@
 
 .side-head .ic,
 .side-head .mono {
-  width: 32px;
-  height: 32px;
+  width: var(--ic-l);
+  height: var(--ic-l);
 }
 
 .side-head .chip {
@@ -110,7 +110,7 @@
 
 .items-side .sub-more {
   margin: 0;
-  padding: var(--sp-1) 0 0 calc(24px + var(--sp-3) + var(--edge));
+  padding: var(--sp-1) 0 0 calc(var(--col-icon) + var(--sp-3) + var(--edge));
   color: var(--muted);
   font-size: var(--t-meta-size);
 }
@@ -186,8 +186,8 @@
 
 .mach .ic,
 .mach .mono {
-  width: 24px;
-  height: 24px;
+  width: var(--ic-m);
+  height: var(--ic-m);
 }
 
 .items-side .arrow {
@@ -204,15 +204,15 @@ a.pill:hover {
 }
 
 .l-use .entry {
-  --cols: 24px minmax(0, 1fr) 88px;
+  --cols: var(--col-icon) minmax(0, 1fr) var(--col-num-l);
 }
 
 .l-place .entry {
-  --cols: 24px minmax(0, 1fr) auto 24px;
+  --cols: var(--col-icon) minmax(0, 1fr) auto var(--col-act);
 }
 
 .l-cont .entry {
-  --cols: 24px minmax(0, 1fr) auto;
+  --cols: var(--col-icon) minmax(0, 1fr) auto;
 }
 
 /* ---------- phones: 4 slots a row, the sheet a bottom sheet above the bottom bar ---------- */

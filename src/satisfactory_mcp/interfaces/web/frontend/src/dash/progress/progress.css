@@ -9,15 +9,15 @@
   --road-head-h: 24px;
   --road-rail-h: 24px;
   --road-node: 12px;
-  --road-node-on: 20px;
-  --road-ln: 2px;
+  --road-node-on: var(--ic-s);
+  --road-ln: var(--mark-w);
   --road-seg-w: 104px;
-  --road-seg-h: 4px;
+  --road-seg-h: var(--bar-s);
   --road-stop-w: 128px;
   --road-later-w: 96px;
   --road-phone-w: 720px;
   --road-chk: 14px;
-  --road-chk-step: 20px;
+  --road-chk-step: var(--ic-s);
 }
 
 /* ---------- section headings: figures and controls share the heading ---------- */
@@ -143,7 +143,7 @@
   flex: none;
   width: var(--road-node);
   height: var(--road-node);
-  border: 2px solid var(--off);
+  border: var(--mark-w) solid var(--off);
   border-radius: var(--r);
   background: var(--panel);
 }
@@ -251,13 +251,13 @@
 
 /* ---------- the gate: a checklist, inputs in the part's columns ---------- */
 .l-gate .entry {
-  --cols: 52px minmax(0, 1fr) 110px minmax(0, 130px) 56px 72px 64px 20px;
+  --cols: var(--col-short) minmax(0, 1fr) var(--col-label) minmax(0, var(--col-text)) var(--col-short) var(--col-num) var(--col-num) var(--col-act);
   padding-top: var(--sp-2);
   padding-bottom: var(--sp-2);
 }
 
 .l-gate .expand {
-  --subcols: minmax(0, 1fr) 110px minmax(0, 130px) 56px 72px 64px calc(20px - var(--sp-2));
+  --subcols: minmax(0, 1fr) var(--col-label) minmax(0, var(--col-text)) var(--col-short) var(--col-num) var(--col-num) calc(var(--col-act) - var(--sp-2));
 }
 
 .prog .l-gate .sub {
@@ -279,8 +279,8 @@
 
 .l-gate .sub .nl .ic,
 .l-gate .sub .nl .mono {
-  width: 20px;
-  height: 20px;
+  width: var(--ic-s);
+  height: var(--ic-s);
 }
 
 .l-gate .colh {
@@ -317,8 +317,8 @@
 
 .lead-chk .ic,
 .lead-chk .mono {
-  width: 32px;
-  height: 32px;
+  width: var(--ic-l);
+  height: var(--ic-l);
 }
 
 .chk {
@@ -344,7 +344,7 @@
 
 /* ---------- next steps: a path, numbered stops on one thin line ---------- */
 .l-next .entry {
-  --cols: 48px minmax(0, 1fr) 64px;
+  --cols: var(--col-short) minmax(0, 1fr) var(--col-num);
 }
 
 .l-next .go {
@@ -410,17 +410,17 @@
 
 .lead-rank .ic,
 .lead-rank .mono {
-  width: 20px;
-  height: 20px;
+  width: var(--ic-s);
+  height: var(--ic-s);
 }
 
 /* ---------- supporting lists ---------- */
 .l-palt .entry {
-  --cols: 24px minmax(0, 1fr) 96px 72px 96px;
+  --cols: var(--col-icon) minmax(0, 1fr) var(--col-num-l) var(--col-num) var(--col-num-l);
 }
 
 .l-buy .entry {
-  --cols: minmax(0, 0.9fr) 150px minmax(0, 1.4fr) 140px;
+  --cols: minmax(0, 0.9fr) var(--col-text) minmax(0, 1.4fr) var(--col-text);
 }
 
 .l-buy .pills {
@@ -443,7 +443,7 @@
 }
 
 .l-ref .entry {
-  --cols: minmax(0, 1fr) 72px;
+  --cols: minmax(0, 1fr) var(--col-num);
 }
 
 .pref .dash-h {
@@ -485,7 +485,7 @@
 
   .l-gate .entry,
   .l-next .entry {
-    --cols: 52px minmax(0, 1fr) auto !important;
+    --cols: var(--col-short) minmax(0, 1fr) auto !important;
   }
 
   .l-next .entry > .go {
