@@ -12,6 +12,8 @@ export const planIndex = {
   world: "",
   data: null as PlansResponse | null,
   built: {} as Record<string, PlanBuiltRow>,
+  /** The built read answered, or failed: a plan page lands on its tab either way. */
+  builtDone: false,
   error: "",
 };
 
@@ -25,6 +27,7 @@ export function loadList(): void {
       if (mine !== seq) return;
       planIndex.world = world;
       planIndex.data = data;
+      planIndex.builtDone = false;
       planIndex.error = "";
       changed();
       loadBuilt(mine);
@@ -45,10 +48,14 @@ function loadBuilt(mine: number): void {
         rows[row.key] = row;
       });
       planIndex.built = rows;
+      planIndex.builtDone = true;
       changed();
     })
     .catch(function () {
       /* the column stays "…"; the list itself is fine */
+      if (mine !== seq) return;
+      planIndex.builtDone = true;
+      changed();
     });
 }
 

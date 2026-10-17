@@ -355,6 +355,7 @@ def _chosen_nodes(g: GameData, sess: PreviewSession, chosen: set[str]) -> list[S
         {
             "instance": instance_leaf(r["instance"]),
             "resource": g.item_name(r["resource"]),
+            "purity": r["purity"],
             "x_m": round(r["x"] / 100, 1),
             "y_m": round(r["y"] / 100, 1),
         }

@@ -1,5 +1,6 @@
-/* The planner's site tab: the map beside a card, the throttled preview while a pad moves, and
- * the one `site` op a drop pushes. docs/planner-p5_contract.md §3-§7 is the specification. */
+/* Placing a plan's pad (`planner/<key>/place`): the main map beside a card, the throttled
+ * preview while a pad moves, and the one `site` op a drop pushes. docs/planner-p5_contract.md
+ * §3-§7 is the specification. */
 
 import { get } from "../../api/client";
 import { button, error } from "../../kit/dashkit";
@@ -94,7 +95,7 @@ onSetting(function () {
   if (siteTabShowing()) paint();
 });
 
-function padOf(raw: unknown): Pad | null {
+export function padOf(raw: unknown): Pad | null {
   const siting = raw as { origin_m?: (number | null)[]; yaw_deg?: number; footprint_m?: number[] } | null;
   if (!siting?.origin_m || siting.origin_m[0] === null || siting.origin_m[1] === null) return null;
   const footprint = siting.footprint_m || [0, 0];
@@ -464,7 +465,7 @@ function paint(): void {
 /* ---------------------------------------------------------------- the split */
 
 function siteTabShowing(): boolean {
-  return document.body.classList.contains("dash-on") && state.dash.indexOf("planner/") === 0 && /\/site$/.test(state.dash) && bench.tab === "site";
+  return document.body.classList.contains("dash-on") && state.dash.indexOf("planner/") === 0 && /\/place$/.test(state.dash) && bench.place;
 }
 
 function syncSplit(): void {
@@ -479,8 +480,8 @@ function syncSplit(): void {
   }
 }
 
-/** The site tab's body; the map beside it is the page's own map. */
-export function renderSite(parent: HTMLElement): void {
+/** The pad editor's card; the map beside it is the page's own map. */
+export function renderPlacing(parent: HTMLElement): void {
   if (!bench.plan) return;
   document.body.classList.add("site-on");
   syncWithPlan();
@@ -495,7 +496,7 @@ function dropGhost(): void {
   showGhostPad(null);
 }
 
-/** A chat `site_plan(preview=True)`: a ghost pad with [use it] on that plan's site tab. */
+/** A chat `site_plan(preview=True)`: a ghost pad with [use it] beside that plan's pad. */
 export function showGhost(key: string, args: Record<string, unknown>, who: string): void {
   const arg = function (name: string): number {
     return Number(args[name]);

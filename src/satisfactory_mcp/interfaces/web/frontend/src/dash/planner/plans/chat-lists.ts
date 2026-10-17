@@ -18,7 +18,7 @@ import { loadingLine } from "../../../kit/ui/states";
 import { dashH, emptyLine, toolrow } from "../../../kit/ui/text";
 import { ASK_STATE, objectiveText } from "../../../kit/words";
 import { hashFor } from "../../../map/map";
-import { chatName, describeParts } from "../chat-card";
+import { chatName, describeParts } from "../chat-request";
 import { loadList, planTitle } from "../plan-index";
 import { changed, inbox } from "../state";
 import { createPlan } from "../writes";

@@ -5,7 +5,8 @@
   max-width: var(--page-w-wide);
 }
 
-.prog {
+.prog,
+.ppage {
   --road-head-h: 24px;
   --road-rail-h: 24px;
   --road-node: 12px;

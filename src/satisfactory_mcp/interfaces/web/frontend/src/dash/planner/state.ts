@@ -12,7 +12,6 @@ import type {
   ActorBody,
   AlreadyUndoneResponse,
   DeltaResponse,
-  FeedersResponse,
   FocusSelection,
   ItemsResponse,
   NameTakenResponse,
@@ -24,6 +23,7 @@ import type {
   TrackResponse,
   VersionsResponse,
 } from "../../api/shapes";
+import type { PlanTab } from "./routes";
 
 export type Op = PlanOpBody & { op: string };
 
@@ -64,8 +64,6 @@ export interface ConflictChip {
 
 export type Refusal = Partial<OutdatedResponse & AlreadyUndoneResponse & NameTakenResponse>;
 
-export type ResultTab = "build list" | "graph" | "track" | "site";
-
 export interface Partition {
   partition_id: string;
   current: number;
@@ -76,12 +74,6 @@ export interface Partition {
   headroom_source: string;
 }
 
-export interface FeedersView {
-  data: FeedersResponse | null;
-  error: string;
-  busy: boolean;
-}
-
 export interface TrackView {
   data: TrackResponse | null;
   error: string;
@@ -89,11 +81,10 @@ export interface TrackView {
   asked: number;
   stage: number;
   notice: string;
-  feeders: FeedersView | null;
 }
 
 export function freshTrack(): TrackView {
-  return { data: null, error: "", seq: 0, asked: 0, stage: 0, notice: "", feeders: null };
+  return { data: null, error: "", seq: 0, asked: 0, stage: 0, notice: "" };
 }
 
 export interface AlternatesView {
@@ -105,8 +96,8 @@ export interface AlternatesView {
   enter: boolean;
 }
 
-/* Everything that belongs to one open plan; the tab, the versions toggle and the stage
- * partitions outlive a switch to another plan. */
+/* Everything that belongs to one open plan; the tab and the stage partitions outlive a switch
+ * to another plan. */
 function freshBench(key: string) {
   return {
     world: state.world,
@@ -144,7 +135,7 @@ function freshBench(key: string) {
 }
 
 export const bench = Object.assign(
-  { tab: "build list" as ResultTab, versionsOpen: false, partitionByPlan: {} as Record<string, Partition> },
+  { tab: "machines" as PlanTab, place: false, partitionByPlan: {} as Record<string, Partition> },
   freshBench("")
 );
 

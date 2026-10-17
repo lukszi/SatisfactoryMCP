@@ -4,6 +4,7 @@
 import { itemsAddress, legacyItemsDash } from "../../dash/items/address";
 import { legacyWorldDash, worldScrollKey } from "../../dash/world/address";
 import { legacyProgressDash } from "../../dash/progress/model";
+import { legacyPlannerDash } from "../../dash/planner/routes";
 
 export type Page = "map" | "overview" | "factories" | "power" | "progress" | "items" | "world" | "planner" | "maps" | "kit";
 
@@ -66,7 +67,7 @@ function split(dash: string): [string, string] {
 export function redirectFor(dash: string): Redirect | null {
   const [head, subject] = split(dash);
   if (head === "settings") return subject === "maps" ? { dash: "maps" } : { dash: null, settings: "" };
-  const moved = legacyItemsDash(head, subject) ?? legacyWorldDash(head, subject) ?? legacyProgressDash(head, subject);
+  const moved = legacyItemsDash(head, subject) ?? legacyWorldDash(head, subject) ?? legacyProgressDash(head, subject) ?? legacyPlannerDash(head, subject);
   return moved === null ? null : { dash: moved };
 }
 

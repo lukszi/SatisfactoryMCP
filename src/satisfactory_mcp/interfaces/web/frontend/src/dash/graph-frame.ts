@@ -1,7 +1,6 @@
 /* The frame a production graph is shown in: zoomed with ctrl+scroll, panned by dragging, fitted
- * on a double click; and the card it sits in. See docs/frontend_vision.md §9.8. */
+ * on a double click. See docs/frontend_vision.md §9.8. */
 
-import { button } from "../kit/dashkit";
 import { make } from "../kit/dom";
 import { fitScale, ROOM_H, ZOOM } from "./frame-fit";
 
@@ -87,13 +86,4 @@ export function zoomableFrame(root: SVGSVGElement, width: number, height: number
     box.scrollTop = 0;
   });
   return box;
-}
-
-export function graphCardFrame(heading: string, shown: boolean, toggle?: () => void): HTMLElement {
-  const card = make("section", "dash-card dash-graph");
-  const bar = make("div", "dash-title");
-  bar.appendChild(make("h2", "dash-h", heading));
-  if (toggle) bar.appendChild(button(shown ? "hide graph" : "graph", toggle, { title: shown ? "hide the production graph" : "draw the production graph" }));
-  card.appendChild(bar);
-  return card;
 }

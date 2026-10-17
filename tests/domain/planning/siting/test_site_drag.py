@@ -289,6 +289,7 @@ def test_the_first_reply_carries_nodes_and_the_playable_box(world):
     step = site_preview.preview(world.game, world, sess, _pad(*BUILT_SPOT))
     assert first["content_bbox_m"] == [v / 100 for v in geo.CONTENT_BBOX]
     assert isinstance(first["nodes"], list) and step["nodes"] is None
+    assert all(n["purity"] in ("impure", "normal", "pure") for n in first["nodes"])
     assert step["content_bbox_m"] is None
     assert len(json.dumps(step)) < 16_000
 

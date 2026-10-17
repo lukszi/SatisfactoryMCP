@@ -1,26 +1,10 @@
-/* The planner's addresses: `planner/<key>` and what may follow it. */
+/* The planner's address as the page holds it; the pure grammar is routes.ts. */
 
 import { dashParts } from "../../app/nav";
+import { parsePlannerAddress } from "./routes";
 
-export interface PlannerAddress {
-  key: string;
-  viewedRev: number;
-  alternatesItem: string;
-  track: boolean;
-  site: boolean;
-  stage: number;
-}
-
-/** `<key>[/v<n> | /alt/<item> | /track[/<stage>] | /site]`, the part after `planner/`. */
-export function parsePlannerAddress(at: string): PlannerAddress {
-  const rest = dashParts("planner/" + at).rest;
-  const key = rest[0] || "";
-  const version = /^v(\d+)$/.exec(rest[1] || "");
-  const item = rest[1] === "alt" && rest[2] ? rest.slice(2).join("/") : "";
-  const track = rest[1] === "track";
-  const stage = track && /^\d+$/.test(rest[2] || "") ? Number(rest[2]) : 0;
-  return { key: key, viewedRev: version ? Number(version[1]) : 0, alternatesItem: item, track: track, site: rest[1] === "site", stage: stage };
-}
+export { ALL_STAGES, altDash, buildDash, parsePlannerAddress, PLAN_TABS, planDash, versionDash } from "./routes";
+export type { PlannerAddress, PlanTab } from "./routes";
 
 /** `?item=<name>&rate=<n>`: the new-plan card filled in (Progress links its steps here). */
 export function plannerDraft(at: string): { item: string; rate: string } | null {
@@ -34,12 +18,4 @@ export function openPlanKey(): string | null {
   const at = dashParts();
   if (at.tab !== "planner") return null;
   return parsePlannerAddress(at.subject).key;
-}
-
-export function altDash(key: string, item: string): string {
-  return "planner/" + key + "/alt/" + item;
-}
-
-export function trackDash(key: string, stage: number): string {
-  return "planner/" + key + "/track" + (stage ? "/" + stage : "");
 }

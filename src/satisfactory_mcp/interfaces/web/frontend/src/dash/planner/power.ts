@@ -1,15 +1,11 @@
-/* The workbench's power row: the per-plan payback horizon and the overclock-last switch, and
- * each build-list row's own overclock choice. See docs/planner-payback-horizon_contract.md §7. */
+/* The words of the plan's power settings: the payback horizon, the overclock-last switch and a
+ * build row's own overclock choice. See docs/planner-payback-horizon_contract.md §7. */
 
-import { button, checkbox, selectBox, slider } from "../../kit/dashkit";
-import { make } from "../../kit/dom";
 import { byCodeUnit, count, formatNumber, mw, pct } from "../../kit/format";
 import { counted } from "../../kit/words";
 import { bench } from "./state";
-import { applyOps } from "./writes";
 
 import type { SolveResponse, SolveRow } from "../../api/shapes";
-import type { Op } from "./state";
 
 type Payback = SolveResponse["power"];
 type Stop = Payback["stops"][number];
@@ -18,14 +14,13 @@ type OverclockOption = NonNullable<SolveRow["overclock_option"]>;
 /* The recipes before a slider release, kept until the re-solve lands (F5a). */
 let switched = { key: "", from: -1, before: {} as Record<string, string>, rev: 0, text: "" };
 
-const PAYBACK_HOURS = [0, 1, 2, 5, 10, 20, 50, 100];
-const PAYBACK_LABELS = PAYBACK_HOURS.map(hours);
+export const PAYBACK_HOURS = [0, 1, 2, 5, 10, 20, 50, 100];
 
 export function hours(h: number): string {
   return formatNumber(h, 1) + " h";
 }
 
-function nearestStopIndex(h: number): number {
+export function nearestStopIndex(h: number): number {
   let best = 0;
   PAYBACK_HOURS.forEach(function (stop, i) {
     if (Math.abs(stop - h) < Math.abs(PAYBACK_HOURS[best]! - h)) best = i;
@@ -50,7 +45,7 @@ function signedMachineCount(n: number): string {
   return signOf(n) + count(Math.abs(n)) + (Math.abs(n) === 1 ? " machine" : " machines");
 }
 
-function stopWords(view: Payback | null, h: number): string {
+export function stopWords(view: Payback | null, h: number): string {
   const stop = stopAt(view, h);
   if (!stop) return hours(h) + (bench.solvingRev ? ": solving…" : "");
   if (!h || !stop.extra_machines) return hours(h) + ": no extra machines · " + count(stop.machines) + " machines · " + mw(stop.mw_draw);
@@ -59,7 +54,7 @@ function stopWords(view: Payback | null, h: number): string {
   return parts.join(" · ");
 }
 
-function priceWords(view: Payback | null): string {
+export function priceWords(view: Payback | null): string {
   if (!view) return "";
   if (view.price_source === "plan") return " at " + formatNumber(view.price, 0) + " pts/MWh set on this plan";
   if (!view.price) return "; this grid burns no fuel, so power costs nothing to run";
@@ -86,7 +81,7 @@ function overclockTally(oc: Payback["overclock"], rows: OverclockRow[], stock: b
   return [signedMachineCount(-saved), "+" + mw(extra), bill].join(" · ");
 }
 
-function overclockWords(view: Payback | null): string {
+export function overclockWords(view: Payback | null): string {
   if (!view) return bench.solvingRev ? "solving…" : "";
   const oc = view.overclock;
   const own = oc.pinned_last ? count(oc.pinned_last) + " row(s) overclocked by their own setting" : "";
@@ -110,32 +105,6 @@ function overclockWords(view: Payback | null): string {
   if ((oc.on || oc.pinned_last) && oc.without.length) parts.push(count(oc.without.length) + " row(s) went without");
   if (oc.pinned_spread) parts.push(count(oc.pinned_spread) + " row(s) set to one more machine");
   return parts.join(" · ");
-}
-
-function overclockRow(body: HTMLElement, view: Payback | null): void {
-  const plan = bench.plan!;
-  const on = view ? view.overclock.on : plan.args.overclock_last === true;
-  const row = make("div", "plan-line plan-overclock");
-  const box = checkbox("overclock the last machine", on, function (next) {
-    applyOps([{ op: "set", field: "overclock_last", value: next }]);
-  });
-  box.title = "a row of 4.2 machines becomes 3 at 100% and 1 at 120%, using 1–2 Power Shards";
-  row.appendChild(box);
-  const line = make("span", "plan-sub", overclockWords(view) + (view?.overclock.inherited ? " · shared default" : ""));
-  line.setAttribute("aria-live", "polite");
-  row.appendChild(line);
-  if (plan.args.overclock_last !== null) row.appendChild(followDefault("overclock_last"));
-  body.appendChild(row);
-}
-
-function followDefault(field: "payback_hours" | "overclock_last"): HTMLElement {
-  return button(
-    "use default",
-    function () {
-      applyOps([{ op: "set", field: field, value: null }]);
-    },
-    { title: "follow the shared setting on the Settings tab again" }
-  );
 }
 
 function recipeNamesById(data: SolveResponse | null): Record<string, string> {
@@ -165,11 +134,11 @@ function switchWords(before: Record<string, string>, after: Record<string, strin
   return "switched to " + added.join(", ") + (dropped.length ? ", from " + dropped.join(", ") : "");
 }
 
-function snapshotRecipes(): void {
+export function snapshotRecipes(): void {
   switched = { key: bench.key, from: bench.resultRev, before: recipeNamesById(bench.result), rev: 0, text: "" };
 }
 
-function switchLine(): string {
+export function switchLine(): string {
   if (switched.key !== bench.key) return "";
   if (switched.from >= 0 && bench.resultRev > switched.from && bench.result) {
     switched.text = bench.result.feasible ? switchWords(switched.before, recipeNamesById(bench.result)) : "";
@@ -179,79 +148,14 @@ function switchLine(): string {
   return switched.rev === bench.resultRev ? switched.text : "";
 }
 
-function optionWords(o: OverclockOption): string {
+export function optionWords(o: OverclockOption): string {
   const last = count(o.machines) + (o.machines === 1 ? " machine" : " machines") + ", the last at " + pct(o.last_clock, 1) + ", " + count(o.shards) + (o.shards === 1 ? " shard" : " shards");
   const spread = count(o.spread_machines) + " at " + pct(o.spread_clock, 1);
   return "overclock last: " + last + " (+" + mw(o.extra_mw) + ") · one more underclocked: " + spread;
 }
 
-/* A build-list row's own choice: overclock its last machine, or one more underclocked machine,
- * whatever the plan's switch says; the "plan: …" option drops the choice. */
-export function rowOverclock(row: SolveRow): HTMLElement | null {
-  const o = row.overclock_option;
-  const id = row.recipe_id;
-  if (!o || !id) return null;
-  const follows = o.pinned === null;
-  let plan = o.applied && follows ? "plan: overclock last" : "plan: one more machine";
-  if (follows && o.without) plan = "plan: no shards left";
-  const pick = selectBox(
-    [
-      ["", plan],
-      ["last", "overclock last"],
-      ["spread", "one more underclocked"],
-    ],
-    o.pinned || "",
-    function (value) {
-      const op: Op = value ? { op: "put", field: "row_overclock", item: id!, value: value } : { op: "del", field: "row_overclock", item: id! };
-      applyOps([op]);
-    },
-    { label: "last machine of " + row.recipe, title: optionWords(o) + (o.without ? " · not enough shards for this row" : "") }
-  );
-  pick.classList.add("plan-row-oc");
-  pick.addEventListener("click", function (event) {
-    event.stopPropagation();
-  });
-  pick.addEventListener("keydown", function (event) {
-    event.stopPropagation();
-  });
-  return pick;
-}
-
-export function powerRow(body: HTMLElement): void {
-  const plan = bench.plan!;
+/** The payback view of the head's result, when it has stops to offer. */
+export function paybackView(): Payback | null {
   const result = bench.result;
-  const view = result && result.feasible && result.power.stops.length ? result.power : null;
-  const current = view ? view.hours : (plan.args.payback_hours ?? 0);
-  const still = !!view && !view.splits;
-  const tail = view?.inherited ? " · shared default" : "";
-  const line = make("span", "plan-sub plan-power-line", (still ? view!.reason : stopWords(view, current)) + tail);
-  line.setAttribute("aria-live", "polite");
-  body.classList.add("plan-stack");
-  body.appendChild(make("span", "plan-sub plan-power-hint", "build extra, slower machines when the power they save repays their build points" + priceWords(view)));
-  const row = make("div", "plan-line plan-payback");
-  row.appendChild(
-    slider(
-      PAYBACK_LABELS,
-      nearestStopIndex(current),
-      function (i) {
-        if (!still) line.textContent = stopWords(view, PAYBACK_HOURS[i]!);
-      },
-      function (i) {
-        if (PAYBACK_HOURS[i] === plan.args.payback_hours) return;
-        snapshotRecipes();
-        applyOps([{ op: "set", field: "payback_hours", value: PAYBACK_HOURS[i]! }]);
-      },
-      { label: "payback horizon in hours of play", ends: ["fewer machines", "less power"], disabled: still, title: "hours of play the saved power must repay the extra machines in" }
-    )
-  );
-  if (plan.args.payback_hours !== null) row.appendChild(followDefault("payback_hours"));
-  body.appendChild(row);
-  body.appendChild(line);
-  const change = switchLine();
-  if (change) {
-    const note = make("span", "plan-sub plan-switch", change);
-    note.setAttribute("role", "status");
-    body.appendChild(note);
-  }
-  overclockRow(body, view);
+  return result && result.feasible && result.power.stops.length ? result.power : null;
 }

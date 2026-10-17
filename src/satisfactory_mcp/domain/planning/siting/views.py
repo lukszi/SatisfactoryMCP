@@ -54,6 +54,7 @@ class TerrainZ(TypedDict, total=False):
 class SitePreviewNode(TypedDict):
     instance: str
     resource: str
+    purity: str
     x_m: float
     y_m: float
 
