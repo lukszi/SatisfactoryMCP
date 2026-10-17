@@ -57,7 +57,7 @@
 
 .pg-label-text {
   fill: var(--ink-soft);
-  font-size: var(--fs-s);
+  font-size: var(--t-meta-size);
   text-anchor: middle;
 }
 
@@ -110,14 +110,14 @@
 
 .pg-title {
   fill: var(--ink);
-  font-size: var(--fs-m);
-  font-weight: 600;
+  font-size: var(--t-name-size);
+  font-weight: var(--t-name-w);
   text-anchor: middle;
 }
 
 .pg-sub {
   fill: var(--muted);
-  font-size: var(--fs-s);
+  font-size: var(--t-meta-size);
   text-anchor: middle;
 }
 
@@ -174,14 +174,14 @@
 }
 
 .pg-node.flash .pg-disc {
-  animation: graph-flash 1s ease-in-out 4;
+  animation: graph-flash var(--flash-turn) var(--ease) 4;
 }
 
 .pg-chained .pg-node,
 .pg-chained .pg-edge,
 .pg-chained .pg-label {
   opacity: 0.18;
-  transition: opacity 0.15s;
+  transition: opacity var(--dur) var(--ease);
 }
 
 .pg-chained .pg-node.in-chain,
@@ -191,21 +191,23 @@
 }
 
 .pg-tip {
+  --tip-w: 420px;
+
   position: absolute;
   z-index: 2;
-  max-width: 420px;
+  max-width: var(--tip-w);
   padding: var(--sp-1) var(--sp-2);
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--r);
   color: var(--ink-soft);
-  font-size: var(--fs-s);
+  font-size: var(--t-meta-size);
   pointer-events: none;
 }
 
 .pg-tip-k {
   color: var(--ink);
-  font-weight: 600;
+  font-weight: var(--t-emph-w);
 }
 
 .pg-tools:empty {
@@ -214,12 +216,12 @@
 
 .pg-lists {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(var(--card-min-w), 1fr));
   gap: var(--sp-3);
 }
 
 .pg-rate .dash-number {
-  width: 7em;
+  width: var(--num-w-s);
 }
 
 @media (prefers-reduced-motion: reduce) {

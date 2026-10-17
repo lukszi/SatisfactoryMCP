@@ -76,7 +76,7 @@
   width: 100%;
   padding: var(--sp-1) var(--sp-3);
   border: 0;
-  border-left: 2px solid transparent;
+  border-left: var(--mark-w) solid transparent;
   background: none;
   color: var(--muted);
   font: inherit;
@@ -97,7 +97,7 @@
 }
 
 .sd-nav button:focus-visible {
-  outline-offset: -2px;
+  outline-offset: calc(-1 * var(--ring));
 }
 
 .sd-nav .n {

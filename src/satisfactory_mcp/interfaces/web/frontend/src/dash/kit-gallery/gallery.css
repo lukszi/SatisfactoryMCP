@@ -15,7 +15,7 @@
 .kit-bars {
   display: grid;
   gap: var(--sp-3);
-  max-width: 480px;
+  max-width: var(--form-ctl-max);
   margin-bottom: var(--sp-3);
 }
 
@@ -31,11 +31,11 @@
 }
 
 .l-kit .entry {
-  --cols: 24px minmax(0, 1fr) 96px 150px auto;
+  --cols: var(--col-icon) minmax(0, 1fr) var(--col-num-l) var(--col-text) auto;
 }
 
 .l-kitcard .entry {
-  --cols: 32px minmax(0, 1fr) 84px auto;
+  --cols: var(--col-icon-l) minmax(0, 1fr) var(--col-num-l) auto;
 }
 
 @media (max-width: 600px) {

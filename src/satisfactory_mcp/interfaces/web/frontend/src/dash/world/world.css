@@ -97,31 +97,31 @@
 
 .wfind .measured em {
   text-decoration: underline dotted var(--dim);
-  text-underline-offset: 2px;
+  text-underline-offset: var(--sp-0);
 }
 
 .l-wnode .entry {
-  --cols: var(--ic-s) minmax(0, 1fr) 112px 72px 56px;
+  --cols: var(--col-icon) minmax(0, 1fr) var(--col-label) var(--col-num) var(--col-short);
 }
 
 .l-wfield .entry {
-  --cols: 36px minmax(0, 1fr) 84px 76px 56px 56px;
+  --cols: calc(2 * var(--ic-s) - var(--sp-1)) minmax(0, 1fr) var(--col-num-l) var(--col-num) var(--col-short) var(--col-short);
 }
 
 .l-wsite .entry {
-  --cols: var(--ic-s) minmax(0, 1fr) 72px 96px 56px 56px;
+  --cols: var(--col-icon) minmax(0, 1fr) var(--col-num) var(--col-num-l) var(--col-short) var(--col-short);
 }
 
 .l-wrun .entry {
-  --cols: var(--ic-s) minmax(0, 1fr) var(--ic-s) 64px 56px;
+  --cols: var(--col-icon) minmax(0, 1fr) var(--col-icon) var(--col-num) var(--col-short);
 }
 
 .l-wnet .entry {
-  --cols: var(--ic-s) minmax(0, 1fr) 64px 72px 56px;
+  --cols: var(--col-icon) minmax(0, 1fr) var(--col-num) var(--col-num) var(--col-short);
 }
 
 .l-wpick .entry {
-  --cols: var(--ic-s) minmax(0, 1fr) 112px 56px;
+  --cols: var(--col-icon) minmax(0, 1fr) var(--col-label) var(--col-short);
 }
 
 .wduo {
@@ -246,7 +246,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--sp-1) var(--sp-3);
-  max-width: calc(100% - 64px);
+  max-width: calc(100% - 2 * var(--ic-l));
   padding: var(--sp-1) var(--sp-2);
   color: var(--muted);
   font-size: var(--t-meta-size);

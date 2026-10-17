@@ -16,7 +16,7 @@
   background: transparent;
   color: var(--muted);
   font: inherit;
-  font-size: var(--fs-m);
+  font-size: var(--t-body-size);
   text-decoration: none;
   cursor: pointer;
 }
@@ -35,8 +35,8 @@
 }
 
 .subtabs-item:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
+  outline: var(--ring) solid var(--accent);
+  outline-offset: calc(-1 * var(--ring));
 }
 
 .dash-table th.right,
@@ -50,7 +50,7 @@
 }
 
 .dk-table td.dk-lead {
-  font-weight: 600;
+  font-weight: var(--t-emph-w);
 }
 
 .dk-table tr.bad > td.dk-lead {
@@ -76,13 +76,13 @@
 
 .dash-table th.dk-sort:focus-visible,
 .dk-table tr.go:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
+  outline: var(--ring) solid var(--accent);
+  outline-offset: calc(-1 * var(--ring));
 }
 
 .dash-table th .sort-arrow {
   display: inline-block;
-  width: 1.2em;
+  width: var(--sp-4);
   text-align: center;
 }
 
@@ -102,7 +102,7 @@
   gap: var(--sp-1) var(--sp-2);
   margin: var(--sp-1) 0 var(--sp-2);
   color: var(--muted);
-  font-size: var(--fs-m);
+  font-size: var(--t-body-size);
 }
 
 .dk-state .dk-what,
@@ -112,7 +112,7 @@
 
 .dk-state .dk-how {
   flex-basis: 100%;
-  font-size: var(--fs-s);
+  font-size: var(--t-meta-size);
 }
 
 .dk-error {
@@ -121,10 +121,10 @@
 
 .dk-field-error {
   display: block;
-  margin-top: 2px;
+  margin-top: var(--sp-0);
   color: var(--bad);
-  font-size: var(--fs-s);
-  font-weight: normal;
+  font-size: var(--t-meta-size);
+  font-weight: var(--w-regular);
 }
 
 .dk-table tr.mid > td.dk-lead {
@@ -134,7 +134,7 @@
 .dash-slider {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--sp-0);
   width: 22em;
   max-width: 100%;
 }
@@ -149,9 +149,9 @@
 .dash-slider-ends {
   display: flex;
   justify-content: space-between;
-  padding-inline: 2px;
+  padding-inline: var(--sp-0);
   color: var(--muted);
-  font-size: var(--fs-s);
+  font-size: var(--t-meta-size);
 }
 
 .dash-slider-ends {

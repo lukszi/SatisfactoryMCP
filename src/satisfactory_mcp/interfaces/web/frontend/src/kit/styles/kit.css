@@ -59,7 +59,7 @@ input[type="search"] {
 }
 
 input[type="number"] {
-  width: 72px;
+  width: var(--num-w-s);
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
@@ -118,7 +118,7 @@ a.btn {
 }
 
 .btn.icon {
-  width: 24px;
+  width: var(--ic-m);
   padding: 0;
   text-align: center;
   color: var(--ink-soft);
@@ -134,7 +134,7 @@ a.btn {
 /* holds a missing ◎ button's place, so the actions column stays aligned */
 .btn-gap {
   display: inline-block;
-  width: 24px;
+  width: var(--ic-m);
 }
 
 .btn-map {
@@ -142,8 +142,8 @@ a.btn {
 }
 
 .chev {
-  width: 20px;
-  height: 22px;
+  width: var(--ic-s);
+  height: var(--ctl-h);
   padding: 0;
   border: 0;
   background: none;
@@ -185,7 +185,7 @@ a.btn {
 }
 
 .seg > :focus-visible {
-  outline-offset: -2px;
+  outline-offset: calc(-1 * var(--ring));
 }
 
 .sort {
@@ -241,7 +241,7 @@ a.btn {
   border: 1px solid var(--line);
   border-radius: var(--r);
   color: var(--dim);
-  font: var(--t-meta-size) / var(--t-chip-lh) Consolas, monospace;
+  font: var(--t-meta-size) / var(--t-chip-lh) var(--font-mono);
   transform: translateY(-50%);
   pointer-events: none;
 }
@@ -344,7 +344,7 @@ a.bh:hover .dash-h {
 
 .fig-bar {
   display: block;
-  height: 3px;
+  height: var(--bar-s);
   margin-top: var(--sp-0);
   border-radius: var(--r);
   background: var(--line);
@@ -492,7 +492,7 @@ a.bh:hover .dash-h {
 .otabs a {
   flex: none;
   padding: var(--sp-1) var(--sp-2);
-  border-bottom: 2px solid transparent;
+  border-bottom: var(--mark-w) solid transparent;
   text-decoration: none;
   white-space: nowrap;
 }
@@ -518,8 +518,8 @@ a.bh:hover .dash-h {
 .ic {
   display: inline-block;
   flex: none;
-  width: 24px;
-  height: 24px;
+  width: var(--ic-m);
+  height: var(--ic-m);
   object-fit: contain;
   vertical-align: middle;
 }
@@ -528,16 +528,16 @@ a.bh:hover .dash-h {
 .noic {
   display: inline-block;
   flex: none;
-  width: 24px;
-  height: 24px;
+  width: var(--ic-m);
+  height: var(--ic-m);
 }
 
 .mono {
   display: inline-grid;
   flex: none;
   place-items: center;
-  width: 24px;
-  height: 24px;
+  width: var(--ic-m);
+  height: var(--ic-m);
   border-radius: var(--r);
   background: var(--bg-deep);
   color: var(--muted);
@@ -558,7 +558,7 @@ a.bh:hover .dash-h {
 }
 
 .list.grid {
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(var(--card-min-w), 1fr));
   gap: var(--sp-2);
   align-items: stretch;
 }
@@ -593,7 +593,7 @@ a.bh:hover .dash-h {
   column-gap: var(--sp-3);
   row-gap: var(--sp-1);
   align-items: center;
-  min-height: 40px;
+  min-height: var(--row-h);
   padding: var(--sp-1) var(--sp-3) var(--sp-1) calc(var(--sp-3) + var(--edge));
   color: inherit;
 }
@@ -602,7 +602,7 @@ a.bh:hover .dash-h {
 .comfy > .entry {
   align-content: start;
   row-gap: var(--sp-2);
-  min-height: 72px;
+  min-height: var(--row-h-card);
   padding: var(--sp-2) var(--sp-3) var(--sp-2) calc(var(--sp-3) + var(--edge));
   background: var(--panel);
   border: 1px solid var(--line);
@@ -659,16 +659,16 @@ a.bh:hover .dash-h {
 }
 
 .entry:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
+  outline: var(--ring) solid var(--accent);
+  outline-offset: calc(-1 * var(--ring));
 }
 
 .grid > .entry > .ic,
 .grid > .entry > .mono,
 .comfy > .entry > .ic,
 .comfy > .entry > .mono {
-  width: 32px;
-  height: 32px;
+  width: var(--ic-l);
+  height: var(--ic-l);
 }
 
 .id {
@@ -852,7 +852,7 @@ a.name:hover {
   }
 
   to {
-    max-height: 40em;
+    max-height: var(--expand-max);
     opacity: 1;
   }
 }
@@ -934,8 +934,8 @@ a.name:hover {
 
 .pill .ic,
 .pill .mono {
-  width: 20px;
-  height: 20px;
+  width: var(--ic-s);
+  height: var(--ic-s);
 }
 
 .pill .nm {
@@ -954,14 +954,14 @@ a.name:hover {
 
 .bar {
   display: flex;
-  height: 6px;
+  height: var(--bar-m);
   overflow: hidden;
   border-radius: var(--r);
   background: var(--bg-deep);
 }
 
 .bar.mix {
-  height: 8px;
+  height: var(--bar-l);
 }
 
 .bar > i {
@@ -1068,7 +1068,7 @@ a.name:hover {
 .loadframe {
   display: grid;
   place-items: center;
-  min-height: 240px;
+  min-height: var(--load-min-h);
   border: 1px solid var(--line);
   border-radius: var(--r-card);
   color: var(--muted);
@@ -1293,7 +1293,7 @@ details.fold > summary {
   background: var(--bg-deep);
   border-radius: var(--r);
   color: var(--ink-soft);
-  font: var(--t-meta-size) / var(--t-body-lh) Consolas, monospace;
+  font: var(--t-meta-size) / var(--t-body-lh) var(--font-mono);
   white-space: pre-wrap;
 }
 
@@ -1406,7 +1406,7 @@ details.fold > summary {
 .menu {
   position: absolute;
   z-index: var(--z-toast);
-  min-width: 160px;
+  min-width: var(--menu-w);
   padding: var(--sp-1) 0;
   background: var(--panel);
   border: 1px solid var(--line);
@@ -1446,7 +1446,7 @@ details.fold > summary {
   bottom: calc(3 * var(--sp-5));
   left: 50%;
   z-index: var(--z-toast);
-  max-width: 340px;
+  max-width: var(--toast-w);
   padding: var(--sp-2) var(--sp-3);
   background: var(--panel);
   border: 1px solid var(--line);
@@ -1463,7 +1463,7 @@ details.fold > summary {
 /* ---------- phones ---------- */
 @media (max-width: 600px) {
   .entry {
-    --cols: 24px minmax(0, 1fr) auto !important;
+    --cols: var(--col-icon) minmax(0, 1fr) auto !important;
     column-gap: var(--sp-2);
   }
 
@@ -1518,8 +1518,8 @@ details.fold > summary {
 
   .grid > .entry,
   .comfy > .entry {
-    --cols: 32px minmax(0, 1fr) auto !important;
-    min-height: 40px;
+    --cols: var(--col-icon-l) minmax(0, 1fr) auto !important;
+    min-height: var(--row-h);
     padding: var(--sp-1) var(--sp-2) var(--sp-1) calc(var(--sp-2) + var(--edge));
   }
 

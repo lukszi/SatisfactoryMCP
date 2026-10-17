@@ -10,14 +10,18 @@
 }
 
 /* ---------- unnamed clusters ---------- */
+.l-cand {
+  --cand-name-w: 280px;
+}
+
 .l-cand .entry {
-  --cols: minmax(170px, 1fr) minmax(0, 1.5fr) 84px auto;
+  --cols: minmax(var(--col-name), 1fr) minmax(0, 1.5fr) var(--col-num-l) auto;
   padding-left: calc(var(--sp-3) + var(--edge));
 }
 
 .l-cand input[type="text"] {
   width: 100%;
-  max-width: 280px;
+  max-width: var(--cand-name-w);
 }
 
 .l-cand input.guess {
@@ -60,11 +64,13 @@
 
 /* ---------- factory cards ---------- */
 .list.grid.l-fac {
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 400px), 1fr));
+  --fac-card-w: 400px;
+
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--fac-card-w)), 1fr));
 }
 
 .l-fac .entry {
-  --cols: 32px minmax(0, 1fr) 84px auto;
+  --cols: var(--col-icon-l) minmax(0, 1fr) var(--col-num-l) auto;
 }
 
 .l-fac .entry[data-href] {
@@ -77,8 +83,8 @@
 
 .l-fac .entry > .ic,
 .l-fac .entry > .noic {
-  width: 32px;
-  height: 32px;
+  width: var(--ic-l);
+  height: var(--ic-l);
 }
 
 .l-fac .facts {
@@ -116,7 +122,7 @@
 
 .sub {
   display: grid;
-  grid-template-columns: 84px minmax(0, 1fr) 40px 24px;
+  grid-template-columns: var(--col-num-l) minmax(0, 1fr) var(--col-short) var(--col-act);
   gap: var(--sp-3);
   align-items: center;
   padding: var(--sp-0) 0;
@@ -174,8 +180,8 @@
 
 .sub .sw > .ic,
 .sub .sw > .mono {
-  width: 20px;
-  height: 20px;
+  width: var(--ic-s);
+  height: var(--ic-s);
   margin-right: var(--sp-1);
 }
 
@@ -262,13 +268,14 @@
   --plan-w: 1px;
   --plan-w-on: 2.5px;
   --plan-ghost: 0.4;
-  --fflr-w: 56px;
+  --fflr-w: var(--col-short);
   --fplan-off: 200px;
+  --fplan-min-h: 420px;
 
   position: sticky;
   top: 0;
   height: calc(100vh - var(--hdr-h) - var(--strip-h) - var(--jobstrip-h) - var(--fplan-off));
-  min-height: 420px;
+  min-height: var(--fplan-min-h);
   overflow: hidden;
   background: var(--bg-deep);
   border: 1px solid var(--line);
@@ -299,8 +306,8 @@
 }
 
 .fsvg:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
+  outline: var(--ring) solid var(--accent);
+  outline-offset: calc(-1 * var(--ring));
 }
 
 .fflr {
@@ -356,7 +363,7 @@
 }
 
 .ffl:focus-visible {
-  outline-offset: -2px;
+  outline-offset: calc(-1 * var(--ring));
 }
 
 .fsvg .pbase {
@@ -487,7 +494,7 @@
 
 /* ---------- aspect lists: fixed columns per list ---------- */
 .l-fstate .entry {
-  --cols: 96px 48px minmax(0, 1fr);
+  --cols: var(--col-num-l) var(--col-short) minmax(0, 1fr);
 }
 
 .l-fstate .entry > .name {
@@ -503,7 +510,7 @@
 }
 
 .l-fiss .entry {
-  --cols: 24px minmax(0, 1fr) 72px 48px;
+  --cols: var(--col-icon) minmax(0, 1fr) var(--col-num) var(--col-short);
 }
 
 .st {
@@ -512,15 +519,15 @@
 }
 
 .l-fflow .entry {
-  --cols: 24px minmax(0, 1fr) 84px 84px 104px;
+  --cols: var(--col-icon) minmax(0, 1fr) var(--col-num-l) var(--col-num-l) var(--col-label);
 }
 
 .l-fgroup .entry {
-  --cols: 24px minmax(0, 1fr) 104px 40px 84px;
+  --cols: var(--col-icon) minmax(0, 1fr) var(--col-label) var(--col-short) var(--col-num-l);
 }
 
 .l-fgroup.has-boost .entry {
-  --cols: 24px minmax(0, 1fr) 104px 40px 84px 150px;
+  --cols: var(--col-icon) minmax(0, 1fr) var(--col-label) var(--col-short) var(--col-num-l) var(--col-text);
 }
 
 .facts.boost {
@@ -529,13 +536,13 @@
 }
 
 .l-fmach .entry {
-  --cols: 24px minmax(0, 1fr) 104px 84px 64px;
+  --cols: var(--col-icon) minmax(0, 1fr) var(--col-label) var(--col-num-l) var(--col-num);
 }
 
 #dash .fmore {
   display: block;
   width: 100%;
-  padding: var(--sp-1) var(--sp-3) var(--sp-1) calc(var(--sp-3) + var(--edge) + 24px + var(--sp-3));
+  padding: var(--sp-1) var(--sp-3) var(--sp-1) calc(var(--sp-3) + var(--edge) + var(--col-icon) + var(--sp-3));
   background: none;
   border: 0;
   border-top: 1px solid var(--line-soft);
@@ -546,19 +553,19 @@
 }
 
 .l-ffnode .entry {
-  --cols: 24px minmax(0, 1fr) 84px 84px;
+  --cols: var(--col-icon) minmax(0, 1fr) var(--col-num-l) var(--col-num-l);
 }
 
 .l-flink .entry {
-  --cols: minmax(0, 1fr) 88px;
+  --cols: minmax(0, 1fr) var(--col-num-l);
 }
 
 .l-ffloor .entry {
-  --cols: 72px 56px minmax(0, 1fr) 40px 64px 88px;
+  --cols: var(--col-num) var(--col-short) minmax(0, 1fr) var(--col-short) var(--col-num) var(--col-num-l);
 }
 
 .l-fsite .entry {
-  --cols: minmax(0, 1fr) 56px minmax(0, 1fr) 72px 72px;
+  --cols: minmax(0, 1fr) var(--col-short) minmax(0, 1fr) var(--col-num) var(--col-num);
 }
 
 .kinds {
@@ -673,8 +680,11 @@
 
 /* ---------- the icon picker ---------- */
 .icdlg {
-  width: min(560px, calc(100vw - 2 * var(--sp-5)));
-  max-height: min(560px, calc(100vh - 2 * var(--sp-5)));
+  --icdlg-max: 560px;
+  --icgrid-h: 360px;
+
+  width: min(var(--icdlg-max), calc(100vw - 2 * var(--sp-5)));
+  max-height: min(var(--icdlg-max), calc(100vh - 2 * var(--sp-5)));
   padding: var(--sp-3);
   background: var(--panel);
   color: var(--ink);
@@ -700,9 +710,9 @@
 
 .icgrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, 32px);
+  grid-template-columns: repeat(auto-fill, var(--ic-l));
   gap: var(--sp-1);
-  max-height: 360px;
+  max-height: var(--icgrid-h);
   margin: var(--sp-2) 0;
   overflow-y: auto;
 }
@@ -710,8 +720,8 @@
 .icgrid button {
   display: grid;
   place-items: center;
-  width: 32px;
-  height: 32px;
+  width: var(--ic-l);
+  height: var(--ic-l);
   padding: 0;
   background: var(--bg-deep);
   border: 1px solid transparent;

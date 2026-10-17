@@ -2,10 +2,15 @@
    The map and the dashboard sit below whatever strips are showing. */
 
 body.job-on {
-  --jobstrip-h: 24px;
+  --jobstrip-h: var(--strip-h);
 }
 
 .hdr {
+  --search-w: 210px;
+  --jump-w: 360px;
+  --hdr-sel-w: 120px;
+  --hdr-sel-w-phone: 96px;
+
   position: relative;
   z-index: var(--z-chrome);
   display: flex;
@@ -37,7 +42,7 @@ body.job-on {
   flex: none;
   align-items: center;
   padding: 0 var(--sp-2);
-  border-bottom: 2px solid transparent;
+  border-bottom: var(--mark-w) solid transparent;
   color: var(--muted);
   text-decoration: none;
   white-space: nowrap;
@@ -57,7 +62,7 @@ body.job-on {
 }
 
 .tabs a:focus-visible {
-  outline-offset: -2px;
+  outline-offset: calc(-1 * var(--ring));
 }
 
 .tabs-more {
@@ -83,7 +88,7 @@ body.job-on {
   display: inline-grid;
   flex: none;
   place-items: center;
-  height: 24px;
+  height: var(--ic-m);
 }
 
 .hbtn svg {
@@ -102,7 +107,7 @@ body.job-on {
 .search {
   position: relative;
   flex: none;
-  width: 210px;
+  width: var(--search-w);
 }
 
 .search input {
@@ -120,7 +125,7 @@ body.job-on {
   top: calc(100% + var(--sp-1));
   right: 0;
   z-index: var(--z-dropdown);
-  width: 360px;
+  width: var(--jump-w);
   max-width: calc(100vw - var(--sp-5));
   max-height: 60vh;
   overflow-y: auto;
@@ -146,7 +151,7 @@ body.job-on {
 
 .jopt {
   display: grid;
-  grid-template-columns: 20px minmax(0, 1fr) auto;
+  grid-template-columns: var(--ic-s) minmax(0, 1fr) auto;
   gap: var(--sp-2);
   align-items: center;
   padding: var(--sp-1) var(--sp-3);
@@ -156,8 +161,8 @@ body.job-on {
 
 .jopt .ic,
 .jopt .mono {
-  width: 20px;
-  height: 20px;
+  width: var(--ic-s);
+  height: var(--ic-s);
 }
 
 .jopt .jn {
@@ -168,7 +173,7 @@ body.job-on {
 }
 
 .jopt .jc {
-  max-width: 150px;
+  max-width: var(--col-text);
   overflow: hidden;
   color: var(--muted);
   font-size: var(--t-meta-size);
@@ -183,7 +188,7 @@ body.job-on {
 }
 
 .jopt.on {
-  box-shadow: inset 2px 0 0 var(--accent);
+  box-shadow: inset var(--mark-w) 0 0 var(--accent);
 }
 
 .jnone {
@@ -205,7 +210,7 @@ body.job-on {
 .hdr select {
   flex: 0 1 auto;
   min-width: 0;
-  max-width: 120px;
+  max-width: var(--hdr-sel-w);
   font-size: var(--t-meta-size);
 }
 
@@ -220,8 +225,8 @@ body.job-on {
 }
 
 .live .dot {
-  width: 8px;
-  height: 8px;
+  width: var(--dot);
+  height: var(--dot);
   border-radius: var(--r-round);
   background: var(--off);
 }
@@ -320,18 +325,18 @@ body.job-on {
 
   #search-btn {
     display: inline-grid;
-    width: 32px;
-    height: 32px;
+    width: var(--ic-l);
+    height: var(--ic-l);
     margin-left: auto;
   }
 
   #gear {
-    width: 32px;
-    height: 32px;
+    width: var(--ic-l);
+    height: var(--ic-l);
   }
 
   .hdr select {
-    max-width: 96px;
+    max-width: var(--hdr-sel-w-phone);
   }
 
   .hdr.searching > :not(.search),
@@ -382,7 +387,7 @@ body.job-on {
     min-height: var(--bnav-h);
     padding: 0 var(--sp-0);
     border: 0;
-    border-top: 2px solid transparent;
+    border-top: var(--mark-w) solid transparent;
     background: none;
     color: var(--muted);
     font: inherit;
@@ -415,9 +420,9 @@ body.job-on {
   .sheet a {
     display: flex;
     align-items: center;
-    min-height: 44px;
+    min-height: var(--touch-h);
     padding: var(--sp-2) var(--sp-4);
-    border-left: 2px solid transparent;
+    border-left: var(--mark-w) solid transparent;
     color: var(--ink);
     text-decoration: none;
   }
