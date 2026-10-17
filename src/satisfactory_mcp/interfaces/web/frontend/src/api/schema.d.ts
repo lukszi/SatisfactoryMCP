@@ -7134,6 +7134,8 @@ export interface components {
             instance: string;
             /** Resource */
             resource: string;
+            /** Purity */
+            purity: string;
             /** X M */
             x_m: number;
             /** Y M */
