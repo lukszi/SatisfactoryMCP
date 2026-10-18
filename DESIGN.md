@@ -8,8 +8,8 @@ progress and unlocks, spatial resource queries, and LP/MILP factory optimization
 **Licence:** PolyForm Shield 1.0.0 — see [LICENSE](LICENSE) and [§13](#13-licence).
 
 Every number in this document was measured from the local game files or the live save unless explicitly
-marked `[UNVERIFIED]` or `[WIKI]`. Claims were produced by one agent and independently re-checked by a
-second; ~90 corrections from that pass are folded in.
+marked `[UNVERIFIED]` or `[WIKI]`. Claims were independently re-checked; ~90 corrections from that
+pass are folded in.
 
 ---
 
