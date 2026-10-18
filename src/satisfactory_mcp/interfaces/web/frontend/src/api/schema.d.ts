@@ -4425,7 +4425,9 @@ export interface components {
          *     are the wired burners left out of every figure here under ``?biomass=exclude``; both are
          *     0 under ``include``. ``batteries`` counts the Power Storage on the grid, ``storage_mwh`` the
          *     charge they hold and ``storage_capacity_mwh`` the most they can; all three are 0 on a grid
-         *     with none, and none of them is in either headroom.
+         *     with none, and none of them is in either headroom. ``switched_off`` counts the consumers
+         *     behind a power switch standing off and ``switched_off_draw_mw`` their maximum consumption,
+         *     which ``draw_mw`` includes and neither measured figure does.
          */
         Ledger: {
             /** Generation Mw */
@@ -4460,6 +4462,10 @@ export interface components {
             storage_mwh: number;
             /** Storage Capacity Mwh */
             storage_capacity_mwh: number;
+            /** Switched Off */
+            switched_off: number;
+            /** Switched Off Draw Mw */
+            switched_off_draw_mw: number;
         };
         /**
          * MachineIssue
@@ -6346,6 +6352,10 @@ export interface components {
             unwired_draw_mw: number;
             /** Unwired Paused */
             unwired_paused: number;
+            /** Switched Off Consumers */
+            switched_off_consumers: number;
+            /** Switched Off Draw Mw */
+            switched_off_draw_mw: number;
             /** Biomass Counted */
             biomass_counted: boolean;
             /** Biomass Generators */

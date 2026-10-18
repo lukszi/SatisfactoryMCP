@@ -224,6 +224,13 @@ def power_report(
             f"{power['unwired_generators']} generator(s) rated "
             f"{render.num(power['unwired_generation_mw'])} MW"
         )
+    if power["switched_off_consumers"]:
+        notes.append(
+            f"{power['switched_off_consumers']} machine(s) rated "
+            f"{render.num(power['switched_off_draw_mw'])} MW stand behind a power switch "
+            "standing off: in the nameplate draw, since switching it on adds them, and out "
+            "of the measured one"
+        )
 
     starved = power["starved_generators"]
     body = render.table(("generator", "count", "MW"), _generator_rows(power))

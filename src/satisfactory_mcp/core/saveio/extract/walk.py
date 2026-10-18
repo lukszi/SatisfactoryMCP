@@ -211,6 +211,8 @@ class _ProjectionWalk:
     wire_ends: dict[str, list[tuple[str, str]]] = field(
         default_factory=dict[str, list[tuple[str, str]]]
     )
+    #: ``mHiddenConnections`` pairs of component paths: power joined without a wire (§6.12b).
+    hidden_links: list[tuple[str, str]] = field(default_factory=list[tuple[str, str]])
     #: Power switches by short name, given their two sides once every wire is read.
     switches: dict[str, BuildableRecord] = field(default_factory=dict[str, BuildableRecord])
 
@@ -309,6 +311,10 @@ class _ProjectionWalk:
                 self.wire_ends.setdefault(wire_path, []).append(
                     (instance.rsplit(".", 2)[-2], instance.rsplit(".", 1)[-1])
                 )
+        for hidden in as_sequence(properties.get("mHiddenConnections") or []):
+            other = ref_path(hidden)
+            if other and "." in instance:
+                self.hidden_links.append((instance, other))
 
     def _on_wire_geometry(self, instance: str, raw: SaveValue) -> None:
         # Keyed on the property, so a modded power line is read too. Not a drop when it will
@@ -566,6 +572,7 @@ class _ProjectionWalk:
     def finish(self, save: ParsedSave) -> None:
         out = self.out
         self._attach_component_records()
+        hidden_power = power.hidden_power(self.hidden_links, self.actors)
         # Freezes ``actors``: every table after this joins against the snapshot below.
         power_edges, out["power"] = power.power_network(
             self.wire_ends,
@@ -580,6 +587,7 @@ class _ProjectionWalk:
             "roles": self.roles.names(),
             "material": self.material_edges,
             "power": power_edges,
+            "hidden_power": hidden_power,
         }
         out["building_counts"] = dict(sorted(self.building_counts.items()))
         out["belts"] = routes.belts(self.chain_actors, self.actors, self.drops)

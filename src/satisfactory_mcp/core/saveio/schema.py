@@ -399,6 +399,8 @@ class GraphTables(TypedDict):
     roles: list[str]
     material: list[MaterialEdge]
     power: list[PowerEdge]
+    #: Actors the game joins with no wire, one row of indices per group (§6.12b). Schema 26.
+    hidden_power: NotRequired[list[list[int]]]
 
 
 class Projection(TypedDict):

@@ -150,14 +150,16 @@ export function drawMachines(data: MachinesResponse): void {
       // about the same rectangle.
       const blocked = m.state === BLOCKED;
       const stopped = m.actionable && !blocked;
-      const idle = stopped || m.state === "paused";
+      // Paused and switched off are both the player's choice: hollow and dashed alike.
+      const chosen = m.state === "paused" || m.state === "switched off";
+      const idle = stopped || chosen;
       const shape = data.shapes[m.cls];
       const piece = L.polygon(outlineLatLngs(m.x_m, m.y_m!, m.yaw, shape, w, l), {
         color: machineOutline(blocked, stopped, KIND_COLOUR[kind]),
         fillColor: KIND_COLOUR[kind],
         weight: m.actionable ? 3 : 1,
         fillOpacity: idle ? 0.15 : 0.65,
-        dashArray: m.state === "paused" ? "2,2" : undefined,
+        dashArray: chosen ? "2,2" : undefined,
       }).bindPopup(
         popup([
           ["building", m.name],

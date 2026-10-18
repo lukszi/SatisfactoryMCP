@@ -10,7 +10,7 @@ Handler names are operation_ids (wire rule 1).
 
 from __future__ import annotations
 
-from collections import Counter
+from collections import Counter, deque
 from collections.abc import Hashable
 from dataclasses import dataclass
 
@@ -23,6 +23,7 @@ from .....core.saveio.schema import BuildableRecord
 from .....core.singleflight import Singleflight
 from .....domain.factories import candidates
 from .....domain.factories.health import assess
+from .....domain.factories.model import FactoryGraph
 from .....domain.power.report import (
     BatteryBank,
     MachineGroups,
@@ -59,7 +60,9 @@ class Ledger(TypedDict):
     are the wired burners left out of every figure here under ``?biomass=exclude``; both are
     0 under ``include``. ``batteries`` counts the Power Storage on the grid, ``storage_mwh`` the
     charge they hold and ``storage_capacity_mwh`` the most they can; all three are 0 on a grid
-    with none, and none of them is in either headroom."""
+    with none, and none of them is in either headroom. ``switched_off`` counts the consumers
+    behind a power switch standing off and ``switched_off_draw_mw`` their maximum consumption,
+    which ``draw_mw`` includes and neither measured figure does."""
 
     generation_mw: float
     starved_generation_mw: float
@@ -77,6 +80,8 @@ class Ledger(TypedDict):
     batteries: int
     storage_mwh: float
     storage_capacity_mwh: float
+    switched_off: int
+    switched_off_draw_mw: float
 
 
 class GeneratorGroup(TypedDict):
@@ -196,6 +201,8 @@ def _ledger(report: PowerReport, bank: BatteryBank) -> Ledger:
         "batteries": bank.batteries,
         "storage_mwh": round(bank.stored_mwh, 1),
         "storage_capacity_mwh": round(bank.capacity_mwh, 1),
+        "switched_off": report["switched_off_consumers"],
+        "switched_off_draw_mw": round(report["switched_off_draw_mw"], 1),
     }
 
 
@@ -272,8 +279,9 @@ def _starved(report: PowerReport, places: _Places) -> list[StarvedGenerator]:
 def _factory_draws(
     sub: MachineGroups, names: list[str], label_of: dict[str, str], game: GameData
 ) -> list[FactoryDraw]:
-    """Each named factory's draw from this circuit's consumers only, so a factory spanning two
-    circuits is split between them rather than counted on both."""
+    """Each named factory's draw from this circuit's live consumers only, so a factory spanning
+    two circuits is split between them rather than counted on both, and its machines behind an
+    off switch are left to the circuit's own figure."""
     own: dict[str, MachineGroups] = {
         name: {"machines": [], "extractors": [], "generators": []} for name in names
     }
@@ -296,6 +304,36 @@ def _factory_draws(
     return rows
 
 
+def _is_battery(record: BuildableRecord, game: GameData) -> bool:
+    building = game.buildings.get(record["cls"])
+    return building is not None and building.power_store_capacity_mwh > 0
+
+
+def _fold_switched(
+    graph: FactoryGraph, grids: list[list[str]], live: set[int], dead: set[int]
+) -> list[tuple[list[str], set[str]]]:
+    """``grids`` with each ``dead`` one folded into the ``live`` grid nearest it across off
+    switches: what flipping them would join. Each entry is the members and the folded ones."""
+    links = graph.switch_links(grids)
+    owner = {i: i for i in sorted(live)}
+    queue = deque(owner)
+    while queue:
+        at = queue.popleft()
+        for near in sorted(links.get(at, ())):
+            if near in dead and near not in owner:
+                owner[near] = owner[at]
+                queue.append(near)
+    folded: dict[int, list[str]] = {}
+    for i, j in owner.items():
+        if i != j:
+            folded.setdefault(j, []).extend(grids[i])
+    return [
+        (grid + folded.get(i, []), set(folded.get(i, ())))
+        for i, grid in enumerate(grids)
+        if i not in owner or owner[i] == i
+    ]
+
+
 def _circuit_rows(
     st: WorldState, placed: Placed, label_of: dict[str, str], counted: bool
 ) -> list[tuple[CircuitRow, set[str], PowerReport, BatteryBank]]:
@@ -312,7 +350,11 @@ def _circuit_rows(
         instance_leaf(r["instance"]): r for r in st.projection.get("facilities") or ()
     }
     rows: list[tuple[CircuitRow, set[str], PowerReport, BatteryBank]] = []
-    for component in graph.grids():
+    grids = graph.grids()
+    banked = {leaf for leaf, r in facilities.items() if _is_battery(r, st.game)}
+    live = {i for i, grid in enumerate(grids) if any(n in generators for n in grid)}
+    dead = {i for i, grid in enumerate(grids) if i not in live and not banked.intersection(grid)}
+    for component, off in _fold_switched(graph, grids, live, dead):
         members = set(component)
         sub: MachineGroups = {
             "machines": [r for leaf, r in machines.items() if leaf in members],
@@ -322,7 +364,13 @@ def _circuit_rows(
         bank = battery_bank((r for leaf, r in facilities.items() if leaf in members), st.game)
         if not any(sub.values()) and not bank.batteries:
             continue
-        report = PowerLedger(projection=sub, game=st.game).power_report(biomass=counted)
+        ledger = PowerLedger(projection=sub, game=st.game, switched_off=frozenset(off))
+        report = ledger.power_report(biomass=counted)
+        lit: MachineGroups = {
+            "machines": [r for r in sub["machines"] if instance_leaf(r["instance"]) not in off],
+            "extractors": [r for r in sub["extractors"] if instance_leaf(r["instance"]) not in off],
+            "generators": sub["generators"],
+        }
         standing = [leaf for leaf in component if leaf in placed]
         points = [placed[leaf][:2] for leaf in standing]
         centre = geo.centroid(points)
@@ -336,7 +384,7 @@ def _circuit_rows(
             "consumers": len(sub["machines"]) + len(sub["extractors"]),
             "poles": sum(1 for leaf in component if graph.kind(leaf) in ("pole", "tower")),
             "factories": _factory_draws(
-                sub, [name for name, _count in named.most_common()], label_of, st.game
+                lit, [name for name, _count in named.most_common()], label_of, st.game
             ),
             "factory_count": len(named),
             "centroid_m": None if centre is None else point_m(centre),

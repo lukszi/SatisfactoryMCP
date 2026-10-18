@@ -49,6 +49,9 @@ def build_graph(projection: Projection) -> FactoryGraph:
         if len(row) < 2:
             continue
         graph.power.append(Edge(a=actors[row[0]], b=actors[row[1]]))
+    # Rail power and the like: the game joins these with no wire (save-projection.md §6.12b).
+    for group in payload.get("hidden_power") or ():
+        graph.power.extend(Edge(a=actors[a], b=actors[b]) for a, b in itertools.pairwise(group))
     for record in projection.get("facilities") or ():
         if record.get("switch_on") is False:
             graph.switched_off.add(instance_leaf(record["instance"]))

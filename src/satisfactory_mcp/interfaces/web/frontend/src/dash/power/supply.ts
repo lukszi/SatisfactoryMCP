@@ -22,6 +22,8 @@ export interface Supply {
   np: number;
   /** Power consumption, as measured. */
   ms: number;
+  /** The part of `np` behind a power switch standing off, drawn hatched at its end. */
+  off?: number;
   /** Capacity unknown (a generator type game data cannot rate): no line, no overdraw. */
   unknown?: boolean;
 }
@@ -76,9 +78,11 @@ export function supplyBlock(s: Supply, uncounted: Uncounted[], split?: SplitDraw
     if (!known || v <= s.cap) return html`<i class="${cls}" style="width:${pctW(p(v))}"></i>`;
     return html`<i class="${cls}" style="width:${pctW(p(s.cap))}"></i><i class="${cls} ov" style="left:${pctW(p(s.cap))};width:${pctW(p(v - s.cap))}"></i>`;
   };
+  const offMw = s.off ?? 0;
+  const off = offMw > 0 ? html`<i class="np off" style="left:${pctW(p(s.np - offMw))};width:${pctW(p(offMw))}" title="${mw(offMw) + " " + WORDS.behindSwitch}"></i>` : "";
   const rows: Row[] = [
     { key: WORDS.capacity, tip: "", track: segs.length ? html`${segs}` : html`<span class="none">${WORDS.noGenerator}</span>`, split: true, value: known && s.gen > 0 ? s.cap : null, over: false },
-    { key: WORDS.maxConsumption, tip: WORDS.maxConsumptionTip, track: split ? split.np(p) : draw(s.np, "np"), split: !!split, value: s.np, over: known && s.np > s.cap },
+    { key: WORDS.maxConsumption, tip: WORDS.maxConsumptionTip, track: split ? split.np(p) : html`${draw(s.np - offMw, "np")}${off}`, split: !!split, value: s.np, over: known && s.np > s.cap },
     { key: WORDS.consumption, tip: WORDS.consumptionTip, track: split ? split.ms(p) : draw(s.ms, "ms"), split: !!split, value: s.ms, over: known && s.ms > s.cap },
   ];
   const cells = rows.map(function (r, i) {

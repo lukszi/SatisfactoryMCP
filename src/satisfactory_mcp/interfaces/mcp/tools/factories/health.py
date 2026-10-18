@@ -366,6 +366,12 @@ def _state_notes(report: HealthReport) -> list[str]:
             "on, so the wire reaches them and no power does -- a different build to finish "
             "from the row above: " + _named(report.no_generator)
         )
+    if report.switched_off:
+        notes.append(
+            f"{len(report.switched_off)} machine(s) stand behind a power switch standing off: "
+            "a generator reaches them once it is on, so not a wiring fault: "
+            + _named(report.switched_off)
+        )
     if report.by_state["unmonitored"]:
         notes.append(
             f"{report.by_state['unmonitored']} machine(s) keep no productivity monitor, "
