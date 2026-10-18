@@ -123,6 +123,8 @@ def nodes(
     unlocked: set[str] | None = None
     try:
         st = world_state(request, save, world)
+        # A randomized world's resources and purities; the map's own when the save fails.
+        table = spatial_nodes.nodes_for(st.projection)
         taken = spatial_nodes.occupancy_by_node(st.projection)
         unlocked = st.unlocked_building_ids
     except Exception as exc:

@@ -341,7 +341,7 @@ def world_nodes(
                 "sea_level_m": water["sea_level_m"],
             }
         ),
-        "choices": node_search.filter_choices(game),
+        "choices": node_search.filter_choices(game, st),
         "notes": node_search.page_notes(found, st),
         "stale": spatial_nodes.table_age(
             st.header if st else None, None, [node["instance"] for node in found.rows]
@@ -442,7 +442,12 @@ def world_regions(
     resource_id = resolve_item(game, resource) if resource else None
     if resource and resource_id is None:
         return error_response(f"unknown resource {resource!r}")
-    table = spatial_nodes.load_nodes()
+    try:
+        projection = world_state(request, save, world).projection
+    except Exception:
+        # The counts need no save; without one they are the map's own.
+        projection = None
+    table = spatial_nodes.nodes_for(projection)
     region_map = spatial_regions.load_regions()
     return {
         "resource": resource_id,

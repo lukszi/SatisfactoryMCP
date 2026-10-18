@@ -2,9 +2,10 @@
 
     uv run python tools/gen_resource_nodes.py
 
-Node resource type and purity are NOT serialized in save files -- node actors carry only
-``mResourcesLeft`` and a transform -- so this static table is the only source. It is a
-projection of ``data/world_resource_nodes.json``: filter the classes, rename the fields,
+A vanilla save does not serialize a node's resource type or purity -- its node actors carry
+only ``mResourcesLeft`` and a transform -- so this table holds the map's own layout. A 1.2
+randomized world also writes each node's override, which the server lays over this table
+(docs/save-projection.md §6.18). It is a projection of ``data/world_resource_nodes.json``: filter the classes, rename the fields,
 attach the satellite -> fracking-core link the game ships as ``mCore``. ``main``
 re-measures both the grouping and the projection on every run and dies rather than
 writing, so the two committed artifacts cannot drift apart.
@@ -313,8 +314,10 @@ def build_meta(
     return {
         "description": "Static resource node table: type, purity, world position.",
         "why": (
-            "Save files serialize only mResourcesLeft for node actors; resource "
-            "type and purity are level data and must come from a static table."
+            "A vanilla save writes only mResourcesLeft for a node actor; resource type "
+            "and purity are level data, so this table holds the map's own layout. A 1.2 "
+            "randomized world also writes mResourceClassOverride and mPurityOverride per "
+            "node, which the server lays over this table (docs/save-projection.md, 6.18)."
         ),
         "sources": {
             "primary": {

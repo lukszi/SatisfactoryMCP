@@ -6,18 +6,9 @@ from __future__ import annotations
 from ..schema import MapMarkerRecord, Position
 from .census import Drops
 from .parser import SaveValue
-from .readers import as_sequence, optional_int, struct_fields, to_float
+from .readers import as_sequence, enum_value, optional_int, struct_fields, to_float
 
 __all__ = ["map_markers"]
-
-
-def _enum_value(raw: SaveValue | None) -> str | None:
-    """``['ERepresentationType', 'ERepresentationType::RT_MapMarker']`` -> ``RT_MapMarker``."""
-    if isinstance(raw, list) and raw:
-        raw = raw[-1]
-    if not isinstance(raw, str) or not raw:
-        return None
-    return raw.rpartition("::")[2]
 
 
 def _location(raw: SaveValue | None) -> Position | None:
@@ -61,9 +52,9 @@ def map_markers(raw: SaveValue | None, drops: Drops) -> list[MapMarkerRecord]:
                 "pos": pos,
                 "colour": _colour(fields.get("Color")),
                 "icon_id": icon,
-                "type": _enum_value(fields.get("MapMarkerType")),
+                "type": enum_value(fields.get("MapMarkerType")),
                 "category": category if isinstance(category, str) else "",
-                "compass": _enum_value(fields.get("CompassViewDistance")),
+                "compass": enum_value(fields.get("CompassViewDistance")),
             }
         )
     return out

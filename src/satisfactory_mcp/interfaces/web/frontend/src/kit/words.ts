@@ -1,9 +1,9 @@
 /* The page's canonical terms, one spelling per concept.
  * The reasoning behind each choice is in docs/frontend_vision.md. */
 
-import { count } from "./format";
+import { count, pct } from "./format";
 
-import type { TableAge } from "../api/shapes";
+import type { GameMode, TableAge } from "../api/shapes";
 
 export const WORDS = {
   needAction: "need action",
@@ -156,4 +156,36 @@ export function version(n: number): string {
 export function counted(n: number, one: string, many?: string): string {
   const noun = n === 1 ? one : (many ?? one + "s");
   return count(n) + " " + noun;
+}
+
+/* The New Game screen's names for a 1.2 game mode, "Default" left out. */
+const NODE_LAYOUTS: Record<string, string> = {
+  strict: "random nodes",
+  basic_rich: "basic resource rich",
+  advanced_rich: "advanced resource rich",
+  fossil_fuel_rich: "fossil fuel rich",
+};
+const NODE_PURITIES: Record<string, string> = {
+  all_pure: "all pure",
+  increase: "mostly pure",
+  all_normal: "average purity",
+  decrease: "mostly impure",
+  all_impure: "all impure",
+  all_random: "random purity",
+};
+
+/** A world's game mode as one meta segment: layout, purity, and each multiplier off 100%.
+ *  Null for a default game, so the header leaves the segment out. */
+export function gameModeText(mode: GameMode | null | undefined): string | null {
+  if (!mode) return null;
+  const parts: string[] = [];
+  const layout = [NODE_LAYOUTS[mode.node_randomization], NODE_PURITIES[mode.node_purity]].filter(Boolean);
+  if (layout.length) parts.push(layout.join(", "));
+  const factors: [string, number][] = [
+    ["power", mode.energy_cost],
+    ["parts", mode.parts_cost],
+    ["space elevator", mode.space_parts_cost],
+  ];
+  for (const [label, value] of factors) if (value !== 1) parts.push(label + " " + pct(value));
+  return parts.length ? parts.join(" · ") : null;
 }

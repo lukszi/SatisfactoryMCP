@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 __all__ = [
     "as_sequence",
     "class_from_type_path",
+    "enum_value",
     "iter_objects",
     "optional_float",
     "optional_int",
@@ -80,6 +81,15 @@ def as_sequence(value: SaveValue) -> Sequence[SaveValue]:
 def class_from_type_path(type_path: str) -> str:
     """``/Game/.../Build_X.Build_X_C`` -> ``Build_X_C``; ``""`` for a component."""
     return type_path.rsplit(".", 1)[-1] if type_path else ""
+
+
+def enum_value(raw: SaveValue | None) -> str | None:
+    """``['ERepresentationType', 'ERepresentationType::RT_MapMarker']`` -> ``RT_MapMarker``."""
+    if isinstance(raw, list) and raw:
+        raw = raw[-1]
+    if not isinstance(raw, str) or not raw:
+        return None
+    return raw.rpartition("::")[2]
 
 
 def ref_path(value: object) -> str | None:

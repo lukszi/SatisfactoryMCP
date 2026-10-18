@@ -90,7 +90,7 @@ def player_surroundings(
         return out
     x, y, _z = pos
     out.label = regions_mod.load_regions().label_for(x, y)
-    table = nodes_mod.load_nodes()
+    table = nodes_mod.nodes_for(st.projection)
     near = nodes_mod.annotate_for_save(table.within((x, y), radius_m), game, st)
     out.nodes = _with_headings(nodes_mod.measure_from(near, (x, y)), x, y)
     out.nodes.sort(key=lambda n: n["distance_m"])
@@ -104,7 +104,7 @@ def nearest_nodes(
     st: WorldState | None, game: GameData, x: float, y: float, limit: int = NEAREST
 ) -> list[MeasuredNode]:
     """The ``limit`` nodes closest to a point, annotated, each with ``distance_m``."""
-    table = nodes_mod.load_nodes()
+    table = nodes_mod.nodes_for(st.projection if st else None)
     ranked = sorted(table.nodes, key=lambda n: geo.distance_m((x, y), (n["x"], n["y"])))[:limit]
     return nodes_mod.measure_from(nodes_mod.annotate_for_save(ranked, game, st), (x, y))
 
@@ -112,7 +112,7 @@ def nearest_nodes(
 def _fields_near(
     st: WorldState | None, game: GameData, x: float, y: float
 ) -> list[node_search.FieldView]:
-    table = nodes_mod.load_nodes()
+    table = nodes_mod.nodes_for(st.projection if st else None)
     close = {
         n["resource"]
         for n in table.nodes
@@ -197,7 +197,7 @@ def describe_point(
     ``st`` may be ``None``: the node table and the regions need no save, and what needs one
     comes back empty (``conduits`` and ``pickups_total`` as ``None``).
     """
-    table = nodes_mod.load_nodes()
+    table = nodes_mod.nodes_for(st.projection if st else None)
     probe = elevation.probe(
         x,
         y,

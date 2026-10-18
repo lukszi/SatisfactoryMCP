@@ -27,6 +27,7 @@ from ....core.gamedata.search import match_recipes, resolve_item
 from ... import settings
 from ...spatial import nodes as nodes_mod
 from ...spatial.nodes.selectors import Selection, select_nodes
+from ...world import gamemode
 from .. import siting as siting_mod
 from ..stored.plan_args import inherits_default, is_power
 from . import prices as prices_mod
@@ -170,7 +171,7 @@ def select_for(game: GameData, state: WorldState, sources: list[str] | None) -> 
     into a cone from the player (docs/planning.md §8.9). ``stored.provenance`` re-resolves
     through here too, so a staleness check measures the field the plan plans over.
     """
-    table = nodes_mod.load_nodes()
+    table = nodes_mod.nodes_for(state.projection)
     return select_nodes(
         sources,
         table.nodes,
@@ -207,6 +208,8 @@ class PlanRequest:
     site: siting_mod.Siting | None = None
     #: A ``site_at`` that would not resolve: reported, never raised.
     site_errors: list[str] = field(default_factory=list[str])
+    #: This world's node table, which a randomized world re-rolls.
+    nodes: nodes_mod.NodeTable | None = None
 
 
 def _shared_settings() -> _Shared:
@@ -507,6 +510,8 @@ def build_scenario(
         # Zero spends none: a fixed number exist on the whole map (docs/planning.md §8.2f).
         sloop_budget=max(0, int(sloops or 0)),
         grid_import_mw=None if MW in export_ids else 1e6,
+        energy_cost=gamemode.energy_cost(state.projection),
+        parts_cost=gamemode.parts_cost(state.projection),
         **payback_fields,
     )
 
@@ -539,6 +544,7 @@ def build_scenario(
         site=site,
         site_errors=site_errors,
         required=pool.required,
+        nodes=nodes_mod.nodes_for(state.projection),
     )
 
 
@@ -591,6 +597,11 @@ def _plan_id(sc: Scenario, only_free_nodes: bool, required: list[str] | None = N
     if sc.excluded_pids:
         # Only when present, so a plan without bans keeps the id it was stored under.
         fields["excluded_pids"] = sorted(sc.excluded_pids)
+    if sc.energy_cost != 1.0:
+        # Likewise only off the default: a vanilla world's ids stay what they were.
+        fields["energy_cost"] = sc.energy_cost
+    if sc.parts_cost != 1.0:
+        fields["parts_cost"] = sc.parts_cost
     payload = json.dumps(
         {
             **fields,

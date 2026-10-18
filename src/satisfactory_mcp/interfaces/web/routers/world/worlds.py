@@ -14,10 +14,10 @@ from fastapi.responses import JSONResponse
 from typing_extensions import TypedDict
 
 from .....core.saveio import projection as proj
-from .....core.saveio.schema import SaveHeader
+from .....core.saveio.schema import GameMode, SaveHeader
 from .....domain.power.views import PowerReport
 from .....domain.progression.views import ProgressionSummary
-from .....domain.world import pin
+from .....domain.world import gamemode, pin
 from ...serial import Biomass, PlayerPosition, error_response, require_world, xyz_m
 
 __all__ = ["router"]
@@ -131,6 +131,8 @@ class SummaryResponse(TypedDict):
     power: PowerReport
     progression: ProgressionSummary
     player: PlayerPosition
+    #: The 1.2 new-game options: node layout and cost multipliers, defaults on an older save.
+    game_mode: GameMode
 
 
 @router.get("/summary", response_model=SummaryResponse)
@@ -151,4 +153,5 @@ def summary(
         "power": st.power_report(biomass=biomass == "include"),
         "progression": st.progression(),
         "player": xyz_m(st.player_position()),
+        "game_mode": gamemode.mode_of(st.projection),
     }

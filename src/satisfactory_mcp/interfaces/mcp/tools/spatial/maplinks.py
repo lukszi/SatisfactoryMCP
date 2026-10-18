@@ -132,7 +132,7 @@ def show_on_map(
     g = app.game()
     st, _reason = app.load_world_or_none(save, world, as_of)
 
-    table = nodes_mod.load_nodes()
+    table = nodes_mod.nodes_for(st.projection if st else None)
     text = at.strip()
     kind, _sep, value = text.partition(":")
     if kind.casefold() == "resource":
@@ -183,6 +183,11 @@ def show_on_map(
         "running; the public one is satisfactory-calculator.com and knows the vanilla "
         "world only -- nothing you built is on it"
     )
+    if table.randomized:
+        notes.append(
+            "this world's resource nodes are randomized: the public map's node layers show "
+            "the vanilla layout, the local map this save's"
+        )
     if pin:
         body += "\n" + _pin_place(st, text, node, label, origin, resources, ctx)
     return render.envelope(

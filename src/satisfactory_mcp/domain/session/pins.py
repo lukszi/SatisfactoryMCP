@@ -237,7 +237,8 @@ class _World:
     def nodes(self) -> dict[str, NodeRecord]:
         if self._nodes is None:
             self._nodes = {
-                instance_leaf(node["instance"]): node for node in nodes_mod.load_nodes().nodes
+                instance_leaf(node["instance"]): node
+                for node in nodes_mod.nodes_for(self.st.projection).nodes
             }
         return self._nodes
 

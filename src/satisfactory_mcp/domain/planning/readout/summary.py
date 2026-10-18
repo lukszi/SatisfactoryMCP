@@ -146,7 +146,9 @@ def _blockers(errors: list[str], failure_notes: list[str]) -> list[str]:
     return named + [n for n in failure_notes if n.startswith("required in force")]
 
 
-def names_for(g: GameData, args: PlanArgs) -> dict[str, str]:
+def names_for(
+    g: GameData, args: PlanArgs, nodes: nodes_mod.NodeTable | None = None
+) -> dict[str, str]:
     """Display names for the ids a request can hold: recipes, node instances and items."""
     out: dict[str, str] = {}
     for member in [*args.required, *args.banned, *args.only_recipes, *args.row_overclock]:
@@ -155,7 +157,7 @@ def names_for(g: GameData, args: PlanArgs) -> dict[str, str]:
             out[member] = recipe.name
     wanted = [m for m in args.sources if m.startswith("node:")]
     if wanted:
-        table = nodes_mod.load_nodes().by_instance()
+        table = (nodes or nodes_mod.load_nodes()).by_instance()
         table.update({instance_leaf(k): n for k, n in table.items()})
         for member in wanted:
             node = table.get(member[len("node:") :])

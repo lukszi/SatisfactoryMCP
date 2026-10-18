@@ -29,7 +29,7 @@ class _AddedCost(NamedTuple):
 
 
 def _added_build_cost(
-    g: GameData, added: dict[str, int], build_points: dict[str, float]
+    g: GameData, added: dict[str, int], build_points: dict[str, float], parts_cost: float = 1.0
 ) -> _AddedCost:
     """What the machines a stop adds over the plain build cost: parts, floor and points."""
     amounts: dict[str, float] = {}
@@ -38,7 +38,7 @@ def _added_build_cost(
         building = g.buildings.get(cls)
         if building is None or count <= 0:
             continue
-        for item, amount in cost_of(g, cls, count).parts.items():
+        for item, amount in cost_of(g, cls, count, parts_cost).parts.items():
             amounts[item] = amounts.get(item, 0.0) + amount
         if building.footprint is not None:
             area += building.footprint.area_m2 * count
@@ -63,7 +63,7 @@ def _stops(
             for cls, n in r["buildings"].items()
             if n > plain["buildings"].get(cls, 0)
         }
-        cost = _added_build_cost(g, added, sc.build_points)
+        cost = _added_build_cost(g, added, sc.build_points, sc.parts_cost)
         saved = plain["draw_mw"] - r["draw_mw"]
         average = (
             cost.points / (saved * sc.power_price) if saved > 0.05 and sc.power_price else None

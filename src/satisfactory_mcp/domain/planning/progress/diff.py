@@ -24,6 +24,7 @@ from ....core.saveio.schema import (
 from ....core.text import plural
 from ...spatial import geo
 from ...spatial import nodes as nodes_mod
+from ...world import gamemode
 from ...world.state import WorldState
 from ..layout.materials import cost_of
 from ..solver.graph import chain_depth_of_rates
@@ -640,10 +641,11 @@ def _shortfall_lines(game: GameData, state: WorldState, rows: list[DiffRow]) -> 
     contents are not carryable, and summing them reported Water 5,556,375.
     """
     needed: dict[str, float] = {}
+    parts = gamemode.parts_cost(state.projection)
     for row in rows:
         if row.build <= 0:
             continue
-        for item, amount in cost_of(game, row.building_id, row.build).parts.items():
+        for item, amount in cost_of(game, row.building_id, row.build, parts).parts.items():
             needed[item] = needed.get(item, 0.0) + amount
 
     stock = state.stock()

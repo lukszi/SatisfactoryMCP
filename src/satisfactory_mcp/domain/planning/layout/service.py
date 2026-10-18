@@ -16,6 +16,7 @@ from ....core.gamedata.model import Building, GameData
 from ...factories import candidates
 from ...factories.select import resolve_factory
 from ...spatial import geo
+from ...world import gamemode
 from ...world.state import WorldState
 from ..solver.carrier import TierChoice
 from ..solver.model import ProcessRow, Solution
@@ -86,7 +87,9 @@ def _materials(
         else []
     )
     rows: list[MachineCount] = [*sol.processes, *extra]
-    return build_materials(g, rows, st.stock(), layout.total_foundations)
+    return build_materials(
+        g, rows, st.stock(), layout.total_foundations, gamemode.parts_cost(st.projection)
+    )
 
 
 def _trunks(g: GameData, st: WorldState, prepared: PreparedPlan, factory: str | None) -> TrunkPlan:

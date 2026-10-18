@@ -39,7 +39,9 @@ def list_regions(
         return gone
     g = app.game()
     regions = regions_mod.load_regions()
-    table = nodes_mod.load_nodes()
+    # No save argument: the default world's counts, or the map's own without one.
+    st, _reason = app.load_world_or_none()
+    table = nodes_mod.nodes_for(st.projection if st else None)
     resource_id = app.resolve_item_id(resource) if resource else None
     if resource and resource_id is None:
         return f"no resource matching {resource!r}"

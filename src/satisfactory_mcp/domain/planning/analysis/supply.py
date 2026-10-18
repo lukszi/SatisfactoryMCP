@@ -188,7 +188,7 @@ def diagnose(
 
     Costs exactly one extra solve, and only on the infeasible path.
     """
-    table = table or nodes_mod.load_nodes()
+    table = table or req.nodes or nodes_mod.load_nodes()
     sc = req.scenario
     unmakeable_now = unmakeable(req, game)
     supplied = _supplied(req)

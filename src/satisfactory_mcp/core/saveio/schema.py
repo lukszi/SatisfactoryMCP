@@ -23,6 +23,7 @@ __all__ = [
     "CrateRecord",
     "ExtractorRecord",
     "FluidBufferRecord",
+    "GameMode",
     "GeneratorRecord",
     "GraphTables",
     "HardDrive",
@@ -343,7 +344,30 @@ class InventoriesBlock(TypedDict):
 
 
 class NodeState(TypedDict):
-    resources_left: int
+    """What the save says about one resource node, keyed by its path in ``node_state``.
+
+    ``resources_left`` only on a depletable node. ``resource`` and ``purity`` only where a
+    randomized world overrides the map's own (§6.18): a fracking core carries a resource
+    and no purity.
+    """
+
+    resources_left: NotRequired[int]
+    resource: NotRequired[str]
+    purity: NotRequired[Literal["pure", "normal", "impure"]]
+
+
+class GameMode(TypedDict):
+    """The new-game options off the game state (§6.18). A pre-1.2 save reads as the defaults.
+
+    The three multipliers are plain factors, 1.0 by default: the game's ``75`` is ``0.75``.
+    """
+
+    node_randomization: str
+    node_purity: str
+    seed: int
+    energy_cost: float
+    parts_cost: float
+    space_parts_cost: float
 
 
 class MapMarkerRecord(TypedDict):
@@ -414,6 +438,7 @@ class Projection(TypedDict):
     inventories: InventoriesBlock
     #: Resource node path -> what is left of a depletable node.
     node_state: dict[str, NodeState]
+    game_mode: GameMode
     players: list[PlayerRecord]
     map_markers: list[MapMarkerRecord]
     graph: GraphTables

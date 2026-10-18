@@ -16,6 +16,7 @@ from ....core.gamedata.constants import WATER_PUMP
 from ....core.gamedata.model import GameData
 from ....core.saveio.records import instance_leaf
 from ....core.text import num
+from ...world import gamemode
 from ...world.sites import near_selector
 from .. import geo, heightfield, ranking
 from .. import regions as regions_mod
@@ -23,6 +24,7 @@ from ..places import resolve_place
 from . import extraction as node_extraction
 from . import skew as node_skew
 from . import table as node_table
+from . import world as node_world
 from .extraction import AnnotatedNode, measure_from
 from .selectors import ResourceResolver, Selection, select_nodes
 from .views import NodeChoices, SiteRow, WaterSummary
@@ -39,6 +41,7 @@ __all__ = [
     "filter_choices",
     "find_nodes",
     "group_into_fields",
+    "mode_notes",
     "page_notes",
     "rank_build_sites",
     "site_row",
@@ -298,7 +301,18 @@ def _tool_notes(
         )
     found.skew = node_skew.skew_for_save(st.header, table)
     notes += node_skew.skew_notes(found.skew, [r["instance"] for r in found.rows])
-    return notes
+    return notes + mode_notes(st)
+
+
+def mode_notes(st: WorldState) -> list[str]:
+    """The save's game mode where it is not the default, and what it means for the nodes."""
+    mode = gamemode.mode_of(st.projection)
+    line = gamemode.summary(mode)
+    if line is None:
+        return []
+    if gamemode.randomized(mode):
+        line += " -- node types and purities are this save's own, not the vanilla map's"
+    return [line]
 
 
 def _fluid_elevation_span(
@@ -329,7 +343,7 @@ def find_nodes(
     ``view`` and ``status`` arrive validated. ``st`` may be ``None``: the table needs no
     save, and without one every node reads as free and reachable, which a note says.
     """
-    table = node_table.load_nodes()
+    table = node_world.nodes_for(st.projection if st else None)
     found = NodeSearchResult(view=view, status=status, save_read=st is not None)
     spec = _selector_spec(sources, resource, purity, kind)
     found.selectors = spec
@@ -366,9 +380,9 @@ def find_nodes(
     return found
 
 
-def filter_choices(game: GameData) -> NodeChoices:
+def filter_choices(game: GameData, st: WorldState | None = None) -> NodeChoices:
     """Every resource the node table holds, with its node count, and the purities and kinds."""
-    table = node_table.load_nodes()
+    table = node_world.nodes_for(st.projection if st else None)
     counts: dict[str, int] = {}
     for n in table.nodes:
         counts[n["resource"]] = counts.get(n["resource"], 0) + 1
@@ -406,7 +420,7 @@ def rank_build_sites(
     resolve_resource: ResourceResolver | None = None,
 ) -> SiteRank:
     """Candidate fields of one resource, best first; ``resource`` is a resolved class id."""
-    table = node_table.load_nodes()
+    table = node_world.nodes_for(st.projection)
     spec = [*(sources or []), f"resource:{resource}"]
     selection = select_nodes(spec, table.nodes, resolve_resource=resolve_resource, st=st)
     out = SiteRank(resource=resource, selection=selection)
@@ -425,6 +439,7 @@ def rank_build_sites(
     out.notes = node_skew.skew_notes(
         node_skew.skew_for_save(st.header, table), [r["instance"] for r in out.rows]
     )
+    out.notes += mode_notes(st)
     return out
 
 

@@ -1297,6 +1297,56 @@ order: `{name, pos, colour, icon_id, type, category, compass}`.
 - The reference world holds six, all `RT_MapMarker`. Stamps and other representation types use
   the same struct and arrive with their own `type`.
 
+### 6.18 Game modes — randomized nodes and cost multipliers
+
+Update 1.2 added game modes, chosen on the New Game screen and fixed for the life of the save.
+Schema 27 reads them. The facts below were measured on one 1.2 save made with random nodes,
+average purity and every multiplier at 75, and the enum spellings come from `FGGameState.h` and
+`FGResourceNode.h`.
+
+**`game_mode`** is read from `BP_GameState_C`: `{node_randomization, node_purity, seed,
+energy_cost, parts_cost, space_parts_cost}`.
+
+- `mNodeRandomization` is `ENodeRandomizationMode`: `none`, `strict` (the screen's "Random"),
+  `basic_rich`, `advanced_rich` or `fossil_fuel_rich`. The header spells the third one
+  `NRM_BasicReach`.
+- `mNodePuritySettings` is `ENodePuritySettings`: `no_change`, `all_pure`, `increase` ("Mostly
+  Pure"), `all_normal` ("Average"), `decrease` ("Mostly Impure"), `all_impure` or `all_random`.
+- `seed` is `mNodeRandomizationSeed`. The game log omits it, but the save holds it.
+- The three multipliers are float32 factors. The game log's `75` is the save's `0.75`, so the
+  log shows a percentage and the save a factor.
+- A save from before 1.2 has none of these properties, so every key reads as its default.
+
+**`node_state`** gains `resource` and `purity` on a randomized world. In the measured save, every
+`BP_ResourceNode`, every `BP_FrackingSatellite` and every `BP_FrackingCore` carries
+`mResourceClassOverride`, and every node and satellite carries `mPurityOverride`
+(`RP_Inpure`/`RP_Normal`/`RP_Pure`). That is 459 nodes, 118 satellites and 17 cores, and they
+match the node table instance for instance. A core carries a resource and no purity. The 31
+geysers carry nothing, because the purity setting does not reach them. A vanilla node writes
+neither property, so its `node_state` entry is unchanged and still holds only `resources_left`.
+
+**The node table is still the map's.** `data/resource_nodes.json` holds the vanilla layout. A
+reader that needs what a node yields asks `spatial.nodes.nodes_for(projection)`, which returns
+the table with each override applied and with each core's resource taken from its own override.
+A core that has no override takes its satellites' resource when they agree on one. On a vanilla
+save, `nodes_for` returns the very same table object. A reader that needs only positions may keep
+`load_nodes()`, because a node never moves. Where no save is in scope, which means the codex, a
+selector resolved without a world, or a failed save read, the answer is the vanilla table.
+
+**What the multipliers change, and what this project applies:**
+
+| option | the game (wiki "New game") | applied here |
+|---|---|---|
+| Power Consumption | "all Power consumption", every building and machine | the planner's processes and the factory view's draw, ×`energy_cost`. Generation is never scaled |
+| Recipe Parts Cost | "the parts cost for each Recipe", rounded to whole parts | build costs: each part of one building is rounded, at least 1, then multiplied by the count. This covers the bill, the shortfall list, payback and build points |
+| Space Elevator | "the part cost for each Space Elevator Phase" | nothing to scale: phase costs are read from the save, which already holds the game's figures (§6.4) |
+
+**Open questions.** It is not yet known whether the parts multiplier also scales the
+ingredients of production recipes. One third-party planner applies it to them. Until an in-game
+check settles it, only build costs are scaled here. The Power page's rated draws are not
+scaled either, because they live in `domain/power`. Measured consumption needs no scaling, since
+the save already records the scaled figure.
+
 ### Schema history
 
 `SCHEMA_VERSION` lives in `core/saveio/projection.py`, which keys the pickle cache on it; the
@@ -1320,6 +1370,7 @@ pickle then disagrees with the code rather than merely being thinner.
 | 24 | adds `hypertubes` (§6.16), `hypertube_entrances` and `map_markers` (§6.17), so the map can draw them |
 | 25 | files power switches as `facilities` with `switch_on` and `switch_sides`, and gives Power Storage `stored_mwh` (§6.12a) |
 | 26 | adds `graph["hidden_power"]`: buildables joined with no wire, rail power above all (§6.12b) |
+| 27 | adds `game_mode`, and a randomized node's `resource` and `purity` in `node_state` (§6.18) |
 
 ---
 
