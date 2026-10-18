@@ -3,7 +3,7 @@
  * it (a bottom sheet on phones). docs/frontend_kit.md, "Items". */
 
 import "./items.css";
-import { replaceDash } from "../../app/nav";
+import { closeTo, go, replaceDash } from "../../app/nav";
 import { settingOn } from "../../app/settings";
 import { state } from "../../app/state";
 import { failedInto, loadingInto } from "../../kit/ui/states";
@@ -150,7 +150,7 @@ function wire(root: HTMLElement, a: ItemsAddress, regrid: () => void): void {
     if (t.id === "items-sort") sorts.item = t.value as ItemSort;
     else if (t.id === "box-sort") sorts.box = t.value as BoxSort;
     else if (t.id === "items-locked") {
-      location.hash = hashFor(itemsDash({ ...a, locked: t.checked }));
+      go(itemsDash({ ...a, locked: t.checked }), "replace");
       return;
     } else return;
     requestRender();
@@ -224,5 +224,5 @@ document.addEventListener("keydown", function (event) {
   if (t.closest && t.closest("input, select, textarea")) return;
   const a = itemsAddress(state.dash.slice(5));
   if (!a.item && !a.box) return;
-  location.hash = hashFor(itemsDash({ ...a, item: "", box: "", rec: "" }));
+  closeTo(itemsDash({ ...a, item: "", box: "", rec: "" }));
 });

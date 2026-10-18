@@ -3,7 +3,7 @@
  * "World". */
 
 import "./world.css";
-import { go } from "../../app/nav";
+import { closeTo, go } from "../../app/nav";
 import { select } from "../../app/selection";
 import { settingChoice } from "../../app/settings";
 import { state } from "../../app/state";
@@ -63,8 +63,12 @@ export function worldTitle(subject: string): string {
 
 /* ---------------------------------------------------------------- controls */
 
+function dashOf(a: WorldAddress, patch: Partial<WorldAddress>): string {
+  return worldDash({ ...a, sel: "", ...patch });
+}
+
 function dash(a: WorldAddress, patch: Partial<WorldAddress>): string {
-  return hashFor(worldDash({ ...a, sel: "", ...patch }));
+  return hashFor(dashOf(a, patch));
 }
 
 function pair(label: string, inner: Safe): Safe {
@@ -115,7 +119,7 @@ function pick(a: WorldAddress, key: string, fromMap: boolean): void {
   const again = a.sel === key;
   if (!again && current?.view.picks[key]) select(current.view.picks[key]!);
   scrollTo = fromMap && !again ? key : "";
-  location.hash = hashFor(worldDash({ ...a, sel: again ? "" : key }));
+  go(worldDash({ ...a, sel: again ? "" : key }), "replace");
 }
 
 function wire(root: HTMLElement, a: WorldAddress, subject: string): void {
@@ -130,7 +134,7 @@ function wire(root: HTMLElement, a: WorldAddress, subject: string): void {
       "w-ckind": { kind: t.value },
       "w-pkind": { kind: t.value },
     };
-    if (patch[t.id]) location.hash = dash(a, patch[t.id]!);
+    if (patch[t.id]) go(dashOf(a, patch[t.id]!), "replace");
   });
   root.addEventListener("click", function (event) {
     const t = event.target as Element;
@@ -144,7 +148,7 @@ function wire(root: HTMLElement, a: WorldAddress, subject: string): void {
     if (drop) {
       const extra = { ...a.extra };
       delete extra[drop.dataset.drop || ""];
-      location.hash = dash(a, { extra });
+      go(dashOf(a, { extra }), "replace");
       return;
     }
     if (t.closest("a, button, input, select, label")) return;
@@ -212,7 +216,7 @@ document.addEventListener("keydown", function (event) {
   const t = event.target as Element;
   if (t.closest && t.closest("input, select, textarea")) return;
   const a = worldAddress(state.dash.slice(5));
-  if (a.sel) location.hash = hashFor(worldDash({ ...a, sel: "" }));
+  if (a.sel) closeTo(worldDash({ ...a, sel: "" }));
 });
 
 function typingInField(): boolean {

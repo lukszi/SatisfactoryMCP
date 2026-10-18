@@ -8,7 +8,7 @@ import { loading } from "../../kit/dashkit";
 import { make } from "../../kit/dom";
 import { keepFocus } from "../../kit/focus";
 import { onReload } from "../../app/load";
-import { dashParts, go, replaceDash } from "../../app/nav";
+import { closeTo, dashParts, go, replaceDash } from "../../app/nav";
 import { onVitals } from "../../app/vitals";
 import { renderPlanPage } from "./plan/page";
 import { landingTab } from "./plan/model";
@@ -92,15 +92,15 @@ function trackShowing(): boolean {
 
 function goToAlternates(plan: string, at: string): void {
   const switching = openPlanKey() === plan && dashParts().rest[1] === "alt";
-  if (!switching) bench.alternatesCloseGoesBack = false;
-  go(at, switching);
+  go(at, switching ? "replace" : "push");
 }
 
 function closeAlternates(): void {
-  const back = bench.alternatesCloseGoesBack && dashParts().rest[1] === "alt";
+  const there = planDash(bench.key, "machines");
+  const open = dashParts().rest[1] === "alt";
   refocusCtl = hideAlternates();
-  if (back) history.back();
-  else go(planDash(bench.key, "machines"), true);
+  if (open) closeTo(there);
+  else go(there, "replace");
   changed();
 }
 

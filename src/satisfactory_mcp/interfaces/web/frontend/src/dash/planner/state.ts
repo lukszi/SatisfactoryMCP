@@ -120,7 +120,6 @@ function freshBench(key: string) {
     selection: null as FocusSelection | null,
     picked: "",
     alternates: null as AlternatesView | null,
-    alternatesCloseGoesBack: false,
     chatChangedRows: {} as Record<string, true>,
     versions: null as VersionsResponse | null,
     versionsError: "",

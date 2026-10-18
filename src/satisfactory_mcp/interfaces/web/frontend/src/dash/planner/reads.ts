@@ -263,7 +263,6 @@ export function showAlternates(item: string, opener?: string): void {
 export function hideAlternates(): string {
   const opener = bench.alternates ? bench.alternates.opener : "";
   bench.alternates = null;
-  bench.alternatesCloseGoesBack = false;
   return opener;
 }
 

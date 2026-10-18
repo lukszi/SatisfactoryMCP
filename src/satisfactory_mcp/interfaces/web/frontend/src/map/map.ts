@@ -271,7 +271,7 @@ export function hashFor(dash: string): string {
 
 export function writeHash(): void {
   wrote = hashFor(state.dash);
-  history.replaceState(null, "", wrote);
+  history.replaceState(history.state, "", wrote); // the entry's stamp stays; see app/nav.ts
 }
 
 /* The exact string the page last put in the address bar, so that a reader of the fragment

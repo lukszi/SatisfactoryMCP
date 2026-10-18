@@ -89,6 +89,27 @@ land elsewhere. A bare first word is a shorthand (`#maps` is `#dash=maps`).
   last; `#dash=settings/maps` goes to `#maps`.
 - Map types, jobs, the generate form and inputs are the `#maps` page (`dash/maps/`).
 
+## Navigation
+
+Back undoes where am I, never how it's shown. Every move goes through `app/nav.ts`; the
+decisions are pure in `app/shell/history.ts`.
+
+| Move | History |
+|---|---|
+| top-level page, open object (factory, plan, circuit, item sheet), object tab, version view, jump-search pick, Map tab, world or save switch | push |
+| open a drawer or dialog (settings, alternates) | push |
+| filters, sorts, picks, segmented controls, floor step, settings section, map pan/zoom, redirects, landing tab, renames | replace |
+| close (×, Esc, "back to …") | Back if this entry was opened from that parent, else replace to the parent |
+| breadcrumb | Back if the entry before is that parent, else push the parent |
+
+- Each entry carries a stamp in `history.state`: its id, the dash it was opened from and the
+  last `#dash` scroll (saved on click and when scrolling stops). A link the browser followed
+  is stamped on arrival; `writeHash` keeps the stamp.
+- Back or Forward restores the entry's scroll; a new move starts at the top. A fresh deep link
+  has no earlier entry of this site, so Back leaves the site; no entries are ever inserted.
+- Links keep a real href for middle-click; `data-nav="up"`, `"close"` or `"replace"` on the
+  anchor makes a plain click follow the rule (crumbs, × and "back to" links, `seg` links).
+
 ## Overview
 
 `dash/overview/` is the Overview (`#dash=overview`, and where an unknown `dash=` lands): five

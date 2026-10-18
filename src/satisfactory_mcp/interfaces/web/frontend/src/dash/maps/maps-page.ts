@@ -28,7 +28,7 @@ let jobsHost: HTMLElement | null = null;
 
 function header(): Safe {
   const settings = hashFor(state.dash).replace(/&settings=[^&]*/, "") + "&settings=map";
-  return html`<header class="phead"><nav class="crumbs" aria-label="breadcrumb"><a href="${hashFor("")}">Map</a><span class="sep">/</span><span aria-current="page">map types</span></nav>
+  return html`<header class="phead"><nav class="crumbs" aria-label="breadcrumb"><a href="${hashFor("")}" data-nav="up">Map</a><span class="sep">/</span><span aria-current="page">map types</span></nav>
     <div class="title"><h1>map types</h1></div><p class="note">rendered maps, their jobs and inputs; how a map is drawn is in <a href="${settings}">settings</a></p></header>`;
 }
 

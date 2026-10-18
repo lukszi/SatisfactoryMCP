@@ -98,7 +98,7 @@ function wire(page: HTMLElement, close: () => void): void {
 }
 
 function placeView(parent: HTMLElement): void {
-  const box = toElement(html`<div class="ppage pplace"><p class="note"><a href="${hashFor(planDash(bench.key, "site"))}">‹ back to the site</a> · ${bench.plan!.name}</p></div>`);
+  const box = toElement(html`<div class="ppage pplace"><p class="note"><a href="${hashFor(planDash(bench.key, "site"))}" data-nav="close">‹ back to the site</a> · ${bench.plan!.name}</p></div>`);
   renderPlacing(box);
   parent.appendChild(box);
 }
