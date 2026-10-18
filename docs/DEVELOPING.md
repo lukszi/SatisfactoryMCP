@@ -217,6 +217,15 @@ part of the package may read a generator, which is not in the wheel, or the `gpu
 to) and `domain.spatial`, because the generator that writes the terrain field reads the package
 that reads it, so the two cannot disagree about the format.
 
+**World rules** (`test_world_rules.py`). A world's game data is `WorldState.game`, which
+`domain.rules.world_game` builds under the save's game mode (save-projection.md §6.18). The
+table as shipped is reached through `app.vanilla_game()` or `serial.vanilla_game_data()`, and
+only from the listed modules, each of which holds no world or reads names only. Only the two
+apps import the Docs.json loader. Only `domain.rules` reads the projection's `game_mode`
+record, apart from saveio, which writes it, and the worlds route, which sends it as is. Code
+outside the package imports the `domain.rules` seam and never its modules. Without these rules,
+a new consumer could read vanilla figures from a modded world without anything failing.
+
 **Optional extras** (`test_optional_extras.py`). `ooz`, `texture2ddecoder` and Pillow are the
 `gen` extra, and optional means optional at import time: a clone without them imports every
 module, runs this suite and serves the map. Only `core.gameassets` may name them, and only from a

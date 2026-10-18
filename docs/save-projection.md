@@ -1337,9 +1337,12 @@ selector resolved without a world, or a failed save read, the answer is the vani
 
 | option | the game (wiki "New game") | applied here |
 |---|---|---|
-| Power Consumption | "all Power consumption", every building and machine | ×`energy_cost` on every consumer's rated draw: the planner's processes, the factory view, and the Power page's maximum consumption, its measured draw and each circuit's and factory's figures (`PowerLedger.energy_cost`). Generation is never scaled |
-| Recipe Parts Cost | "the parts cost for each Recipe", rounded to whole parts | build costs: each part of one building is rounded, then multiplied by the count. This covers the bill, the shortfall list, payback and build points. Production and craft-bench recipes: each ingredient per cycle is rounded the same way, and products are left alone |
-| Space Elevator | "the part cost for each Space Elevator Phase" | nothing to scale: phase costs are read from the save, which already holds the game's figures (§6.4) |
+| Power Consumption | "all Power consumption", every building and machine | ×`energy_cost` on every building's `power_mw` and on each variable-power recipe's range (Particle Accelerator, Converter, Quantum Encoder). Every rated figure follows: the planner's processes, the factory view, `recipe_detail`, the Items page and the Power page's nameplate, measured and per-circuit figures. Generation is never scaled |
+| Recipe Parts Cost | "the parts cost for each Recipe", rounded to whole parts | every recipe's ingredients per cycle, build-gun recipes included, and each building's `build_cost` with them. A build cost rounds per building before a count multiplies it, so bills, shortfall lists, payback and build points follow. Products are left alone |
+| Space Elevator | "the part cost for each Space Elevator Phase" | nothing to scale: phase costs are read from the save, which already holds the game's figures (§6.4). The measured 1.2 save, at 0 h, holds no legacy phase array at all, so it shows no phase costs |
+
+Milestone costs stay vanilla. `UFGSchematic::GetCost` is static and takes no world context, so
+no world's multiplier can reach it.
 
 **Production recipes are scaled too.** `FGRecipe.h` (Headers.zip) gives every recipe class,
 production ones included, `GetIngredientsWithPartsCostMultiplier(worldContext)`. Its static
@@ -1353,26 +1356,25 @@ must reach them. The headers ship without the `.cpp`, so they do not show the ro
 A fluid rounds in litres, which are the game's own unit (1 m3 is 1,000), so 3 m3 × 0.75 gives
 2.25 m3. A half-way case such as 2 × 0.75 = 1.5 has not been checked in game.
 
-`world.gamemode.scaled_game` builds the world's copy of the recipe table, with one object per
-factor. A `WorldState`, a `Scenario`, `build_scenario`, `build_view` and `assess` each take it,
-so rates, bills, supply diagnosis and the factory view's expected rates all follow. Build
-recipes are left alone in that copy, because `cost_of` scales building parts and doing both
-would scale them twice. Constructor Iron Plate under 0.75 consumes 2 ingots, down from 3,
-for its 2 plates per 6 s, so 20/min in and 20/min out. A vanilla world gets the very object it
-passed in.
+**One seam: the world's table.** `domain.rules.world_game(game, projection)` builds the game data
+as the save's game mode runs it, and `WorldState` calls it once, so `st.game` is that table.
+Code that holds a world reads `st.game` and gets the world's numbers with no multiplier of its
+own: the planner, `cost_of`, prices, the power ledger, factory views and health, recipe lookups
+and the Progress roadmap all do. There is one table per pair of factors, and it is cached, so
+caches keyed on the table's identity, such as `WorldState.derived` and the plan prices, are
+keyed on the factors as well. A vanilla world gets the very object it passed in. The table
+remembers its factors (`rules.factors_of`), which is how a plan id adds `energy_cost` and
+`parts_cost` off the default, and how lookups word their note. The tools add
+`rules.scaling_note` ("game mode parts x0.75, power x0.75: ..."), and the codex routes send
+`parts_cost`, which is 1 for vanilla. Constructor Iron Plate under 0.75 consumes 2 ingots,
+down from 3, for its 2 plates per 6 s, and draws 3 MW instead of 4.
 
-**Recipe lookups follow the world in scope.** `recipe_detail`, `search_recipes`,
-`alternates_for_item` and the codex routes behind the Items page (`/api/gamedata/recipe`,
-`/recipes`, `/alternates`) read `world.gamemode.shown_game` when a world resolves, the
-default one or the one `save`/`world` names. That table is `game_for` with build recipes'
-parts scaled as well, so a build-gun recipe shows what the build gun charges. It is for
-showing only: `scaled_game` maps it back to the planner's table, so passing it on never
-scales a build part twice. A scaled answer says so: the tools add the `gamemode.parts_note`
-line ("game mode parts x0.75: ..."), and the routes send `parts_cost`, 1 for vanilla. With
-no readable save the lookup stays vanilla and says nothing. The header's jump search shows
-no amounts, so it reads the vanilla table. `explain_byproducts`, `compare_recipe_options`,
-`bom` and `rank_unlocks` take the world's table from its `WorldState`, and the Progress
-roadmap's gate inputs and `inputs_held` check read `st.game`, which is that table already.
+Where no world is in scope, the answer is the table as shipped. That covers the codex with no
+readable save, item search, the header's jump search and name resolution, which reach it
+through `app.vanilla_game()` or `serial.vanilla_game_data()`. `app.game_of(st)` and
+`serial.game_of(request, st)` take a world when there is one. `tests/architecture/test_world_rules.py`
+holds the list of the modules allowed to read the shipped table (DEVELOPING.md, "Architecture
+rules").
 
 **Not scaled.** Measured production rates come from the save and already hold the game's
 figures. Measured draw, however, is the rated draw weighted by uptime, so it is scaled.
