@@ -281,7 +281,6 @@ def _factory_draws(
     names: list[str],
     label_of: dict[str, str],
     game: GameData,
-    energy: float = 1.0,
 ) -> list[FactoryDraw]:
     """Each named factory's draw from this circuit's live consumers only, so a factory spanning
     two circuits is split between them rather than counted on both, and its machines behind an
@@ -297,7 +296,7 @@ def _factory_draws(
             mine["extractors"].append(extractor)
     rows: list[FactoryDraw] = []
     for name in names:
-        report = PowerLedger(projection=own[name], game=game, energy_cost=energy).power_report()
+        report = PowerLedger(projection=own[name], game=game).power_report()
         rows.append(
             {
                 "name": name,
@@ -356,7 +355,6 @@ def _circuit_rows(
     rows: list[tuple[CircuitRow, set[str], PowerReport, BatteryBank]] = []
     grids = graph.grids()
     banked = {leaf for leaf, r in facilities.items() if _is_battery(r, st.game)}
-    energy = st.power.energy_cost
     live = {i for i, grid in enumerate(grids) if any(n in generators for n in grid)}
     dead = {i for i, grid in enumerate(grids) if i not in live and not banked.intersection(grid)}
     for component, off in _fold_switched(graph, grids, live, dead):
@@ -369,9 +367,7 @@ def _circuit_rows(
         bank = battery_bank((r for leaf, r in facilities.items() if leaf in members), st.game)
         if not any(sub.values()) and not bank.batteries:
             continue
-        ledger = PowerLedger(
-            projection=sub, game=st.game, energy_cost=energy, switched_off=frozenset(off)
-        )
+        ledger = PowerLedger(projection=sub, game=st.game, switched_off=frozenset(off))
         report = ledger.power_report(biomass=counted)
         lit: MachineGroups = {
             "machines": [r for r in sub["machines"] if instance_leaf(r["instance"]) not in off],
@@ -391,7 +387,7 @@ def _circuit_rows(
             "consumers": len(sub["machines"]) + len(sub["extractors"]),
             "poles": sum(1 for leaf in component if graph.kind(leaf) in ("pole", "tower")),
             "factories": _factory_draws(
-                lit, [name for name, _count in named.most_common()], label_of, st.game, energy
+                lit, [name for name, _count in named.most_common()], label_of, st.game
             ),
             "factory_count": len(named),
             "centroid_m": None if centre is None else point_m(centre),

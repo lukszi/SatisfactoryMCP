@@ -38,8 +38,7 @@ def _scaled_recipe(base: GameData, recipe: Recipe, factors: Factors) -> Recipe:
         return known is not None and known.is_fluid
 
     ingredients = tuple(
-        _scaled_flow(f, fluid(f.item), factors.parts, recipe.duration_s)
-        for f in recipe.ingredients
+        _scaled_flow(f, fluid(f.item), factors.parts, recipe.duration_s) for f in recipe.ingredients
     )
     return replace(
         recipe,
@@ -65,9 +64,7 @@ def _scaled_building(
 def _scaled_table(base: GameData, factors: Factors) -> GameData:
     recipes = {cls: _scaled_recipe(base, r, factors) for cls, r in base.recipes.items()}
     costs = {id(base.recipes[cls].ingredients): r.ingredients for cls, r in recipes.items()}
-    buildings = {
-        cls: _scaled_building(b, factors, costs) for cls, b in base.buildings.items()
-    }
+    buildings = {cls: _scaled_building(b, factors, costs) for cls, b in base.buildings.items()}
     return replace(base, recipes=recipes, buildings=buildings)
 
 

@@ -14,8 +14,6 @@ FULL_CLOCK = 1.0
 
 def recipe_processes(sc: Scenario) -> list[Process]:
     game = sc.game
-    #: The game mode's factor on consumption; generation below is never scaled.
-    draw = sc.energy_cost
     out: list[Process] = []
     for rid in sc.recipes:
         recipe = game.recipes.get(rid)
@@ -35,14 +33,14 @@ def recipe_processes(sc: Scenario) -> list[Process]:
             for sloops in sloop_options:
                 clock = mode
                 if at_full and not sloops:
-                    clock = best_clock(sc, building, game.recipe_power_mw(recipe, 1.0, 0) * draw)
+                    clock = best_clock(sc, building, game.recipe_power_mw(recipe, 1.0, 0))
                 boost = building.boost_for(sloops)
                 rates: dict[str, float] = {}
                 for flow in recipe.ingredients:
                     rates[flow.item] = rates.get(flow.item, 0.0) - flow.per_min * clock
                 for flow in recipe.products:
                     rates[flow.item] = rates.get(flow.item, 0.0) + flow.per_min * clock * boost
-                mw = -game.recipe_power_mw(recipe, clock, sloops) * draw
+                mw = -game.recipe_power_mw(recipe, clock, sloops)
                 suffix = ""
                 if not at_full:
                     suffix += f"@{mode:g}"
@@ -55,7 +53,7 @@ def recipe_processes(sc: Scenario) -> list[Process]:
                         label=f"{recipe.name}{' ' + suffix if suffix else ''}",
                         rates=rates,
                         mw=mw,
-                        mw_at_full=-game.recipe_power_mw(recipe, 1.0, sloops) * draw,
+                        mw_at_full=-game.recipe_power_mw(recipe, 1.0, sloops),
                         power_exponent=building.power_exponent,
                         building=building.cls,
                         recipe=rid,
@@ -87,8 +85,8 @@ def extractor_processes(sc: Scenario) -> list[Process]:
                     kind="extractor",
                     label=f"{building.name} on {purity} {game.item_name(resource)}",
                     rates={resource: rate},
-                    mw=-building.power_at(clock) * sc.energy_cost,
-                    mw_at_full=-building.power_at(1.0) * sc.energy_cost,
+                    mw=-building.power_at(clock),
+                    mw_at_full=-building.power_at(1.0),
                     power_exponent=building.power_exponent,
                     building=building_cls,
                     purity=purity,

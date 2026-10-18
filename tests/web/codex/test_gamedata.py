@@ -10,7 +10,7 @@ from satisfactory_mcp.core.gamedata import search
 from satisfactory_mcp.core.gamedata.categories import item_categories
 from satisfactory_mcp.core.gamedata.search import find_recipe
 from satisfactory_mcp.core.gamedata.unlocks import granted_by
-from satisfactory_mcp.domain.world import gamemode
+from satisfactory_mcp.domain import rules
 from satisfactory_mcp.domain.world.state import WorldState
 from tests.support.web import client_over, failing_state_loader
 
@@ -232,7 +232,7 @@ def _ingots(rates: list[dict]) -> float:
 
 
 def test_a_game_mode_world_shows_its_own_amounts_and_the_multiplier(client, game, projection):
-    mode = {**gamemode.DEFAULT, "parts_cost": 0.75}
+    mode = {**rules.DEFAULT, "parts_cost": 0.75}
     cheap = WorldState(projection={**projection, "game_mode": mode}, game=game)
     with client_over(cheap, game) as moded:
         detail = moded.get("/api/gamedata/recipe", params={"recipe": "Iron Plate"}).json()

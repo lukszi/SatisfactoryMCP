@@ -15,9 +15,10 @@ from typing_extensions import TypedDict
 
 from .....core.saveio import projection as proj
 from .....core.saveio.schema import GameMode, SaveHeader
+from .....domain import rules
 from .....domain.power.views import PowerReport
 from .....domain.progression.views import ProgressionSummary
-from .....domain.world import gamemode, pin
+from .....domain.world import pin
 from ...serial import Biomass, PlayerPosition, error_response, require_world, xyz_m
 
 __all__ = ["router"]
@@ -153,5 +154,5 @@ def summary(
         "power": st.power_report(biomass=biomass == "include"),
         "progression": st.progression(),
         "player": xyz_m(st.player_position()),
-        "game_mode": gamemode.mode_of(st.projection),
+        "game_mode": rules.mode_of(st.projection),
     }

@@ -20,7 +20,7 @@ from .....core.gamedata.model import Flow, GameData, Item, Recipe
 from .....core.gamedata.search import find_recipe, resolve_item
 from .....core.gamedata.unlocks import granted_by
 from .....core.text import ago
-from .....domain.world import gamemode
+from .....domain import rules
 from ...serial import (
     error_response,
     machine_name,
@@ -193,8 +193,8 @@ def _lookup(request: Request, save: str | None, world: str | None) -> _Lookup:
     except Exception as exc:
         note = f"no save could be read ({exc}), so have and locked are unknown"
         return _Lookup(vanilla_game_data(request), None, note, 1.0)
-    game = gamemode.shown_game(st.game, st.projection)
-    return _Lookup(game, st.available_recipe_ids, None, gamemode.parts_cost(st.projection))
+    parts = rules.factors_of(st.game).parts
+    return _Lookup(st.game, st.available_recipe_ids, None, parts)
 
 
 def _rates(game: GameData, flows: Iterable[Flow]) -> list[Rate]:

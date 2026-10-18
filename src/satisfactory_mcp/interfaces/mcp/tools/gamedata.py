@@ -13,12 +13,12 @@ from pydantic import Field
 from ....core.gamedata import search
 from ....core.gamedata.model import Building, GameData
 from ....core.gamedata.unlocks import granted_by_label
+from ....domain import rules
 from ....domain.planning.analysis import swaps
 from ....domain.planning.analysis.views import SwapOption
 from ....domain.planning.stored.planlog import PlanLog
 from ....domain.planning.stored.recall import expand_plan_pin
 from ....domain.session import journal
-from ....domain.world import gamemode
 from ....domain.world.state import WorldState
 from ....presenters.text import primitives as render
 from ....presenters.text.search import item_flows, render_search
@@ -61,10 +61,9 @@ def search_items(query: str, limit: Limit = 10, offset: int = 0) -> str:
 def _shown(st: WorldState | None) -> tuple[GameData, list[str]]:
     """The recipe table a lookup shows: the world's game mode when a world is in scope, else
     vanilla; and the note naming the multiplier when the amounts differ from vanilla."""
-    if st is None:
-        return app.vanilla_game(), []
-    note = gamemode.parts_note(st.projection)
-    return gamemode.shown_game(st.game, st.projection), [note] if note else []
+    g = app.game_of(st)
+    note = rules.scaling_note(g)
+    return g, [note] if note else []
 
 
 @app.tool()
@@ -158,7 +157,7 @@ def _alternates_in_plan(
     body = render.table([*headers, "Δmach", "ΔMW draw", "Δraw"], rows)
     footer = render.ids_footer((o["name"], o["recipe_id"]) for o in result["options"])
     notes = [echo] if echo else []
-    if mode := gamemode.parts_note(st.projection):
+    if mode := rules.scaling_note(st.game):
         notes.append(mode)
     if result["hidden"]:
         notes.append(f"{result['hidden']} locked recipe(s) hidden (include_locked=false)")

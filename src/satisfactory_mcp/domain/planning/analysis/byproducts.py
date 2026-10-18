@@ -17,7 +17,6 @@ from ....core.gamedata.constants import AWESOME_SINK_MW
 from ....core.gamedata.model import GameData
 from ....core.gamedata.search import resolve_item
 from ....core.gamedata.unlocks import granted_by_label
-from ...world import gamemode
 from ...world.state import WorldState
 from ..solver.model import MW, Process, Scenario, SinkRow, Solution
 from ..solver.optimize import solve
@@ -432,7 +431,6 @@ def analyse(
     max_probes: int = 8,
 ) -> ByproductReport:
     """Diagnose one plan scope's byproducts. Costs 2 + up to ``max_probes`` solves."""
-    game = gamemode.game_for(game, state.projection)
     req = build_scenario(
         game,
         state,

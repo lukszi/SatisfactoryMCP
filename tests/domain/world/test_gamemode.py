@@ -82,15 +82,6 @@ def test_scaling_is_one_object_per_factor_and_never_compounds(game):
     assert dear.recipes["Recipe_IronPlate_C"].ingredients[0].amount == 6.0
 
 
-def test_a_world_runs_its_own_recipes(game):
-    from satisfactory_mcp.domain.world.state import WorldState
-
-    vanilla = WorldState(projection=cast("Any", {}), game=game)
-    assert vanilla.game is game
-    world = WorldState(projection=cast("Any", {"game_mode": TEST_SAVE}), game=game)
-    assert world.game is gamemode.scaled_game(game, 0.75)
-
-
 def test_a_shown_table_scales_build_parts_and_hands_the_planner_its_own(game):
     world: Any = {"game_mode": TEST_SAVE}
     shown = gamemode.shown_game(game, world)
