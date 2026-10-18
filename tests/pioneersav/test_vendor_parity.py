@@ -22,6 +22,7 @@ import pytest
 
 from tests.support.fanout import fanout_width, in_order
 from tests.support.paths import REPO_ROOT, committed_fixture
+from tests.support.saves import machine_saves_root_or_skip
 
 SIDECAR_MODULE = "satisfactory_mcp.core.saveio.extract"
 
@@ -178,19 +179,7 @@ def banked() -> dict:
 
 @pytest.fixture(scope="module")
 def saves_root() -> Path:
-    # `Path("")` is `Path(".")` and IS a directory, so an unset variable must be rejected before
-    # the is_dir() check -- otherwise this silently searches the repo root, finds no saves, and
-    # reports "none of the banked saves is on this machine" on a machine that has all 31.
-    env = os.environ.get("SATISFACTORY_SAVES")
-    candidates = [Path(env)] if env else []
-    local = os.environ.get("LOCALAPPDATA")
-    if local:
-        candidates.append(Path(local) / "FactoryGame" / "Saved" / "SaveGames")
-    for root in candidates:
-        if root.is_dir():
-            return root
-    pytest.skip("no save directory on this machine")
-    raise AssertionError("unreachable")
+    return machine_saves_root_or_skip()
 
 
 def _projection(path: Path) -> dict:

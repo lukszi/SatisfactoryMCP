@@ -28,10 +28,8 @@ survive that; the repository does not carry someone's account number.
 from __future__ import annotations
 
 import math
-import os
 import struct
 from concurrent.futures import ProcessPoolExecutor
-from pathlib import Path
 
 import pytest
 
@@ -45,6 +43,7 @@ from pioneersav.trailers import (
 )
 from tests.support.fanout import fanout_width, in_order
 from tests.support.paths import committed_fixture
+from tests.support.saves import machine_saves_root_or_skip
 
 
 @pytest.fixture(scope="module")
@@ -265,20 +264,6 @@ def test_a_player_id_that_lies_about_its_length_is_refused(blobs):
 # ---------------------------------------------- what the two tangent vectors actually mean
 
 
-def _saves_root() -> Path:
-    """Where the player's saves are, or a skip. Same discovery as ``test_vendor_parity``."""
-    env = os.environ.get("SATISFACTORY_SAVES")
-    candidates = [Path(env)] if env else []
-    local = os.environ.get("LOCALAPPDATA")
-    if local:
-        candidates.append(Path(local) / "FactoryGame" / "Saved" / "SaveGames")
-    for root in candidates:
-        if root.is_dir():
-            return root
-    pytest.skip("no save directory on this machine")
-    raise AssertionError("unreachable")
-
-
 def _hermite_length(points, steps=64):
     """Arc length of the cubic Hermite curve through ``[location, arrive, leave]`` triples."""
     total = 0.0
@@ -400,7 +385,7 @@ def test_the_hermite_curve_is_the_length_the_save_declares_and_the_chords_are_no
     -- the only difference is that a few saves past the cut may have been parsed
     speculatively, and those results are dropped unread.
     """
-    root = _saves_root()
+    root = machine_saves_root_or_skip()
     chord_wrong = rescued = chords = curves = segments = 0
     worst_curve = 0.0
     paths = [str(p) for p in sorted(root.rglob("*.sav"))]

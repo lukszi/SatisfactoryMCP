@@ -555,29 +555,15 @@ def test_platform_indices_are_stable_across_runs(state):
 
 
 @pytest.mark.integration
-@pytest.mark.skipif(
-    not __import__("satisfactory_mcp.config", fromlist=["config"]).saves_root().is_dir(),
-    reason="needs a real save directory (set SATISFACTORY_SAVES)",
-)
-def test_the_criteria_hold_on_whatever_save_this_machine_has(game):
-    """The fixture is one world frozen in July 2026; this is whatever is on the disk now.
+def test_the_criteria_hold_on_the_reference_save(live):
+    """The fixture is the projection; this is the pinned save, parsed by today's sidecar.
 
     Deliberately the stage-0 *criteria* rather than this world's numbers: the fixture pins
-    the numbers, and a live save directory grows a floor whenever the player builds one. So
-    what is asserted here is what has to be true of any base -- the bands are clean, the
-    offsets hold, and no riser lands twice on one deck.
+    the numbers, and ``SATISFACTORY_TEST_SAVE`` may pin another base. So what is asserted
+    here is what has to be true of any base -- the bands are clean, the offsets hold, and no
+    riser lands twice on one deck.
     """
-    from satisfactory_mcp.core.saveio import projection as proj
-
-    try:
-        worlds, _unsupported = proj.list_worlds()
-        if not worlds:
-            pytest.skip("no worlds in the save directory")
-        state = WorldState(projection=proj.load_projection(world=worlds[0].world_id), game=game)
-    except Exception as exc:  # pragma: no cover - a machine without a readable save
-        pytest.skip(f"no readable save: {exc}")
-
-    report = floor_decomposition(state)
+    report = floor_decomposition(live)
     if report.note:
         pytest.skip(report.note)
 

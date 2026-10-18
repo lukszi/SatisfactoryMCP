@@ -50,7 +50,6 @@ from the fixture with its references emptied, exactly the way the game wrote the
 
 from __future__ import annotations
 
-import os
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
@@ -73,6 +72,7 @@ from satisfactory_mcp.core.saveio.extract.structures import lightweight, placed,
 from satisfactory_mcp.domain.factories.structure import build_structures
 from tests.support.fanout import fanout_width, in_order
 from tests.support.paths import committed_fixture
+from tests.support.saves import machine_saves_root_or_skip
 
 #: The foundation class in both committed fixtures. ``graph/structure.py`` only treats a record
 #: as a floor tile if its class name says foundation, so the slab tests below need this one.
@@ -332,20 +332,6 @@ def test_a_stale_record_beside_a_slab_invents_floor_inside_it(blob_v2):
 # ------------------------------------------------------- the premise, over the real saves
 
 
-def _saves_root() -> Path:
-    """Where the player's saves are, or a skip. Same discovery as ``tests/pioneersav/test_vendor_parity``."""
-    env = os.environ.get("SATISFACTORY_SAVES")
-    candidates = [Path(env)] if env else []
-    local = os.environ.get("LOCALAPPDATA")
-    if local:
-        candidates.append(Path(local) / "FactoryGame" / "Saved" / "SaveGames")
-    for root in candidates:
-        if root.is_dir():
-            return root
-    pytest.skip("no save directory on this machine")
-    raise AssertionError("unreachable")
-
-
 def _subsystem_blob(path: str | Path) -> list | None:
     """The buildable blob out of one save, without decoding the other 44,000 objects.
 
@@ -426,7 +412,7 @@ def test_no_save_on_disk_holds_a_record_with_one_asset_of_the_two():
     counts = {"both": 0, "neither": 0, "one": 0}
     disagreements: list[str] = []
     saves, refused = 0, []
-    paths = [str(p) for p in sorted(_saves_root().rglob("*.sav"))]
+    paths = [str(p) for p in sorted(machine_saves_root_or_skip().rglob("*.sav"))]
     width = fanout_width()
     with ProcessPoolExecutor(max_workers=width) as pool:
         for _path, (got_counts, got_disagreements, got_refused) in in_order(

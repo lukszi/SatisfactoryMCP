@@ -1,12 +1,14 @@
-"""Suite-wide fixtures: the game data, the committed reference world, and private user data.
+"""Suite-wide fixtures: the game data, the reference world and save, and private user data.
 
 docs/DEVELOPING.md ("Test suite") explains the reference world, how its projection is re-cut,
-and why each of the longest tests starts on a worker of its own.
+which save the tests read, and why each of the longest tests starts on a worker of its own.
 """
 
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 
@@ -19,6 +21,7 @@ from satisfactory_mcp.domain.world.state import WorldState
 from tests.support.fanout import heads_of_shares
 from tests.support.map_jobs import in_use_local, local, runner  # noqa: F401  (fixtures)
 from tests.support.paths import FIXTURES
+from tests.support.reference_save import ReferencePin, guarded_scan
 from tests.support.reference_world import FIXTURE_SAVE, FIXTURE_WORLD, SPIRE_COAST_FULL
 from tests.support.user_data import private_user_data
 from tests.support.web import client_over
@@ -89,16 +92,30 @@ def game():
     return normalize(load_docs(config.docs_path()))
 
 
+@pytest.fixture(scope="session", autouse=True)
+def reference_pin() -> Iterator[ReferencePin]:
+    """The server's save discovery sees the pinned reference save alone, never the newest."""
+    from satisfactory_mcp.core.saveio import projection as proj
+
+    pin = ReferencePin()
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(config, "saves_root", pin.saves_root)
+        patch.setattr(proj, "scan_saves", guarded_scan(proj.scan_saves))
+        yield pin
+
+
 @pytest.fixture
-def live(game) -> WorldState:
-    """The newest save on this machine, or a skip when there is none to read."""
+def live(game, reference_pin) -> WorldState:
+    """The pinned reference save, read as the server reads a world; a skip without it."""
     from satisfactory_mcp.domain.world.state import load_state
     from satisfactory_mcp.interfaces.mcp import app
 
     try:
-        return load_state(app.vanilla_game(), path=None, world=None)
+        state = load_state(app.vanilla_game(), path=None, world=None)
     except SaveError as exc:
         pytest.skip(f"needs a readable save: {exc}")
+    assert Path(state.header["path"]).name == reference_pin.source.name
+    return state
 
 
 @pytest.fixture(scope="session")
