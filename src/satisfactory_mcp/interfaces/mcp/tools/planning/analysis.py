@@ -48,8 +48,8 @@ def explain_byproducts(
 
     Pass ``item`` to focus on one byproduct instead of the whole plan.
     """
-    g = app.game()
     st = app.load_world(save, world, as_of)
+    g = st.game
     report = analyse(
         g,
         st,
@@ -85,8 +85,8 @@ def compare_recipe_options(
     against Crude -> Fuel, priced in raw resource per unit, whole buildings, net
     power, and byproducts needing an outlet.
     """
-    g = app.game()
     st = app.load_world(save, world, as_of)
+    g = st.game
     try:
         result = recipe_routes.compare_routes(
             g,
@@ -123,8 +123,8 @@ def bom(
     has no correct depth limit. Every row names the recipe chosen for that item,
     because alternates change the totals materially.
     """
-    g = app.game()
     st = app.load_world(save, world, as_of)
+    g = st.game
     try:
         result = bom_mod.build_bom(
             g,
@@ -243,8 +243,8 @@ def rank_unlocks(
     """
     if gone := app.retired(("search", search, "query")):
         return gone
-    g = app.game()
     st = app.load_world(save, world, as_of)
+    g = st.game
 
     exports = exports_for(objective, plan, exports, export_minimums)
     objective = goal_for(objective, plan, export_minimums)

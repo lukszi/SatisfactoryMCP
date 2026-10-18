@@ -22,9 +22,11 @@ __all__ = [
     "is_default",
     "mode_of",
     "parts_cost",
+    "parts_note",
     "randomized",
     "scaled_game",
     "scaled_part",
+    "shown_game",
     "summary",
 ]
 
@@ -100,38 +102,61 @@ def _scaled_recipe(game: GameData, recipe: Recipe, multiplier: float) -> Recipe:
     return replace(recipe, ingredients=ingredients)
 
 
-#: ``(id(base), multiplier)`` to ``(base, scaled)``, and each scaled copy's id back to its
-#: base, so one factor yields one object: views are cached on the game data's ``id()``.
-_SCALED: dict[tuple[int, float], tuple[GameData, GameData]] = {}
-_ORIGIN: dict[int, tuple[GameData, float]] = {}
+#: ``(id(base), multiplier, builds)`` to ``(base, scaled)``, and each scaled copy's id back
+#: to its base, factor and ``builds``, so one factor yields one object: views are cached on
+#: the game data's ``id()``. ``builds`` marks a ``shown_game`` copy.
+_SCALED: dict[tuple[int, float, bool], tuple[GameData, GameData]] = {}
+_ORIGIN: dict[int, tuple[GameData, float, bool]] = {}
 _LOCK = threading.Lock()
+
+
+def _scaled_table(game: GameData, multiplier: float, builds: bool) -> GameData:
+    with _LOCK:
+        base, applied, had_builds = _ORIGIN.get(id(game), (game, 1.0, False))
+        if applied == multiplier and had_builds == builds:
+            return game
+        if multiplier == 1.0:
+            return base
+        held = _SCALED.get((id(base), multiplier, builds))
+        if held is None:
+            recipes = {
+                cls: r
+                if r.kind == "building" and not builds
+                else _scaled_recipe(base, r, multiplier)
+                for cls, r in base.recipes.items()
+            }
+            held = (base, replace(base, recipes=recipes))
+            _SCALED[(id(base), multiplier, builds)] = held
+            _ORIGIN[id(held[1])] = (base, multiplier, builds)
+        return held[1]
 
 
 def scaled_game(game: GameData, multiplier: float) -> GameData:
     """``game`` with each production and craft-bench recipe's ingredients under the parts
     multiplier, products untouched. Build recipes stay as they are, because ``cost_of``
     scales building parts. Idempotent; a factor of 1 gives back the vanilla object."""
-    with _LOCK:
-        base, applied = _ORIGIN.get(id(game), (game, 1.0))
-        if applied == multiplier:
-            return game
-        if multiplier == 1.0:
-            return base
-        held = _SCALED.get((id(base), multiplier))
-        if held is None:
-            recipes = {
-                cls: r if r.kind == "building" else _scaled_recipe(base, r, multiplier)
-                for cls, r in base.recipes.items()
-            }
-            held = (base, replace(base, recipes=recipes))
-            _SCALED[(id(base), multiplier)] = held
-            _ORIGIN[id(held[1])] = (base, multiplier)
-        return held[1]
+    return _scaled_table(game, multiplier, builds=False)
 
 
 def game_for(game: GameData, projection: Projection | None) -> GameData:
     """The recipes as this save's game mode runs them (``scaled_game``)."""
     return scaled_game(game, parts_cost(projection))
+
+
+def shown_game(game: GameData, projection: Projection | None) -> GameData:
+    """``game_for`` with build recipes' parts scaled too: what a recipe lookup shows.
+
+    Only for showing recipes. The planner takes ``game_for``, because ``cost_of`` scales
+    build parts itself; ``scaled_game`` turns this table back into that one."""
+    return _scaled_table(game, parts_cost(projection), builds=True)
+
+
+def parts_note(projection: Projection | None) -> str | None:
+    """The note beside recipe amounts scaled by the save's parts multiplier, else None."""
+    factor = parts_cost(projection)
+    if factor == 1.0:
+        return None
+    return f"game mode parts x{factor:g}: ingredient amounts are this world's, not vanilla"
 
 
 def randomized(mode: GameMode) -> bool:
