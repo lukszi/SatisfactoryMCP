@@ -9,7 +9,7 @@ import { html, type Safe } from "../../../kit/html";
 import { openMenu } from "../../../kit/overlay/menu";
 import { fail, friendlyError, notify } from "../../../kit/toast";
 import { moreBtn } from "../../../kit/ui/controls";
-import { acts, entry } from "../../../kit/ui/entry";
+import { actSlots, entry } from "../../../kit/ui/entry";
 import { bar, chip, pill } from "../../../kit/ui/marks";
 import { frow } from "../../../kit/ui/forms";
 import { OBJECTIVES } from "../../../kit/words";
@@ -70,7 +70,7 @@ export function planCard(row: PlanIndexRow): Safe {
   const last = actorWord(row.last.actor) + ": " + commitWords(row.last.text);
   return entry(
     { href, key: row.key, title: last, extra: "pcard" },
-    html`${planLead(row)}<div class="id">${nameCell(row, href)}<div class="ctx">${ctx}</div></div>${acts(html`${status && chip(status.text, status.tone, status.title)}<span data-plan="${row.key}">${moreBtn(row.name, MENU)}</span>`)}${exportPills(row)}${builtLine(row)}`
+    html`${planLead(row)}<div class="id">${nameCell(row, href)}<div class="ctx">${ctx}</div></div>${actSlots(status ? chip(status.text, status.tone, status.title) : "", { more: html`<span data-plan="${row.key}">${moreBtn(row.name, MENU)}</span>` })}${exportPills(row)}${builtLine(row)}`
   );
 }
 

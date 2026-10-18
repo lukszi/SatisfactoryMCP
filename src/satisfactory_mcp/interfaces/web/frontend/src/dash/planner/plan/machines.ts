@@ -9,7 +9,7 @@ import { busyButton } from "../../../kit/busy";
 import { html, type Safe } from "../../../kit/html";
 import { openMenu, type MenuItem } from "../../../kit/overlay/menu";
 import { sortSelect } from "../../../kit/ui/controls";
-import { acts, entry, group, list } from "../../../kit/ui/entry";
+import { actSlots, entry, group, list } from "../../../kit/ui/entry";
 import { chip, tagChip } from "../../../kit/ui/marks";
 import { loadingLine } from "../../../kit/ui/states";
 import { dashH, emptyLine, fig, note, toolrow } from "../../../kit/ui/text";
@@ -73,7 +73,7 @@ function buildRow(data: SolveResponse, row: SolveRow, live: boolean): Safe {
   const more = live && !bench.gone ? html`<button class="btn icon more" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="${"more for " + row.recipe}" data-rowmenu="${row.id}">⋯</button>` : "";
   return entry(
     { key: row.id, picked: live && bench.picked === row.id, focusable: live, extra: "proc", title: row.building + " · " + row.recipe },
-    html`${buildingIcon(look, row.building)}<div class="id"><span class="name">${row.recipe}</span><div class="ctx">${rowChips(row, live)} ${row.building}</div></div><div class="pills">${rateFlow(look, row.inputs, row.outputs)}</div><div class="metric clk"><b>${clock}</b>${last ? html`<span class="line2">${last}</span>` : ""}</div><div class="metric pmw"><b>${sgn(row.mw)}</b><span>MW</span></div>${acts(html`${alt}${more}`)}`
+    html`${buildingIcon(look, row.building)}<div class="id"><span class="name">${row.recipe}</span><div class="ctx">${rowChips(row, live)} ${row.building}</div></div><div class="pills">${rateFlow(look, row.inputs, row.outputs)}</div><div class="metric clk"><b>${clock}</b>${last ? html`<span class="line2">${last}</span>` : ""}</div><div class="metric pmw"><b>${sgn(row.mw)}</b><span>MW</span></div>${actSlots(alt, { more })}`
   );
 }
 

@@ -8,7 +8,7 @@ import { busyButton } from "../../../kit/busy";
 import { count, countRange, formatNumber, mw } from "../../../kit/format";
 import { cls, html, type Safe } from "../../../kit/html";
 import { seg } from "../../../kit/ui/controls";
-import { acts, entry, group, list } from "../../../kit/ui/entry";
+import { actSlots, entry, group, list } from "../../../kit/ui/entry";
 import { bar, chip } from "../../../kit/ui/marks";
 import { loadingLine } from "../../../kit/ui/states";
 import { dashH, emptyLine, fig, icon, toolrow } from "../../../kit/ui/text";
@@ -72,10 +72,10 @@ function jobRow(r: TrackRow, look: ReturnType<typeof lookupOf>): Safe {
   const where = r.stages.length ? " · " + (r.stages.length === 1 ? "stage " : "stages ") + r.stages.join(", ") : "";
   const [verb, then] = verbWords(r);
   const have = r.have_min === null ? count(r.have) : countRange(r.have_min, r.have);
-  const map = r.bbox_m?.length === 4 ? html`<button type="button" class="btn icon" data-pb="map" data-row="${r.id}" aria-label="${"show " + r.process + " on the map"}" title="${"show " + r.process + " on the map"}">◎</button>` : html`<span class="btn-gap" aria-hidden="true"></span>`;
+  const map = r.bbox_m?.length === 4 ? html`<button type="button" class="btn icon" data-pb="map" data-row="${r.id}" aria-label="${"show " + r.process + " on the map"}" title="${"show " + r.process + " on the map"}">◎</button>` : "";
   return entry(
     { tone, title: r.note || r.process },
-    html`<span class="lead-chk"><i class="${cls("chk", done && "ok")}" aria-hidden="true">${done ? "✓" : ""}</i>${buildingIcon(look, r.building)}</span><div class="id"><span class="name">${r.process}</span><div class="ctx">${chips}${r.new_building ? chip("new building", "muted", "not unlocked or not yet on the ground anywhere") : ""} ${r.building}${where}</div></div><div class="${cls("metric", done && "none")}"><b>${verb || "standing"}</b>${then ? html`<span class="line2">${then}</span>` : ""}</div><div class="metric"><b>${have}</b><span>of ${count(r.need)}</span>${bar(r.need ? (100 * r.have) / r.need : 0)}</div>${acts(map)}`
+    html`<span class="lead-chk"><i class="${cls("chk", done && "ok")}" aria-hidden="true">${done ? "✓" : ""}</i>${buildingIcon(look, r.building)}</span><div class="id"><span class="name">${r.process}</span><div class="ctx">${chips}${r.new_building ? chip("new building", "muted", "not unlocked or not yet on the ground anywhere") : ""} ${r.building}${where}</div></div><div class="${cls("metric", done && "none")}"><b>${verb || "standing"}</b>${then ? html`<span class="line2">${then}</span>` : ""}</div><div class="metric"><b>${have}</b><span>of ${count(r.need)}</span>${bar(r.need ? (100 * r.have) / r.need : 0)}</div>${actSlots(null, { pin: map, more: false })}`
   );
 }
 
@@ -133,7 +133,7 @@ function candidatesBlock(d: TrackResponse): Safe {
   const rows = cs.map((c, i) =>
     entry(
       { title: c.name },
-      html`<div class="id"><span class="name">${c.name}</span><div class="ctx">${c.kind === "cluster" ? WORDS.unnamedCluster : WORDS.factory}</div></div><div class="metric"><b>${count(c.machines)}</b><span>machines match</span></div><div class="metric"><b>${Math.round(c.rate_share * 100)}%</b><span>of the rate</span></div>${acts(html`<button type="button" class="btn" data-pb="pick" data-i="${String(i)}"${bench.gone ? html` disabled` : ""}><span class="spinner" aria-hidden="true"></span>pick</button>`)}`
+      html`<div class="id"><span class="name">${c.name}</span><div class="ctx">${c.kind === "cluster" ? WORDS.unnamedCluster : WORDS.factory}</div></div><div class="metric"><b>${count(c.machines)}</b><span>machines match</span></div><div class="metric"><b>${Math.round(c.rate_share * 100)}%</b><span>of the rate</span></div>${actSlots(html`<button type="button" class="btn" data-pb="pick" data-i="${String(i)}"${bench.gone ? html` disabled` : ""}><span class="spinner" aria-hidden="true"></span>pick</button>`, { more: false })}`
     )
   );
   const back = d.built_at.mode !== "auto" || d.built_at.confidence !== "unsure" ? html`<p class="note"><a href="${hashFor(buildDash(bench.key, 0))}" data-nav="close">back to the stages</a></p>` : "";

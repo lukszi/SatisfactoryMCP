@@ -13,7 +13,6 @@
   --col-n: 72px;
   --col-nb: 110px;
   --col-clk: 150px;
-  --col-acts: 108px;
   --pad-w: 2px;
   --lg-w: 1.5px;
   --fx-num: calc(var(--num-w) + var(--unit-w));
@@ -59,7 +58,7 @@
 }
 
 .l-pothers .entry {
-  --cols: minmax(0, 1fr) auto;
+  --cols: minmax(0, 1fr) var(--act-w);
 }
 
 /* ---------- the result band: in → machines per building → out ---------- */
@@ -182,7 +181,7 @@
 }
 
 .l-pswap .entry {
-  --cols: var(--col-ic) minmax(0, 1fr) var(--col-nb) var(--col-nb) auto;
+  --cols: var(--col-ic) minmax(0, 1fr) var(--col-nb) var(--col-nb) var(--col-acts);
 }
 
 .l-pswap .row2 {
@@ -219,7 +218,7 @@
 }
 
 .l-pjob .entry {
-  --cols: var(--col-chk) minmax(0, 1fr) var(--col-nb) var(--col-nb) var(--col-ic);
+  --cols: var(--col-chk) minmax(0, 1fr) var(--col-nb) var(--col-nb) var(--col-act);
 }
 
 .l-pjob .lead-chk .ic,
@@ -242,7 +241,7 @@
 }
 
 .l-pcand .entry {
-  --cols: minmax(0, 1fr) var(--col-nb) var(--col-n) var(--col-n);
+  --cols: minmax(0, 1fr) var(--col-nb) var(--col-n) var(--act-w);
 }
 
 .pname {
@@ -341,6 +340,15 @@
     display: none;
   }
 
+  .l-pbuild .entry {
+    --cols: var(--col-icon) minmax(0, 1fr) var(--col-nb) !important;
+  }
+
+  .l-pbuild .entry > .acts,
+  .l-pjob .entry > .acts {
+    justify-content: flex-end;
+  }
+
   .l-pbuild .entry > .pills {
     grid-row: 2;
     grid-column: 2 / -1;
@@ -357,8 +365,12 @@
     grid-column: 3;
   }
 
+  .l-pbuild .aslot-b {
+    display: none;
+  }
+
   .l-pjob .entry {
-    --cols: var(--col-chk) minmax(0, 1fr) auto !important;
+    --cols: var(--col-chk) minmax(0, 1fr) var(--col-nb) !important;
   }
 
   .l-pjob .entry > .lead-chk {

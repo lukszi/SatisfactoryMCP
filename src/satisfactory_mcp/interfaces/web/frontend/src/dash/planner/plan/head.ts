@@ -7,7 +7,7 @@ import { copyText } from "../../../kit/copy";
 import { html, type Safe } from "../../../kit/html";
 import { openMenu } from "../../../kit/overlay/menu";
 import { fail, friendlyError, notify } from "../../../kit/toast";
-import { acts, entry, list, nameLine } from "../../../kit/ui/entry";
+import { actSlots, entry, list, nameLine } from "../../../kit/ui/entry";
 import { chip } from "../../../kit/ui/marks";
 import { dashH, note, pageHead, toolrow } from "../../../kit/ui/text";
 import { OBJECTIVES, objectiveText } from "../../../kit/words";
@@ -95,16 +95,21 @@ function chatSolve(): Safe {
   if (elsewhere && !planTitle(elsewhere)) loadList();
   const called = elsewhere ? planTitle(elsewhere) || card.name || "its plan" : "";
   const from = card.plan === bench.key && typeof card.rev === "number" ? card.rev : undefined;
-  const apply = card.args && !bench.gone ? html`<button type="button" class="btn" data-ph="apply" title="${from === undefined ? "replace this plan's whole request with chat's, as one new version" : "apply what chat changed from v" + from + ", merged with edits made since"}">${from === undefined ? "replace this plan's request" : "apply to this plan"}</button>` : "";
-  const open = elsewhere ? html`<button type="button" class="btn" data-ph="open-solve">open “${called}”</button>` : "";
-  const save = card.args ? html`<button type="button" class="btn" data-ph="new-solve" title="save chat's request as a new plan and open it">new plan</button>` : "";
+  const choices: [string, string, string][] = [];
+  if (card.args && !bench.gone) choices.push(["apply", from === undefined ? "replace this plan's request" : "apply to this plan", from === undefined ? "replace this plan's whole request with chat's, as one new version" : "apply what chat changed from v" + from + ", merged with edits made since"]);
+  if (elsewhere) choices.push(["open-solve", "open “" + called + "”", ""]);
+  if (card.args) choices.push(["new-solve", "new plan", "save chat's request as a new plan and open it"]);
+  const first = choices[0];
+  const main = first ? html`<button type="button" class="btn" data-ph="${first[0]}"${first[2] ? html` title="${first[2]}"` : ""}>${first[1]}</button>` : "";
+  const menu = choices.slice(1).map((c) => c[0] + ":" + c[1]).concat(["dismiss-solve:dismiss"]);
+  const more = html`<button class="btn icon more" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="more for chat’s solve" data-ph="solve-more" data-items="${menu.join("|")}">⋯</button>`;
   const parts = card.args ? describeParts(card.args) : [];
   return list(
     "csolve",
     "stacked",
     entry(
       { title: parts.join(" · ") },
-      html`<div class="id">${nameLine(html`<span class="name">chat solved this</span>`, objectiveText(card.text))}${parts.length ? html`<div class="chips">${parts.map((p) => chip(p, "muted"))}</div>` : ""}</div>${chip("not saved", "mid")}${acts(html`${apply}${open}${save}<button type="button" class="btn icon" data-ph="dismiss-solve" aria-label="dismiss" title="dismiss">×</button>`)}`
+      html`<div class="id">${nameLine(html`<span class="name">chat solved this</span>`, objectiveText(card.text))}${parts.length ? html`<div class="chips">${parts.map((p) => chip(p, "muted"))}</div>` : ""}</div>${chip("not saved", "mid")}${actSlots(main, { more })}`
     ),
     "nolead"
   );
@@ -116,7 +121,7 @@ function others(): Safe {
   const lines = rows.map((r) =>
     entry(
       { title: "v" + r.rev + " " + r.text },
-      html`<div class="id">${nameLine(html`${chip(r.who, "muted")} <span class="name">v${r.rev} ${r.text}</span>`, r.undone ? "undone" : "")}</div>${acts(!r.undone && !bench.gone ? html`<button type="button" class="btn" data-ph="undo" data-rev="${String(r.rev)}" title="${"undo v" + r.rev + " as a new version"}">undo</button>` : "")}`
+      html`<div class="id">${nameLine(html`${chip(r.who, "muted")} <span class="name">v${r.rev} ${r.text}</span>`, r.undone ? "undone" : "")}</div>${actSlots(!r.undone && !bench.gone ? html`<button type="button" class="btn" data-ph="undo" data-rev="${String(r.rev)}" title="${"undo v" + r.rev + " as a new version"}">undo</button>` : "", { more: false })}`
     )
   );
   const d = bench.othersDelta;
@@ -199,6 +204,7 @@ export function headClick(target: Element, showPad: () => void): boolean {
   else if (what === "keep" || what === "mine") dropChip(Number(b.dataset.chip), what === "mine");
   else if (what === "undo") undoRev(Number(b.dataset.rev));
   else if (what === "dismiss-others") dismissStrip(null);
+  else if (what === "solve-more") openMenu(b, (b.dataset.items || "").split("|").map((pair) => ({ label: pair.slice(pair.indexOf(":") + 1), act: () => solveAction(pair.slice(0, pair.indexOf(":"))) })));
   else solveAction(what);
   return true;
 }
