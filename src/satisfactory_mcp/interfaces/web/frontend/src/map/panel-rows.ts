@@ -8,10 +8,10 @@ import { reveal } from "./labels";
 import { selectAndRing } from "./map-highlight";
 import {
   biomassLine,
-  readGeneration,
+  readCapacity,
   readHeadroomFull,
   readHeadroomNow,
-  readMeasuredDraw,
+  readConsumption,
   whereOf,
 } from "../dash/power/readings";
 import { ledgerBar } from "../dash/power/ledger-bar";
@@ -71,13 +71,13 @@ export function ledgerBlock(r: Rated, starved: number): HTMLElement {
   const box = make("div", "panel-ledger");
   const grid = make("div", "panel-kv");
   const pairs: [string, Reading][] = [
-    [WORDS.generation, readGeneration(r)],
-    [WORDS.measuredDraw, readMeasuredDraw(r)],
-    [WORDS.nameplateDraw, { value: mw(r.ledger.draw_mw), bad: false, why: "" }],
+    [WORDS.capacity, readCapacity(r)],
+    [WORDS.consumption, readConsumption(r)],
+    [WORDS.maxConsumption, { value: mw(r.ledger.draw_mw), bad: false, why: "" }],
     [WORDS.headroomNow, readHeadroomNow(r)],
     [WORDS.headroomFull, readHeadroomFull(r)],
   ];
-  if (starved) pairs.splice(1, 0, ["of it starved", { value: mw(starved), bad: true, why: "" }]);
+  if (starved) pairs.splice(1, 0, ["starved, left out", { value: mw(starved), bad: true, why: "" }]);
   pairs.forEach(function (p) {
     grid.appendChild(make("span", "panel-k", p[0]));
     const v = make("span", "panel-v" + (p[1].bad ? " bad" : ""), p[1].value);

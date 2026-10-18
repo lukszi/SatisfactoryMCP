@@ -28,7 +28,10 @@ def test_circuits_split_the_generation_without_losing_or_inventing_any(client, s
     assert total <= body["world"]["generation_mw"] + 0.1 * len(circuits)
     for c in circuits:
         led = c["ledger"]
-        assert led["headroom_mw"] == pytest.approx(led["generation_mw"] - led["draw_mw"], abs=0.2)
+        assert led["headroom_mw"] == pytest.approx(led["capacity_mw"] - led["draw_mw"], abs=0.2)
+        assert led["capacity_mw"] == pytest.approx(
+            led["generation_mw"] - led["starved_generation_mw"], abs=0.2
+        )
         if c["bbox_m"] is not None:
             x_min, y_min, x_max, y_max = c["bbox_m"]
             assert x_min <= c["centroid_m"][0] <= x_max
@@ -263,6 +266,9 @@ def test_a_generator_type_carries_its_starved_part_icon_and_place(game):
                 "icon": rated.descriptor,
             }
         ]
+    for led in (body["world"], body["circuits"][0]["ledger"]):
+        assert led["capacity_mw"] == pytest.approx(rated.power_production_mw)
+        assert led["headroom_mw"] == pytest.approx(rated.power_production_mw)
     for rows in (body["starved"], body["circuits"][0]["starved"]):
         assert [(s["instance"], s["circuit"], s["icon"]) for s in rows] == [
             ("Build_GeneratorCoal_C_1", 0, rated.descriptor)
@@ -305,3 +311,60 @@ def test_a_paused_machine_on_no_wire_is_listed_and_counted_but_draws_nothing(gam
     assert body["off_grid"]["consumers"] == len(body["unwired"]) == 2
     assert body["off_grid"]["paused"] == 1
     assert body["off_grid"]["draw_mw"] == pytest.approx(rated, abs=0.1)
+
+
+def test_a_factory_draw_counts_only_its_machines_on_that_circuit(game):
+    """A factory spanning two circuits is split between them, never counted on both."""
+    from satisfactory_mcp.interfaces.web.routers.dashboard.power_circuits import _factory_draws
+
+    def smelter(n):
+        return {"instance": f"L:P.Build_SmelterMk1_C_{n}", "cls": "Build_SmelterMk1_C"}
+
+    label_of = {"Build_SmelterMk1_C_1": "Works", "Build_SmelterMk1_C_2": "Works"}
+    on_this = {"machines": [smelter(1), smelter(3)], "extractors": [], "generators": []}
+    rated = game.buildings["Build_SmelterMk1_C"].power_at(1.0)
+    (row,) = _factory_draws(on_this, ["Works"], label_of, game)
+    assert row == {
+        "name": "Works",
+        "draw_mw": pytest.approx(rated, abs=0.1),
+        "measured_draw_mw": pytest.approx(rated, abs=0.1),
+    }
+
+
+def test_the_generator_candidates_are_served_biggest_first(client):
+    rows = client.get("/api/power/generators").json()
+    assert rows, "game data has fuelled generators"
+    assert [r["mw"] for r in rows] == sorted((r["mw"] for r in rows), reverse=True)
+    assert all(r["verdict"] for r in rows)
+    assert client.get("/api/power/generators").json() == rows
+
+
+def test_factory_draws_add_up_across_circuits(labelled, labelled_client):
+    """Per circuit they fit inside its draw; over all circuits they are the factory's wired
+    draw exactly once."""
+    from satisfactory_mcp.core.saveio.records import instance_leaf
+    from satisfactory_mcp.domain.power.report import PowerLedger, wired_actors
+
+    body = labelled_client.get("/api/power/circuits").json()
+    spread: dict[str, float] = {}
+    assert any(c["factories"] for c in body["circuits"])
+    for c in body["circuits"]:
+        rows = c["factories"]
+        assert sum(r["draw_mw"] for r in rows) <= c["ledger"]["draw_mw"] + 0.1 * len(rows)
+        for r in rows:
+            assert r["measured_draw_mw"] <= r["draw_mw"] + 0.1
+            spread[r["name"]] = spread.get(r["name"], 0.0) + r["draw_mw"]
+    projection = labelled.projection
+    for label in labelled.labels.labels:
+        if label.name not in spread:
+            continue
+        anchors = set(label.anchors)
+
+        def own(group, anchors=anchors):
+            return [
+                r for r in projection.get(group) or () if instance_leaf(r["instance"]) in anchors
+            ]
+
+        groups = {"machines": own("machines"), "extractors": own("extractors"), "generators": []}
+        whole = PowerLedger(projection=groups, game=labelled.game, wired=wired_actors(projection))
+        assert spread[label.name] == pytest.approx(whole.power_report()["draw_mw"], abs=0.5)

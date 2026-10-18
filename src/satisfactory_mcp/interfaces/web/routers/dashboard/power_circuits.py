@@ -10,6 +10,7 @@ Handler names are operation_ids (wire rule 1).
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Hashable
 from dataclasses import dataclass
 
 from fastapi import APIRouter, Request
@@ -17,6 +18,7 @@ from typing_extensions import TypedDict
 
 from .....core.gamedata.model import GameData
 from .....core.saveio.records import instance_leaf
+from .....core.singleflight import Singleflight
 from .....domain.factories import candidates
 from .....domain.factories.health import assess
 from .....domain.power.report import (
@@ -26,6 +28,7 @@ from .....domain.power.report import (
     starved_cause,
 )
 from .....domain.power.views import PowerReport
+from .....domain.progression.generators import GeneratorCandidate, generator_candidates
 from .....domain.spatial import geo
 from .....domain.spatial.regions import RegionMap
 from .....domain.world.state import WorldState
@@ -47,11 +50,14 @@ router = APIRouter(prefix="/api")
 
 
 class Ledger(TypedDict):
-    """``biomass_mw`` and ``biomass_generators`` are the wired burners left out of every
-    figure here under ``?biomass=exclude``; both are 0 under ``include``."""
+    """``capacity_mw`` is production capacity, ``generation_mw`` less what starved generators
+    cannot run; both headrooms are taken from it. ``biomass_mw`` and ``biomass_generators``
+    are the wired burners left out of every figure here under ``?biomass=exclude``; both are
+    0 under ``include``."""
 
     generation_mw: float
     starved_generation_mw: float
+    capacity_mw: float
     draw_mw: float
     measured_draw_mw: float
     headroom_mw: float
@@ -119,10 +125,20 @@ class Unwired(TypedDict):
     generation_mw: float
 
 
+class FactoryDraw(TypedDict):
+    """A named factory's draw on one circuit, counting only its machines standing on it:
+    ``draw_mw`` is maximum consumption, ``measured_draw_mw`` power consumption."""
+
+    name: str
+    draw_mw: float
+    measured_draw_mw: float
+
+
 class CircuitRow(TypedDict):
     """``bbox_m`` is null when no record on the circuit has a position. ``factories`` is
-    every named factory on it, most machines first; ``unmodellable`` the generator classes
-    on it that game data cannot rate, whose output the ledger leaves out."""
+    every named factory on it, most machines first, with its draw on this circuit alone;
+    ``unmodellable`` the generator classes on it that game data cannot rate, whose output
+    the ledger leaves out."""
 
     index: int
     ledger: Ledger
@@ -131,7 +147,7 @@ class CircuitRow(TypedDict):
     unmodellable: list[str]
     consumers: int
     poles: int
-    factories: list[str]
+    factories: list[FactoryDraw]
     factory_count: int
     centroid_m: tuple[float, float] | None
     bbox_m: tuple[float, float, float, float] | None
@@ -157,6 +173,7 @@ def _ledger(report: PowerReport) -> Ledger:
     return {
         "generation_mw": round(report["generation_mw"], 1),
         "starved_generation_mw": round(report["starved_generation_mw"], 1),
+        "capacity_mw": round(report["capacity_mw"], 1),
         "draw_mw": round(report["draw_mw"], 1),
         "measured_draw_mw": round(report["measured_draw_mw"], 1),
         "headroom_mw": report["headroom_mw"],
@@ -240,6 +257,33 @@ def _starved(report: PowerReport, places: _Places) -> list[StarvedGenerator]:
     return rows
 
 
+def _factory_draws(
+    sub: MachineGroups, names: list[str], label_of: dict[str, str], game: GameData
+) -> list[FactoryDraw]:
+    """Each named factory's draw from this circuit's consumers only, so a factory spanning two
+    circuits is split between them rather than counted on both."""
+    own: dict[str, MachineGroups] = {
+        name: {"machines": [], "extractors": [], "generators": []} for name in names
+    }
+    for machine in sub["machines"]:
+        if (mine := own.get(label_of.get(instance_leaf(machine["instance"]), ""))) is not None:
+            mine["machines"].append(machine)
+    for extractor in sub["extractors"]:
+        if (mine := own.get(label_of.get(instance_leaf(extractor["instance"]), ""))) is not None:
+            mine["extractors"].append(extractor)
+    rows: list[FactoryDraw] = []
+    for name in names:
+        report = PowerLedger(projection=own[name], game=game).power_report()
+        rows.append(
+            {
+                "name": name,
+                "draw_mw": round(report["draw_mw"], 1),
+                "measured_draw_mw": round(report["measured_draw_mw"], 1),
+            }
+        )
+    return rows
+
+
 def _circuit_rows(
     st: WorldState, placed: Placed, label_of: dict[str, str], counted: bool
 ) -> list[tuple[CircuitRow, set[str], PowerReport]]:
@@ -275,7 +319,9 @@ def _circuit_rows(
             "unmodellable": list(report["unmodellable"]),
             "consumers": len(sub["machines"]) + len(sub["extractors"]),
             "poles": sum(1 for leaf in component if graph.kind(leaf) in ("pole", "tower")),
-            "factories": [name for name, _count in named.most_common()],
+            "factories": _factory_draws(
+                sub, [name for name, _count in named.most_common()], label_of, st.game
+            ),
             "factory_count": len(named),
             "centroid_m": None if centre is None else point_m(centre),
             "bbox_m": bbox_m(placed, standing),
@@ -353,3 +399,21 @@ def power_circuits(
         "unwired_generators": _machine_refs(wiring.unwired_generators, places),
         "no_generator": _machine_refs(wiring.no_generator, places),
     }
+
+
+#: (projection, world) -> the projection and the candidates: planner solves, kept per save
+#: like the progress reads. The entry holds the projection, so its id is not reused.
+_CANDIDATES: Singleflight[Hashable, tuple[object, list[GeneratorCandidate]]] = Singleflight(
+    maxsize=8
+)
+
+
+@router.get("/power/generators", response_model=list[GeneratorCandidate])
+def power_generators(
+    request: Request, save: str | None = None, world: str | None = None
+) -> list[GeneratorCandidate]:
+    """Every fuelled generator type, biggest first, with whether the world can run it: the
+    first runnable one is what a circuit short of power builds out with."""
+    st = require_world(request, save, world)
+    key = (id(st.projection), st.world_id)
+    return _CANDIDATES.get(key, lambda: (st.projection, generator_candidates(st)))[1]

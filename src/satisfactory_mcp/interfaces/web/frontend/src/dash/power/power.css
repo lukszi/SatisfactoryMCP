@@ -1,4 +1,5 @@
-/* The Power and circuit pages: the supply block, the utilisation bar, the list templates. */
+/* The Power and circuit pages: the supply block, the utilisation bar, the circuit page's
+ * columns and popover, the list templates. */
 
 .pw {
   display: grid;
@@ -19,7 +20,7 @@
   color: var(--bad);
 }
 
-/* supply and demand: key | bar | value, one scale; the generation line spans the three rows */
+/* supply and demand: key | bar | value, one scale; the production-capacity line spans the three rows */
 .sd {
   --hatch: 3px;
 
@@ -194,7 +195,132 @@
   cursor: help;
 }
 
-/* circuit utilisation: 100% = that circuit's generation, one shared scale, overflow in --bad */
+/* the circuit page: supply and demand full width, do next, then generators | draw by factory */
+.cpage,
+.ccols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-4);
+  align-items: start;
+}
+
+.cpage > *,
+.ccols > * {
+  min-width: 0;
+}
+
+.cpage > .card {
+  margin: 0;
+}
+
+.cpage .dash-h {
+  margin-top: 0;
+}
+
+.ccols {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  gap: var(--sp-5);
+}
+
+/* consumption split by factory: maximum consumption ghost, power consumption solid */
+.sg.da > i,
+.sg.dn > i {
+  flex: 1;
+}
+
+.sg.da > i {
+  background: color-mix(in srgb, var(--ink-soft) 38%, transparent);
+}
+
+.sg.dn > i {
+  background: var(--ink-soft);
+}
+
+.sg.dn .lb {
+  color: var(--bg);
+}
+
+.sg.da .lb,
+.sg.dn .lb {
+  right: var(--sp-1);
+}
+
+.sg .lb .t {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+a.sg {
+  color: var(--ink);
+}
+
+.sd > .tr > .ovl {
+  background: color-mix(in srgb, var(--bad) 38%, transparent);
+  pointer-events: none;
+}
+
+.sd > .tr > .ovl.ms {
+  background: var(--bad);
+}
+
+/* the segment popover: the graph tip's look (.pg-tip) plus the overlay shadow */
+.segtip {
+  position: fixed;
+  z-index: var(--z-dropdown);
+  padding: var(--sp-1) var(--sp-2);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: var(--overlay-shadow);
+  color: var(--ink-soft);
+  font-size: var(--t-meta-size);
+  pointer-events: none;
+}
+
+.segtip .nm {
+  margin-bottom: var(--sp-1);
+  color: var(--ink);
+  font-size: var(--t-name-size);
+  font-weight: var(--t-name-w);
+}
+
+.segtip .g {
+  display: grid;
+  grid-template-columns: repeat(4, max-content);
+  column-gap: var(--sp-2);
+  row-gap: var(--sp-0);
+  align-items: baseline;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.segtip .g b {
+  color: var(--ink);
+  font-size: var(--t-number-size);
+  font-weight: var(--t-number-w);
+  text-align: right;
+}
+
+.segtip .k,
+.segtip .u {
+  color: var(--muted);
+}
+
+.segtip .sep {
+  grid-column: 1 / -1;
+  height: 1px;
+  margin: var(--sp-0) 0;
+  background: var(--line-soft);
+}
+
+.l-cdo .name[data-tip] {
+  text-decoration: underline dotted var(--dim);
+  text-underline-offset: var(--sp-0);
+  cursor: help;
+}
+
+/* circuit utilisation: 100% = that circuit's production capacity, one shared scale, overflow in --bad */
 .ubar {
   position: relative;
   height: var(--bar-l);
@@ -207,6 +333,10 @@
   top: 0;
   bottom: 0;
   left: 0;
+}
+
+.ubar > .so {
+  background: color-mix(in srgb, var(--ink-soft) 34%, transparent);
 }
 
 .ubar > .tick {
@@ -225,8 +355,21 @@
   --cols: var(--col-icon) minmax(0, 1fr) var(--col-text) var(--col-num-l) var(--col-act);
 }
 
-.l-ofac .entry {
-  --cols: var(--col-icon) minmax(0, 1fr) var(--col-num-l) var(--col-act);
+.l-cdo .entry {
+  --cols: var(--col-icon) minmax(0, 1fr) var(--col-text) var(--col-num-l) var(--col-act);
+}
+
+.l-cgen .entry {
+  --cols: var(--col-icon) minmax(0, 1fr) minmax(var(--col-short), 0.8fr) var(--col-num);
+}
+
+.l-cdraw .entry {
+  --cols: var(--col-icon) minmax(0, 1fr) minmax(var(--col-short), 0.8fr) var(--col-num-l) var(--col-act);
+}
+
+.metric .line2 {
+  display: block;
+  margin-left: 0;
 }
 
 .metric.sm b {
@@ -248,6 +391,37 @@
   .sd {
     grid-template-columns: var(--col-num) minmax(0, 1fr) var(--col-num);
     column-gap: var(--sp-2);
+  }
+
+  .ccols {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--sp-4);
+  }
+
+  .l-cgen .entry {
+    --cols: var(--col-icon) minmax(0, 1fr) auto !important;
+  }
+
+  .l-cdraw .entry {
+    --cols: var(--col-icon) minmax(0, 1fr) auto var(--col-act) !important;
+  }
+
+  .l-cgen .entry > .metric,
+  .l-cdraw .entry > .metric {
+    grid-row: 1;
+    grid-column: 3;
+    text-align: right;
+  }
+
+  .l-cdraw .entry > .acts {
+    grid-row: 1;
+    grid-column: 4;
+  }
+
+  .l-cgen .entry > .ubar,
+  .l-cdraw .entry > .ubar {
+    grid-row: 2;
+    grid-column: 2 / -1;
   }
 
   .l-pcirc .entry {

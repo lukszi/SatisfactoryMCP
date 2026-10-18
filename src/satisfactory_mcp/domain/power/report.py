@@ -133,6 +133,16 @@ def dry_input_classes(game: GameData, record: BuildableRecord) -> tuple[str, ...
     return tuple(cls for cls in wanted if not held.get(cls))
 
 
+def _fed_share(record: BuildableRecord, missing: tuple[str, ...]) -> float:
+    """How much of a generator's rated output its inputs can run, 0..1.
+
+    All or nothing for now: the DRY INPUT decides and a zero uptime corroborates, since a
+    generator load-follows and one with no monitor is left alone rather than accused. A fed
+    fraction (supply rate over burn rate) would return the part in between.
+    """
+    return 0.0 if missing and _never_ran(record) else 1.0
+
+
 def _generator_mw(building: Building | None, record: BuildableRecord) -> float:
     if building is None:
         return 0.0
@@ -243,19 +253,18 @@ class PowerLedger:
             entry["count"] += 1
             entry["mw"] += mw
             tally.total_mw += mw
-            # The DRY INPUT decides and a zero uptime corroborates: a generator load-follows,
-            # and one with no monitor is left alone rather than accused.
             missing = dry_inputs(self.game, generator_record)
-            if missing and _never_ran(generator_record):
+            starved_mw = mw * (1.0 - _fed_share(generator_record, missing))
+            if starved_mw > 0:
                 tally.starved.append(
                     {
                         "instance": instance_leaf(generator_record["instance"]),
                         "name": building.name,
-                        "mw": mw,
+                        "mw": starved_mw,
                         "missing": list(missing),
                     }
                 )
-                tally.starved_mw += mw
+                tally.starved_mw += starved_mw
         return tally
 
     def _draw(self) -> _DrawTally:
@@ -279,18 +288,21 @@ class PowerLedger:
         """Generation capacity, and draw both nameplate and measured (save-projection §6.1a).
 
         ``headroom_mw`` is the safe figure, what is free if everything built ran at once;
-        ``measured_headroom_mw`` the current one. Unmonitored machines are charged in full,
-        unwired records and (without ``biomass``) hand-fed burners are summed apart.
+        ``measured_headroom_mw`` the current one; both are taken from ``capacity_mw``, the
+        rated generation less what starved generators cannot run. Unmonitored machines are
+        charged in full, unwired records and (without ``biomass``) hand-fed burners are summed
+        apart.
         """
         generation = self._generation(biomass)
         draw = self._draw()
-        total_mw = generation.total_mw
+        capacity_mw = generation.total_mw - generation.starved_mw
         return {
-            "generation_mw": total_mw,
+            "generation_mw": generation.total_mw,
+            "capacity_mw": capacity_mw,
             "draw_mw": draw.draw_mw,
-            "headroom_mw": total_mw - draw.draw_mw,
+            "headroom_mw": capacity_mw - draw.draw_mw,
             "measured_draw_mw": draw.measured_mw,
-            "measured_headroom_mw": total_mw - draw.measured_mw,
+            "measured_headroom_mw": capacity_mw - draw.measured_mw,
             "monitored": draw.monitored,
             "unmonitored": draw.unmonitored,
             "paused_consumers": draw.paused,

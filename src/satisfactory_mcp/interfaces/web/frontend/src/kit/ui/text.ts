@@ -31,6 +31,8 @@ export interface PageHead {
   /** [label, href] of each level above the page. */
   crumbs: [string, string][];
   name: string;
+  /** The title's tooltip: what the name means, when that is not obvious. */
+  nameTip?: string;
   lead?: Hole;
   chips?: Hole;
   acts?: Hole;
@@ -45,7 +47,7 @@ export interface PageHead {
 export function pageHead(o: PageHead): Safe {
   const crumbs = o.crumbs.map((c) => html`<a href="${c[1]}" data-nav="up">${c[0]}</a><span class="sep">/</span>`);
   return html`<header class="phead"><nav class="crumbs" aria-label="breadcrumb">${crumbs}<span aria-current="page">${o.name}</span></nav>
-    <div class="title">${o.lead}<h1>${o.name}</h1>${o.chips}${o.acts ? html`<span class="grow"></span><span class="acts">${o.acts}</span>` : ""}</div>${o.figs ? html`<div class="figs">${o.figs}</div>` : ""}${o.note ? note(o.note) : ""}${o.tabs ? objectTabs(o.tabs, o.tabsLabel || "sections") : ""}</header>`;
+    <div class="title">${o.lead}<h1${o.nameTip ? html` title="${o.nameTip}"` : ""}>${o.name}</h1>${o.chips}${o.acts ? html`<span class="grow"></span><span class="acts">${o.acts}</span>` : ""}</div>${o.figs ? html`<div class="figs">${o.figs}</div>` : ""}${o.note ? note(o.note) : ""}${o.tabs ? objectTabs(o.tabs, o.tabsLabel || "sections") : ""}</header>`;
 }
 
 function objectTabs(tabs: NonNullable<PageHead["tabs"]>, label: string): Safe {

@@ -72,7 +72,7 @@ function factoryCard(row: FactoryHealthRow): Safe {
   const metric = row.actionable
     ? html`<div class="metric ${tone}"><b>${count(row.actionable)}</b><span>${WORDS.needAction}</span></div>`
     : html`<div class="metric"><b>${pct(row.uptime)}</b><span>uptime</span></div>`;
-  const facts = html`<div class="facts"><span><em>${mw(row.measured_mw)}</em> ${WORDS.drawingNow}</span><span title="${WORDS.ifAllRunTip}"><em>${mw(row.nameplate_mw)}</em> ${WORDS.ifAllRun}</span></div>`;
+  const facts = html`<div class="facts"><span><em>${mw(row.measured_mw)}</em> ${WORDS.consumption}</span><span title="${WORDS.maxConsumptionTip}"><em>${mw(row.nameplate_mw)}</em> ${WORDS.maxConsumptionShort}</span></div>`;
   const mix = mixParts(row.states, (s) => stateTone(s));
   const foot = html`<div class="full foot">${mixBar(mix, "machines by state: " + row.states.map((s) => s.count + " " + s.state).join(", "))}</div>`;
   return entry(

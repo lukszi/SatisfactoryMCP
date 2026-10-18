@@ -696,6 +696,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/power/generators": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Power Generators
+         * @description Every fuelled generator type, biggest first, with whether the world can run it: the
+         *     first runnable one is what a circuit short of power builds out with.
+         */
+        get: operations["power_generators_api_power_generators_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/progress/milestones": {
         parameters: {
             query?: never;
@@ -2902,8 +2923,9 @@ export interface components {
         /**
          * CircuitRow
          * @description ``bbox_m`` is null when no record on the circuit has a position. ``factories`` is
-         *     every named factory on it, most machines first; ``unmodellable`` the generator classes
-         *     on it that game data cannot rate, whose output the ledger leaves out.
+         *     every named factory on it, most machines first, with its draw on this circuit alone;
+         *     ``unmodellable`` the generator classes on it that game data cannot rate, whose output
+         *     the ledger leaves out.
          */
         CircuitRow: {
             /** Index */
@@ -2920,7 +2942,7 @@ export interface components {
             /** Poles */
             poles: number;
             /** Factories */
-            factories: string[];
+            factories: components["schemas"]["FactoryDraw"][];
             /** Factory Count */
             factory_count: number;
             /** Centroid M */
@@ -3426,6 +3448,19 @@ export interface components {
             links: components["schemas"]["AspectLink"][];
             /** Issues */
             issues: components["schemas"]["AspectIssue"][];
+        };
+        /**
+         * FactoryDraw
+         * @description A named factory's draw on one circuit, counting only its machines standing on it:
+         *     ``draw_mw`` is maximum consumption, ``measured_draw_mw`` power consumption.
+         */
+        FactoryDraw: {
+            /** Name */
+            name: string;
+            /** Draw Mw */
+            draw_mw: number;
+            /** Measured Draw Mw */
+            measured_draw_mw: number;
         };
         /**
          * FactoryGraphResponse
@@ -4046,6 +4081,29 @@ export interface components {
             solves: number;
         };
         /**
+         * GeneratorCandidate
+         * @description One generator type, biggest first: ``mw`` its rated output at 100% (game data),
+         *     ``runnable`` whether it is unlocked and a fuel of it makeable, ``verdict`` why in a few
+         *     words and ``why`` the planner's reason a fuel is not makeable ("" otherwise), ``fuel``
+         *     the fuel that made it runnable (null when none did).
+         */
+        GeneratorCandidate: {
+            /** Name */
+            name: string;
+            /** Icon */
+            icon: string | null;
+            /** Mw */
+            mw: number;
+            /** Runnable */
+            runnable: boolean;
+            /** Verdict */
+            verdict: string;
+            /** Why */
+            why: string;
+            /** Fuel */
+            fuel: string | null;
+        };
+        /**
          * GeneratorGroup
          * @description One generator type, counted and summed; ``starved_mw`` is the part of ``mw`` standing on
          *     starved generators, ``icon`` the descriptor ``/api/icons/`` files its picture under.
@@ -4342,14 +4400,18 @@ export interface components {
         };
         /**
          * Ledger
-         * @description ``biomass_mw`` and ``biomass_generators`` are the wired burners left out of every
-         *     figure here under ``?biomass=exclude``; both are 0 under ``include``.
+         * @description ``capacity_mw`` is production capacity, ``generation_mw`` less what starved generators
+         *     cannot run; both headrooms are taken from it. ``biomass_mw`` and ``biomass_generators``
+         *     are the wired burners left out of every figure here under ``?biomass=exclude``; both are
+         *     0 under ``include``.
          */
         Ledger: {
             /** Generation Mw */
             generation_mw: number;
             /** Starved Generation Mw */
             starved_generation_mw: number;
+            /** Capacity Mw */
+            capacity_mw: number;
             /** Draw Mw */
             draw_mw: number;
             /** Measured Draw Mw */
@@ -6216,6 +6278,8 @@ export interface components {
         PowerReport: {
             /** Generation Mw */
             generation_mw: number;
+            /** Capacity Mw */
+            capacity_mw: number;
             /** Draw Mw */
             draw_mw: number;
             /** Headroom Mw */
@@ -7484,7 +7548,8 @@ export interface components {
         };
         /**
          * StarvedEntry
-         * @description A generator out of an input it burns, and idle for it; ``missing`` names the inputs.
+         * @description A generator out of an input it burns, and idle for it; ``missing`` names the inputs
+         *     and ``mw`` is the part of its rated output it cannot run.
          */
         StarvedEntry: {
             /** Instance */
@@ -9495,6 +9560,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CircuitsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    power_generators_api_power_generators_get: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeneratorCandidate"][];
                 };
             };
             /** @description Validation Error */

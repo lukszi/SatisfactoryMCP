@@ -17,9 +17,9 @@ import {
   onBiomass,
   ratedCircuit,
   ratedWorld,
-  readGeneration,
+  readCapacity,
   readHeadroomNow,
-  readMeasuredDraw,
+  readConsumption,
 } from "../dash/power/readings";
 import { ledgerBar } from "../dash/power/ledger-bar";
 import { badgeTone, ledgerBlock, nameButton, panelNote, refList, showOnMapButton, STARVED_HINT } from "./panel-rows";
@@ -199,7 +199,7 @@ function factoryRow(row: FactoryHealthRow): HTMLElement {
         " · " +
         mw(row.measured_mw) +
         " " +
-        WORDS.measuredDraw +
+        WORDS.consumption +
         " of " +
         mw(row.nameplate_mw)
     )
@@ -297,7 +297,7 @@ function circuitRow(row: CircuitRow): HTMLElement {
       selectCircuit(row);
     })
   );
-  const now = r.dark ? readGeneration(r) : readHeadroomNow(r);
+  const now = r.dark ? readCapacity(r) : readHeadroomNow(r);
   const badge = make("span", "panel-badge" + badgeTone(now, led.starved_generation_mw > 0), now.value);
   badge.title = now.why || WORDS.headroomNow;
   head.appendChild(badge);
@@ -306,9 +306,9 @@ function circuitRow(row: CircuitRow): HTMLElement {
     make(
       "div",
       "panel-row-sub",
-      readMeasuredDraw(r).value +
+      readConsumption(r).value +
         " of " +
-        (r.dark ? mw(led.generation_mw) : readGeneration(r).value) +
+        (r.dark ? mw(led.generation_mw) : readCapacity(r).value) +
         " · " +
         counted(row.consumers, "consumer") +
         " · " +
@@ -348,7 +348,7 @@ function renderPower(body: HTMLElement): void {
   if (data.unmodellable.length) {
     panelNote(body, "not in game data, left out: " + data.unmodellable.join(", "));
   }
-  if (data.unwired_generators.length) body.appendChild(refList("generators on no wire", data.unwired_generators, "generation no circuit can use"));
+  if (data.unwired_generators.length) body.appendChild(refList("generators on no wire", data.unwired_generators, "production capacity no circuit can use"));
   if (data.starved.length || data.unwired.length || data.no_generator.length) body.appendChild(make("h3", "panel-h", WORDS.powerProblems));
   if (data.starved.length) body.appendChild(refList(WORDS.starvedGenerator + "s", data.starved, STARVED_HINT));
   if (data.unwired.length) body.appendChild(refList(WORDS.noWire, data.unwired, "machines on no power line"));

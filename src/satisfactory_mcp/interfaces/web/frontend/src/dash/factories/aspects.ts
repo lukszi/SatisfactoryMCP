@@ -209,17 +209,17 @@ export function powerAspect(c: FCtx): Safe {
   const p = data.power;
   const top = Math.max(p.draw_mw, p.measured_draw_mw, p.generation_mw, 1);
   const rows: [string, string, number, string][] = [];
-  if (p.generation_mw > 0) rows.push([WORDS.generation, "", p.generation_mw, "gen"]);
-  rows.push([WORDS.ifAllRun, WORDS.ifAllRunTip, p.draw_mw, "np"], [WORDS.drawingNow, "", p.measured_draw_mw, "ms"]);
+  if (p.generation_mw > 0) rows.push([WORDS.capacity, "", p.generation_mw, "gen"]);
+  rows.push([WORDS.maxConsumption, WORDS.maxConsumptionTip, p.draw_mw, "np"], [WORDS.consumption, "", p.measured_draw_mw, "ms"]);
   const cells = rows.map((r, i) => {
     const at = "grid-row:" + (i + 1);
     return html`<span class="k" style="${at}"${r[1] ? html` title="${r[1]}"` : ""}>${r[0]}</span><div class="tr" style="${at}"><i class="${r[3]}" style="width:${pctW((r[2] / top) * 100)}"></i></div><span class="v" style="${at}">${count(Math.round(r[2]))} <span>MW</span></span>`;
   });
   const circuits = vitals().circuits;
-  const mine = circuits ? circuits.circuits.filter((row) => row.factories.indexOf(c.name) >= 0) : [];
+  const mine = circuits ? circuits.circuits.filter((row) => row.factories.some((f) => f.name === c.name)) : [];
   const links = html`${mine.map((row) => html`<a href="${hashFor("power/" + (row.index + 1))}">circuit ${row.index + 1}</a> `)}`;
-  const unmeasured = p.unmonitored ? html`<div class="nc"><span class="k">not counted</span>${chip(count(p.unmonitored) + " unmeasured", "muted", counted(p.unmonitored, "machine") + " keep no monitor; " + WORDS.drawingNow + " charges them in full")}</div>` : "";
-  return html`<section class="card">${toolrow(dashH("draw"), links)}<div class="sd fdraw" role="group" aria-label="${WORDS.ifAllRun + " " + mw(p.draw_mw) + ", " + WORDS.drawingNow + " " + mw(p.measured_draw_mw)}">${cells}</div>${unmeasured}</section>`;
+  const unmeasured = p.unmonitored ? html`<div class="nc"><span class="k">not counted</span>${chip(count(p.unmonitored) + " unmeasured", "muted", counted(p.unmonitored, "machine") + " keep no monitor; " + WORDS.consumption + " charges them in full")}</div>` : "";
+  return html`<section class="card">${toolrow(dashH("draw"), links)}<div class="sd fdraw" role="group" aria-label="${WORDS.maxConsumption + " " + mw(p.draw_mw) + ", " + WORDS.consumption + " " + mw(p.measured_draw_mw)}">${cells}</div>${unmeasured}</section>`;
 }
 
 /* ------------------------------------------------------------------ nodes, links */
