@@ -125,6 +125,12 @@
   --row-h: 40px;
   --row-h-card: 72px;
   --touch-h: 44px;
+  /* phone hit areas: their height (a bar sets its own), the gap to the neighbour on the left
+     and above (a row sets its own), the transparent border that lifts an input or select */
+  --hit-h: var(--touch-h);
+  --hit-gap: var(--touch-h);
+  --hit-gap-y: var(--touch-h);
+  --hit-y: calc((var(--touch-h) - var(--ctl-h)) / 2);
 
   /* list columns: one width per kind of column, the same on every page */
   --col-icon: var(--ic-m);
