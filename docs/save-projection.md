@@ -1337,15 +1337,34 @@ selector resolved without a world, or a failed save read, the answer is the vani
 
 | option | the game (wiki "New game") | applied here |
 |---|---|---|
-| Power Consumption | "all Power consumption", every building and machine | the planner's processes and the factory view's draw, ×`energy_cost`. Generation is never scaled |
-| Recipe Parts Cost | "the parts cost for each Recipe", rounded to whole parts | build costs: each part of one building is rounded, at least 1, then multiplied by the count. This covers the bill, the shortfall list, payback and build points |
+| Power Consumption | "all Power consumption", every building and machine | ×`energy_cost` on every consumer's rated draw: the planner's processes, the factory view, and the Power page's maximum consumption, its measured draw and each circuit's and factory's figures (`PowerLedger.energy_cost`). Generation is never scaled |
+| Recipe Parts Cost | "the parts cost for each Recipe", rounded to whole parts | build costs: each part of one building is rounded, then multiplied by the count. This covers the bill, the shortfall list, payback and build points. Production and craft-bench recipes: each ingredient per cycle is rounded the same way, and products are left alone |
 | Space Elevator | "the part cost for each Space Elevator Phase" | nothing to scale: phase costs are read from the save, which already holds the game's figures (§6.4) |
 
-**Open questions.** It is not yet known whether the parts multiplier also scales the
-ingredients of production recipes. One third-party planner applies it to them. Until an in-game
-check settles it, only build costs are scaled here. The Power page's rated draws are not
-scaled either, because they live in `domain/power`. Measured consumption needs no scaling, since
-the save already records the scaled figure.
+**Production recipes are scaled too.** `FGRecipe.h` (Headers.zip) gives every recipe class,
+production ones included, `GetIngredientsWithPartsCostMultiplier(worldContext)`. Its static
+`GetIngredients` takes a world context, which it needs only to reach the game state's
+multiplier, while `GetProducts` takes none. So ingredients scale and products do not. The
+wiki's 1.2.3.0 patch note backs this up: it fixed the ×1.75 setting "setting all the recipe
+costs to 0 for liquids". Only production recipes have fluid ingredients, so the multiplier
+must reach them. The headers ship without the `.cpp`, so they do not show the rounding.
+`FItemAmount::Amount` is an `int32`, so each scaled amount is a whole unit, and the wiki says
+"rounded up or down to next whole number". This project rounds half up, with a minimum of 1.
+A fluid rounds in litres, which are the game's own unit (1 m3 is 1,000), so 3 m3 × 0.75 gives
+2.25 m3. A half-way case such as 2 × 0.75 = 1.5 has not been checked in game.
+
+`world.gamemode.scaled_game` builds the world's copy of the recipe table, with one object per
+factor. A `WorldState`, a `Scenario`, `build_scenario`, `build_view` and `assess` each take it,
+so rates, bills, supply diagnosis and the factory view's expected rates all follow. Build
+recipes are left alone in that copy, because `cost_of` scales building parts and doing both
+would scale them twice. Constructor Iron Plate under 0.75 consumes 2 ingots, down from 3,
+for its 2 plates per 6 s, so 20/min in and 20/min out. A vanilla world gets the very object it
+passed in.
+
+**Not scaled.** The codex and other world-free lookups (`recipe_detail`, `search_recipes`)
+show the vanilla recipes. Measured production rates come from the save and already hold the
+game's figures. Measured draw, however, is the rated draw weighted by uptime, so it is
+scaled.
 
 ### Schema history
 

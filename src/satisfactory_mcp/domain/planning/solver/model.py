@@ -9,6 +9,7 @@ from typing import NotRequired
 from typing_extensions import TypedDict
 
 from ....core.gamedata.model import GameData
+from ...world.gamemode import scaled_game
 from .views import OverclockOption, OverclockPick
 
 __all__ = [
@@ -133,11 +134,12 @@ class Scenario:
     #: Per recipe id, a row's own choice over ``overclock_last``: ``"last"`` builds the
     #: overclocked candidate whatever it costs, ``"spread"`` never does.
     row_overclock: dict[str, str] = field(default_factory=dict[str, str])
-    #: The save's game-mode factors: on every machine's draw, and on build recipes' parts.
+    #: The save's game-mode factors: on every machine's draw, and on every recipe's parts.
     energy_cost: float = 1.0
     parts_cost: float = 1.0
 
     def __post_init__(self) -> None:
+        self.game = scaled_game(self.game, self.parts_cost)
         self.objective = normalise_objective(self.objective)
         hours = self.payback_hours
         if isinstance(hours, bool) or not math.isfinite(hours) or hours < 0:

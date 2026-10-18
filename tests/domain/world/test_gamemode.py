@@ -41,3 +41,51 @@ def test_a_part_rounds_to_a_whole_one_and_never_to_none():
     assert gamemode.scaled_part(2, 0.75) == 2, "1.5 rounds up"
     assert gamemode.scaled_part(1, 0.25) == 1
     assert gamemode.scaled_part(5, 1.0) == 5
+
+
+def _flows(flows):
+    return {f.item: (f.amount, f.per_min) for f in flows}
+
+
+def test_parts_scale_a_production_recipes_ingredients_and_not_its_products(game):
+    cheap = gamemode.scaled_game(game, 0.75).recipes["Recipe_IronPlate_C"]
+    plain = game.recipes["Recipe_IronPlate_C"]
+    # 3 ingots x 0.75 = 2.25 rounds to 2 per 6 s cycle; the 2 plates stay 2.
+    assert _flows(cheap.ingredients) == {"Desc_IronIngot_C": (2.0, 20.0)}
+    assert cheap.products == plain.products
+
+
+def test_a_fluid_ingredient_rounds_in_whole_litres(game):
+    plain = game.recipes["Recipe_Plastic_C"]
+    cheap = gamemode.scaled_game(game, 0.75).recipes["Recipe_Plastic_C"]
+    oil = "Desc_LiquidOil_C"
+    assert _flows(plain.ingredients)[oil][0] == 3.0
+    assert _flows(cheap.ingredients)[oil] == (2.25, 22.5), "2,250 litres need no rounding"
+    assert cheap.products == plain.products
+
+
+def test_build_recipes_are_left_to_cost_of(game):
+    scaled = gamemode.scaled_game(game, 0.75)
+    builds = [cls for cls, r in game.recipes.items() if r.kind == "building"]
+    assert builds
+    assert all(scaled.recipes[cls] is game.recipes[cls] for cls in builds)
+    assert scaled.buildings is game.buildings
+
+
+def test_scaling_is_one_object_per_factor_and_never_compounds(game):
+    assert gamemode.scaled_game(game, 1.0) is game
+    cheap = gamemode.scaled_game(game, 0.75)
+    assert gamemode.scaled_game(game, 0.75) is cheap
+    assert gamemode.scaled_game(cheap, 0.75) is cheap
+    assert gamemode.scaled_game(cheap, 1.0) is game
+    dear = gamemode.scaled_game(cheap, 2.0)
+    assert dear.recipes["Recipe_IronPlate_C"].ingredients[0].amount == 6.0
+
+
+def test_a_world_runs_its_own_recipes(game):
+    from satisfactory_mcp.domain.world.state import WorldState
+
+    vanilla = WorldState(projection=cast("Any", {}), game=game)
+    assert vanilla.game is game
+    world = WorldState(projection=cast("Any", {"game_mode": TEST_SAVE}), game=game)
+    assert world.game is gamemode.scaled_game(game, 0.75)

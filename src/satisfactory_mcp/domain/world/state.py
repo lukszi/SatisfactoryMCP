@@ -43,6 +43,7 @@ from ..progression.views import (
     SloopBudget,
 )
 from . import flow as world_flow
+from . import gamemode
 from . import sites as world_sites
 from . import water as world_water
 from .carriers import CarrierSet
@@ -85,6 +86,9 @@ class WorldState:
     _feeds: tuple[GameData, Feeds] | None = field(
         default=None, init=False, repr=False, compare=False
     )
+
+    def __post_init__(self) -> None:
+        self.game = gamemode.game_for(self.game, self.projection)
 
     def derived(self, name: str, build: Callable[[], _View]) -> _View:
         """A view shared by every state over this same projection and game data.
@@ -132,6 +136,7 @@ class WorldState:
         return PowerLedger(
             projection=self.projection,
             game=self.game,
+            energy_cost=gamemode.energy_cost(self.projection),
             paused_count=len(self.census.paused),
             wired=wired_actors(self.projection),
             switched_off=frozenset(self.behind_off_switch),
