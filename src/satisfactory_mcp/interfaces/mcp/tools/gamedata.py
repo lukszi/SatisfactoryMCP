@@ -73,7 +73,7 @@ def recipe_detail(
     """Exact numbers for one recipe: rates, machine, power, unlock source.
 
     Takes a class id OR a display name, resolved the way `exclude_recipes` resolves one.
-    Ingredient amounts follow the world's game mode when a save is readable.
+    Amounts follow the world's game mode.
     """
     st, _ = app.load_world_or_none(save, world, as_of)
     g, mode_notes = _shown(st)
