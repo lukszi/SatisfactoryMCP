@@ -446,6 +446,8 @@ def list_buildings(
         )
     elif unlocked is None:
         notes.append(_no_save_note(save_error))
+    if mode := rules.scaling_note(g):
+        notes.append(mode)
     # Page-scoped, like the footer: naming buildings this page does not show would read as
     # rows gone missing.
     unknown = [b.name for b in page if not b.footprint]
