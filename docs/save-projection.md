@@ -1361,10 +1361,21 @@ would scale them twice. Constructor Iron Plate under 0.75 consumes 2 ingots, dow
 for its 2 plates per 6 s, so 20/min in and 20/min out. A vanilla world gets the very object it
 passed in.
 
-**Not scaled.** The codex and other world-free lookups (`recipe_detail`, `search_recipes`)
-show the vanilla recipes. Measured production rates come from the save and already hold the
-game's figures. Measured draw, however, is the rated draw weighted by uptime, so it is
-scaled.
+**Recipe lookups follow the world in scope.** `recipe_detail`, `search_recipes`,
+`alternates_for_item` and the codex routes behind the Items page (`/api/gamedata/recipe`,
+`/recipes`, `/alternates`) read `world.gamemode.shown_game` when a world resolves, the
+default one or the one `save`/`world` names. That table is `game_for` with build recipes'
+parts scaled as well, so a build-gun recipe shows what the build gun charges. It is for
+showing only: `scaled_game` maps it back to the planner's table, so passing it on never
+scales a build part twice. A scaled answer says so: the tools add the `gamemode.parts_note`
+line ("game mode parts x0.75: ..."), and the routes send `parts_cost`, 1 for vanilla. With
+no readable save the lookup stays vanilla and says nothing. The header's jump search shows
+no amounts, so it reads the vanilla table. `explain_byproducts`, `compare_recipe_options`,
+`bom` and `rank_unlocks` take the world's table from its `WorldState`, and the Progress
+roadmap's gate inputs and `inputs_held` check read `st.game`, which is that table already.
+
+**Not scaled.** Measured production rates come from the save and already hold the game's
+figures. Measured draw, however, is the rated draw weighted by uptime, so it is scaled.
 
 ### Schema history
 

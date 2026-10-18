@@ -18,6 +18,7 @@ from ....domain.planning.analysis.views import SwapOption
 from ....domain.planning.stored.planlog import PlanLog
 from ....domain.planning.stored.recall import expand_plan_pin
 from ....domain.session import journal
+from ....domain.world import gamemode
 from ....domain.world.state import WorldState
 from ....presenters.text import primitives as render
 from ....presenters.text.search import item_flows, render_search
@@ -57,13 +58,26 @@ def search_items(query: str, limit: Limit = 10, offset: int = 0) -> str:
     return render.envelope(f"# {len(hits)} item(s) matching {query!r}", body + "\n" + footer)
 
 
+def _shown(st: WorldState | None) -> tuple[GameData, list[str]]:
+    """The recipe table a lookup shows: the world's game mode when a world is in scope, else
+    vanilla; and the note naming the multiplier when the amounts differ from vanilla."""
+    if st is None:
+        return app.game(), []
+    note = gamemode.parts_note(st.projection)
+    return gamemode.shown_game(st.game, st.projection), [note] if note else []
+
+
 @app.tool()
-def recipe_detail(recipe_id: str) -> str:
+def recipe_detail(
+    recipe_id: str, save: str | None = None, world: str | None = None, as_of: AsOf = None
+) -> str:
     """Exact numbers for one recipe: rates, machine, power, unlock source.
 
     Takes a class id OR a display name, resolved the way `exclude_recipes` resolves one.
+    Ingredient amounts follow the world's game mode when a save is readable.
     """
-    g = app.game()
+    st, _ = app.load_world_or_none(save, world, as_of)
+    g, mode_notes = _shown(st)
     r, hits = search.find_recipe(g, recipe_id)
     if r is None and hits:
         # Ambiguous is not unknown: listing the candidates is the answer.
@@ -90,6 +104,7 @@ def recipe_detail(recipe_id: str) -> str:
         lines.append(
             f"variable power: {render.num(r.power_min_mw)}-{render.num(r.power_max_mw)} MW"
         )
+    lines += [f"note   : {note}" for note in mode_notes]
     return "\n".join(lines)
 
 
@@ -143,6 +158,8 @@ def _alternates_in_plan(
     body = render.table([*headers, "Δmach", "ΔMW draw", "Δraw"], rows)
     footer = render.ids_footer((o["name"], o["recipe_id"]) for o in result["options"])
     notes = [echo] if echo else []
+    if mode := gamemode.parts_note(st.projection):
+        notes.append(mode)
     if result["hidden"]:
         notes.append(f"{result['hidden']} locked recipe(s) hidden (include_locked=false)")
     notes.append(
@@ -187,16 +204,16 @@ def alternates_for_item(
     With ``plan`` each recipe also carries its status in that plan and what requiring it
     would change there: machines, MW draw and the first raw inputs.
     """
-    g = app.game()
     iid = app.resolve_item_id(item)
     if iid is None:
         return f"no item matching {item!r}"
     if plan:
         st = app.load_world(save, world, as_of)
-        return _alternates_in_plan(g, st, iid, plan, include_locked, ctx)
-    producers = search.makers_of(g, iid)
+        return _alternates_in_plan(st.game, st, iid, plan, include_locked, ctx)
     # None, not an empty set: "no save" and "a save with no recipes" are different facts.
     st, save_error = app.load_world_or_none(save, world, as_of)
+    g, mode_notes = _shown(st)
+    producers = search.makers_of(g, iid)
     have: set[str] | None = st.available_recipe_ids if st is not None else None
     shown = [r for r in producers if include_locked or have is None or r.cls in have]
     # Only when something is locked; otherwise the column is a row of blanks.
@@ -221,7 +238,7 @@ def alternates_for_item(
         headers.append("granted by")
     body = render.table(headers, rows)
     footer = render.ids_footer((r.name, r.cls) for r in producers)
-    notes = [_no_save_note(save_error)] if have is None else []
+    notes = [_no_save_note(save_error)] if have is None else mode_notes
     return render.envelope(
         f"# {len(rows)} automatable recipe(s) make {g.item_name(iid)} "
         f"({n_alt} alternate). rates=/min at 100% clock, one machine.",
@@ -254,8 +271,8 @@ def search_recipes(
     """
     if gone := app.retired(("kind", kind, "recipe_kind")):
         return gone
-    g = app.game()
-    notes: list[str] = []
+    st, save_error = app.load_world_or_none(save, world, as_of)
+    g, notes = _shown(st)
     consumes_id = produces_id = None
     if consumes:
         consumes_id = app.resolve_item_id(consumes)
@@ -268,7 +285,6 @@ def search_recipes(
     if consumes_id and produces_id:
         notes.append("consumes and produces are ANDed: this is the loop test, not a union")
 
-    st, save_error = app.load_world_or_none(save, world, as_of)
     have: set[str] | None = None
     if st is None:
         notes.append(_no_save_note(save_error))

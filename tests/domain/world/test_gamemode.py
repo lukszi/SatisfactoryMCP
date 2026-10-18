@@ -89,3 +89,24 @@ def test_a_world_runs_its_own_recipes(game):
     assert vanilla.game is game
     world = WorldState(projection=cast("Any", {"game_mode": TEST_SAVE}), game=game)
     assert world.game is gamemode.scaled_game(game, 0.75)
+
+
+def test_a_shown_table_scales_build_parts_and_hands_the_planner_its_own(game):
+    world: Any = {"game_mode": TEST_SAVE}
+    shown = gamemode.shown_game(game, world)
+    planned = gamemode.game_for(game, world)
+    build = game.recipes["Recipe_ConstructorMk1_C"]
+    assert _flows(build.ingredients)["Desc_Cable_C"][0] == 8.0
+    assert _flows(shown.recipes[build.cls].ingredients)["Desc_Cable_C"][0] == 6.0
+    assert planned.recipes[build.cls] is build, "cost_of scales build parts for the planner"
+    assert shown.recipes["Recipe_IronPlate_C"] == planned.recipes["Recipe_IronPlate_C"]
+    assert gamemode.shown_game(planned, world) is shown
+    assert gamemode.game_for(shown, world) is planned, "never scaled twice"
+    assert gamemode.shown_game(game, cast("Any", {})) is game
+
+
+def test_the_parts_note_names_the_multiplier_and_is_silent_on_vanilla():
+    assert gamemode.parts_note(None) is None
+    assert gamemode.parts_note(cast("Any", {})) is None
+    note = gamemode.parts_note(cast("Any", {"game_mode": TEST_SAVE}))
+    assert note is not None and "parts x0.75" in note
