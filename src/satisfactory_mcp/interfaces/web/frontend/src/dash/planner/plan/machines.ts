@@ -91,7 +91,7 @@ function versionStrip(rev: number): Safe {
   const restore = rev !== plan.rev && !bench.gone ? html`<button type="button" class="btn" data-pm="restore" data-rev="${String(rev)}" title="${"a new version equal to v" + rev + "; nothing after it is lost"}"><span class="spinner" aria-hidden="true"></span>restore v${rev}</button>` : "";
   const what = shown ? (shown.name !== plan.name ? "named “" + shown.name + "” · " : "") + describeArgs(shown.args as unknown as Record<string, unknown>) : "";
   const d = bench.viewedDelta?.from_rev === rev ? note("from v" + rev + " to v" + bench.viewedDelta.to_rev + ": " + bench.viewedDelta.text) : "";
-  return html`<section class="card verstrip">${toolrow(dashH("v" + rev + " · read-only"), restore)}<p class="note"><a href="${hashFor(planDash(bench.key, "versions"))}">back to versions</a> · the plan is at v${plan.rev}</p>${what ? note(what) : ""}${d}</section>`;
+  return html`<section class="card verstrip">${toolrow(dashH("v" + rev + " · read-only"), restore)}<p class="note"><a href="${hashFor(planDash(bench.key, "versions"))}" data-nav="close">back to versions</a> · the plan is at v${plan.rev}</p>${what ? note(what) : ""}${d}</section>`;
 }
 
 function viewedBody(): Safe {
@@ -176,7 +176,6 @@ export function machinesClick(target: Element): boolean {
   } else if (what === "undo" && bench.plan) undoRev(bench.plan.rev);
   else if (what === "alt") {
     const item = b!.dataset.item || "";
-    bench.alternatesCloseGoesBack = true;
     showAlternates(item, "");
     go(altDash(bench.key, item));
   } else if (what === "restore") {

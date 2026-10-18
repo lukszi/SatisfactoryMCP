@@ -136,7 +136,7 @@ function candidatesBlock(d: TrackResponse): Safe {
       html`<div class="id"><span class="name">${c.name}</span><div class="ctx">${c.kind === "cluster" ? WORDS.unnamedCluster : WORDS.factory}</div></div><div class="metric"><b>${count(c.machines)}</b><span>machines match</span></div><div class="metric"><b>${Math.round(c.rate_share * 100)}%</b><span>of the rate</span></div>${acts(html`<button type="button" class="btn" data-pb="pick" data-i="${String(i)}"${bench.gone ? html` disabled` : ""}><span class="spinner" aria-hidden="true"></span>pick</button>`)}`
     )
   );
-  const back = d.built_at.mode !== "auto" || d.built_at.confidence !== "unsure" ? html`<p class="note"><a href="${hashFor(buildDash(bench.key, 0))}">back to the stages</a></p>` : "";
+  const back = d.built_at.mode !== "auto" || d.built_at.confidence !== "unsure" ? html`<p class="note"><a href="${hashFor(buildDash(bench.key, 0))}" data-nav="close">back to the stages</a></p>` : "";
   return html`${toolrow(dashH("which factory?", cs.length), scopeSelect())}${back}${nameBar()}${rows.length ? list("pcand", "stacked", rows, "nolead") : emptyLine("nothing built near the plan's site")}`;
 }
 
@@ -184,7 +184,7 @@ export function buildClick(target: Element): boolean {
       busyButton(b as HTMLButtonElement, function () {
         pickCandidate(c);
         return writesSettled();
-      }).then(() => go(buildDash(bench.key, 0), true), () => undefined);
+      }).then(() => go(buildDash(bench.key, 0), "replace"), () => undefined);
   } else if (what === "name" && d) {
     const field = document.getElementById("pb-name") as HTMLInputElement | null;
     if (field) saveName(d.built_at, field.value);
@@ -196,7 +196,7 @@ export function buildClick(target: Element): boolean {
 export function buildChange(el: HTMLSelectElement): boolean {
   if (el.id !== "pb-scope") return false;
   setBuiltScope(el.value);
-  go(buildDash(bench.key, 0), true);
+  go(buildDash(bench.key, 0), "replace");
   return true;
 }
 

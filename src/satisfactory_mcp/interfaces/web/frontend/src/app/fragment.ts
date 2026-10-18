@@ -15,6 +15,7 @@
 import { applyDash } from "../dash/shell";
 import { applyFloorFragment } from "../map/floors/floors";
 import { reload } from "./load";
+import { arrive } from "./nav";
 import { map, writeHash, writtenHash } from "../map/map";
 import { applyPickupFragment } from "../map/drawn/pickups";
 import { showSelector } from "../map/panel";
@@ -78,6 +79,7 @@ function applyView(asked: Record<string, string>): void {
  * branches are one write between them -- and that write is what `writtenHash` recognises.
  */
 function apply(hash: string): void {
+  const restore = arrive();
   if (hash === writtenHash()) return; // the page's own handwriting; see writtenHash
   const garbled: string[] = [];
   const asked = parseHash(hash, garbled);
@@ -97,7 +99,7 @@ function apply(hash: string): void {
   applyPickupFragment(asked.pickups);
   // Kept before the write below; settings-dialog/dialog.ts opens or closes to match.
   state.settings = "settings" in asked ? asked.settings! : null;
-  applyDash(dashFromFragment(asked));
+  applyDash(dashFromFragment(asked), restore);
   // Not while the floor half is still moving: `enterFloors` is a fetch and a flight, and it
   // writes the fragment itself when it lands. Applying a stale `z` and `c` over it would
   // undo the flight the same request just asked for.

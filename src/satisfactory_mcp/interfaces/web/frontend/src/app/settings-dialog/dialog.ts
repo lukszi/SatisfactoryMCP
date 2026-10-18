@@ -11,6 +11,7 @@ import { hashFor, writeHash } from "../../map/map";
 import { adoptMapRegistry, fetchMapRegistry, mapRegistry, onMapRegistry } from "../map-types";
 import { isChanged, onSetting, resetSettings, setSetting, SETTINGS } from "../settings";
 import { settingsSection } from "../shell/router";
+import { closesBack, pushHere } from "../nav";
 import { parseHash, state } from "../state";
 import { BASE_MAP_ROW, controlId, settingRow, type Row } from "./rows";
 import { inSection, searchSettings, SECTION_IDS, SECTIONS } from "./sections";
@@ -21,8 +22,6 @@ const ROWS: Row[] = (SETTINGS as Row[]).concat([BASE_MAP_ROW]);
 
 let section = SECTIONS[0]!.id;
 let query = "";
-/* Whether opening pushed a history entry, so closing steps back instead of rewriting. */
-let pushed = false;
 
 const dialog = el<HTMLDialogElement>("settings");
 const box = modal(dialog, closeSettings);
@@ -79,8 +78,7 @@ function show(id: string): void {
 /** Opens from the gear: a history entry of its own, so Back closes it. */
 export function openSettings(id: string): void {
   state.settings = id;
-  history.pushState(null, "", hashFor(state.dash));
-  pushed = true;
+  pushHere();
   show(id);
 }
 
@@ -96,10 +94,8 @@ export function closeSettings(): void {
   state.settings = null;
   el("gear").classList.remove("on");
   box.close();
-  if (pushed) {
-    pushed = false;
-    history.back();
-  } else writeHash();
+  if (closesBack()) history.back();
+  else writeHash();
 }
 
 function pickSection(id: string, focusSelect: boolean): void {
@@ -187,7 +183,6 @@ export function syncSettingsFromAddress(): void {
   if (asked === null) {
     if (!box.isOpen()) return;
     state.settings = null;
-    pushed = false;
     el("gear").classList.remove("on");
     box.close();
     return;

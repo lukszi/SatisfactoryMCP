@@ -27,7 +27,7 @@ import { circuitName } from "./power/readings";
 import { renderMapsPage } from "./maps/maps-page";
 import { renderKitGallery } from "./kit-gallery/gallery";
 import { onMapRegistry } from "../app/map-types";
-import { dashParts } from "../app/nav";
+import { bootScroll, dashParts, wireHistory } from "../app/nav";
 import { select } from "../app/selection";
 import { redirectFor, routeOf, scrollKey, TOP_TABS, type Page, type Route } from "../app/shell/router";
 import { drawTopBar } from "../app/shell/topbar";
@@ -41,6 +41,17 @@ const SAVELESS: Page[] = ["items", "maps", "kit"];
 const PAGE_TITLE: Partial<Record<Page, string>> = { maps: "map types", kit: "kit" };
 
 let shownEpoch = 0;
+
+/* The scroll Back or Forward owes the page, held until the page is tall enough to take it
+ * or the reader scrolls first. */
+let owedScroll: number | null = bootScroll || null;
+
+function payScroll(): void {
+  if (owedScroll === null) return;
+  const dash = el("dash");
+  dash.scrollTop = owedScroll;
+  if (dash.scrollTop >= owedScroll - 1) owedScroll = null;
+}
 
 function address(): Route {
   return routeOf(state.dash);
@@ -157,6 +168,7 @@ function render(): void {
     if (!body.querySelector("h1")) body.insertBefore(make("h1", "dk-hidden", pageLabel(at)), body.firstChild);
   });
   el("dash").scrollTop = scroll;
+  payScroll();
 }
 
 function show(): void {
@@ -185,17 +197,28 @@ function settle(raw: string): string {
   return to.dash === null ? state.dash : to.dash;
 }
 
-export function applyDash(raw: string): void {
+/** `restore` is the entry's own scroll on Back or Forward, null on a new move. */
+export function applyDash(raw: string, restore?: number | null): void {
   const next = settle(raw);
-  if (next === state.dash) return;
+  owedScroll = restore === undefined ? null : restore;
+  if (next === state.dash) {
+    payScroll();
+    return;
+  }
   cancelRename();
   const before = scrollKey(state.dash);
   state.dash = next;
-  if (scrollKey(state.dash) !== before) el("dash").scrollTop = 0;
+  if (owedScroll === null && scrollKey(state.dash) !== before) el("dash").scrollTop = 0;
   show();
+  payScroll();
 }
 
 function wire(): void {
+  const dash = el("dash");
+  wireHistory(dash);
+  ["wheel", "touchstart", "keydown", "pointerdown"].forEach(function (kind) {
+    dash.addEventListener(kind, () => (owedScroll = null), { passive: true });
+  });
   new MutationObserver(mirrorBusy).observe(el("map"), { attributes: true, attributeFilter: ["class"] });
   onVitals(render);
   onProgress(render);
