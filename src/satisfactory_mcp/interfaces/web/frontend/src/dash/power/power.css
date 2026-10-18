@@ -60,6 +60,18 @@
   left: 0;
 }
 
+.sd > .tr > .cap {
+  position: absolute;
+  top: 0;
+  right: var(--sp-1);
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  color: var(--muted);
+  font-size: var(--t-meta-size);
+  font-variant-numeric: tabular-nums;
+}
+
 .sd > .tr.g {
   display: flex;
   height: var(--ctl-h);
@@ -139,6 +151,7 @@
 }
 
 .tr .np,
+.tr .st,
 .ubar .np {
   background: color-mix(in srgb, var(--ink-soft) 38%, transparent);
 }

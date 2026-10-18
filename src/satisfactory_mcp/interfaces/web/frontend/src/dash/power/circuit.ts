@@ -15,7 +15,7 @@ import { factoryIcon, factoryLead, iconLead } from "../factories/icon-choice";
 import { read } from "../factories/data";
 import { circuitDark, NONE, ratedCircuit, unrated } from "./readings";
 import { buildOut, circuitDraws, circuitUncounted, isShort, problemsOf, type DrawSlice, type Problem } from "./model";
-import { overLine, pctW, supplyBlock, supplyScale, type Supply } from "./supply";
+import { overLine, pctW, storageRow, supplyBlock, supplyScale, type Supply } from "./supply";
 import { circuitMap, factoryMap, noMap, problemMap } from "./lists";
 import { headroomFigs, missing, mountPage, supplyOf } from "./page";
 import { clearTips, tipAttrs, wireTips } from "./seg-tip";
@@ -109,7 +109,7 @@ function supplyCard(c: Ctx): Safe {
   const rated = ratedCircuit(c.row);
   const figs = circuitDark(c.row) ? headroomFigs(rated, { value: NONE, bad: false, why: WORDS.noGenerator }) : headroomFigs(rated);
   const split = { np: (p: Scale) => drawSegs(c, "np", p), ms: (p: Scale) => drawSegs(c, "ms", p) };
-  return html`<section class="card">${blockHead("supply and demand", figs)}${supplyBlock(c.supply, circuitUncounted(c.row), split)}</section>`;
+  return html`<section class="card">${blockHead("supply and demand", figs)}${supplyBlock(c.supply, circuitUncounted(c.row), split, storageRow(c.row.ledger))}</section>`;
 }
 
 /* ------------------------------------------------------------------ do next */

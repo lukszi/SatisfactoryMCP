@@ -193,8 +193,9 @@ factory health, and `/api/power/generators` when its circuit is short.
   draw by factory, 2 : 3 on desktop, stacked on phones. Hover or focus on a consumption segment,
   or on the build row's name, opens a popover (`seg-tip.ts`): a factory's two consumptions with
   their share of the circuit and its paused and need-action machines; or every generator type,
-  biggest first, with its verdict. Battery storage is not drawn: the projection does not carry
-  `mPowerStore`.
+  biggest first, with its verdict. A grid with batteries gets a fourth row, "power storage"
+  (`storageRow`): the charge held against its capacity, MWh, on its own scale and below the
+  capacity line, which does not cross it. It stays out of headroom.
 - `readings.ts` reads a ledger for every surface (the header, the map's side panel, the
   planner); `ledger-bar.ts` is the compact DOM bar the side panel uses.
 
