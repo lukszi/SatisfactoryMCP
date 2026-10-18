@@ -19,10 +19,10 @@ from typing_extensions import TypedDict
 
 from .....core.gamedata.model import GameData
 from .....core.saveio.records import instance_leaf
+from .....core.saveio.schema import BuildableRecord
 from .....core.singleflight import Singleflight
 from .....domain.factories import candidates
 from .....domain.factories.health import assess
-from .....core.saveio.schema import BuildableRecord
 from .....domain.power.report import (
     BatteryBank,
     MachineGroups,

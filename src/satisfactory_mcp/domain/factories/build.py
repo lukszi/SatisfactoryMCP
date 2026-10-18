@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import itertools
+
 from ...core.saveio import ports
 from ...core.saveio.records import actor_class, instance_leaf, iter_machine_records
 from ...core.saveio.schema import Projection
@@ -53,6 +55,6 @@ def build_graph(projection: Projection) -> FactoryGraph:
             # Skipping the switch must not split one side from itself: chain each side's
             # neighbours, which were already joined through the switch.
             for side in record.get("switch_sides") or ():
-                graph.power.extend(Edge(a=a, b=b) for a, b in zip(side, side[1:]))
+                graph.power.extend(Edge(a=a, b=b) for a, b in itertools.pairwise(side))
 
     return graph
