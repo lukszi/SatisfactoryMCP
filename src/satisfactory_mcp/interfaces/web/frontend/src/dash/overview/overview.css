@@ -242,6 +242,10 @@
     grid-template-columns: 1fr 1fr;
   }
 
+  .ov-cell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .ovm-slot {
     height: var(--ovm-h-phone);
   }

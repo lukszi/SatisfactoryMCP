@@ -110,6 +110,17 @@ body.site-on #dash {
   width: 64px;
 }
 
+@media (max-width: 600px) {
+  .site-fields {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .site-field .dash-number {
+    width: 100%;
+  }
+}
+
 .site-field-k {
   color: var(--muted);
   font-size: var(--fs-s);
