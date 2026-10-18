@@ -38,7 +38,8 @@ AUTOSAVE = re.compile(r"_autosave_\d+\.sav$")
 POST_11_ADDITIONS = {
     #: New top-level keys: belt and pipe polylines (12, 13), the splitters and mergers on belt
     #: runs (13), storage (15), power geometry (17), crates (18), the pipe fittings and
-    #: facilities (23), and the hypertubes, their entrances and the map markers (24). Columns
+    #: facilities (23), the hypertubes, their entrances and the map markers (24), and the
+    #: game-mode options (27). Columns
     #: added inside belts or pipes (14, 15, 20) need no entry because those keys are dropped
     #: whole; who is wired to whom stays compared as ``graph["power"]``.
     "keys": (
@@ -53,6 +54,7 @@ POST_11_ADDITIONS = {
         "hypertubes",
         "hypertube_entrances",
         "map_markers",
+        "game_mode",
     ),
     #: The banked version label: a projection filtered back to schema 11 claims schema 11.
     "schema_version": 11,
@@ -71,6 +73,9 @@ POST_11_ADDITIONS = {
     #: Schema 19, the second correction: the bucket the crates' contents moved INTO, out of
     #: ``machine`` where the schema-11 rule had filed them. ``_unfix_19`` folds it back.
     "crate_bucket_fix": "crate",
+    #: Schema 27. The one ``node_state`` field the oracle read; a randomized world adds each
+    #: node's resource and purity, and no banked save is one.
+    "node_state_fields": ("resources_left",),
 }
 
 
@@ -135,6 +140,13 @@ def as_schema_11(projection: dict) -> dict:
                 else record
                 for record in out[key]
             ]
+    if isinstance(out.get("node_state"), dict):
+        kept = POST_11_ADDITIONS["node_state_fields"]
+        trimmed = {
+            node: {k: v for k, v in state.items() if k in kept}
+            for node, state in out["node_state"].items()
+        }
+        out["node_state"] = {node: state for node, state in trimmed.items() if state}
     for key, width in POST_11_ADDITIONS["row_width"].items():
         payload = out.get(key)
         if isinstance(payload, dict) and isinstance(payload.get("instances"), list):
@@ -403,7 +415,7 @@ def test_this_parser_still_produces_what_the_two_agreed_on(banked, saves_root):
             pool, present, lambda item: _projection(item[2]), width=width
         ):
             assert "error" not in proj, (name, proj.get("detail"))
-            assert proj["schema_version"] == 25, (name, "unexpected schema for the filter")
+            assert proj["schema_version"] == 27, (name, "unexpected schema for the filter")
             header = {k: v for k, v in proj["header"].items() if k not in VOLATILE}
             if AUTOSAVE.search(name) and _digest(header) != entry["header"]:
                 continue

@@ -24,7 +24,7 @@ from ..schema import (
     Projection,
     Uptime,
 )
-from . import census, inventories, markers, power, progression, routes, structures
+from . import census, gamemode, inventories, markers, power, progression, routes, structures
 from .census import Drops
 from .interning import Interner
 from .inventories import Contents, CrateActor, StorageActor
@@ -137,6 +137,7 @@ def _empty_projection(path: str) -> Projection:
         # Fluids are raw litres here; the server scales them.
         "inventories": {"player": {}, "storage": {}, "machine": {}, "crate": {}},
         "node_state": {},
+        "game_mode": gamemode.DEFAULT_GAME_MODE.copy(),  # §6.18
         # Char_Player_C's transform; BP_PlayerState_C sits at the origin and is not a position.
         "players": [],
         "map_markers": [],  # §6.17
@@ -393,6 +394,9 @@ class _ProjectionWalk:
             )
         )
 
+    def on_game_state(self, seen: _Object) -> None:
+        self.out["game_mode"] = gamemode.game_mode(seen.properties)
+
     def on_map_manager(self, seen: _Object) -> None:
         self.out["map_markers"] = markers.map_markers(
             seen.properties.get("mMapMarkers"), self.drops
@@ -412,9 +416,12 @@ class _ProjectionWalk:
 
     def _on_resource_node(self, seen: _Object) -> None:
         self.building_counts[seen.cls] = self.building_counts.get(seen.cls, 0) + 1
+        state = gamemode.node_overrides(seen.properties)
         left = seen.properties.get("mResourcesLeft")
         if left is not None and left != -1:
-            self.out["node_state"][seen.instance] = {"resources_left": to_int(left)}
+            state["resources_left"] = to_int(left)
+        if state:
+            self.out["node_state"][seen.instance] = state
 
     def _on_crate(self, seen: _Object) -> None:
         # Not a ``Build_`` actor, so it owes ``building_counts`` nothing.
@@ -606,6 +613,7 @@ _CLASS_HANDLERS: dict[str, Callable[[_ProjectionWalk, _Object], None]] = {
     "FGPipeNetwork": _ProjectionWalk.on_pipe_network,
     "Char_Player_C": _ProjectionWalk.on_player,
     "FGMapManager": _ProjectionWalk.on_map_manager,
+    "BP_GameState_C": _ProjectionWalk.on_game_state,
 }
 
 

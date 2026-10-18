@@ -1260,6 +1260,34 @@ order: `{name, pos, colour, icon_id, type, category, compass}`.
 - The reference world holds six, all `RT_MapMarker`. Stamps and other representation types use
   the same struct and arrive with their own `type`.
 
+### 6.18 Game modes — randomized nodes and cost multipliers
+
+Update 1.2 added game modes, chosen on the New Game screen and fixed for the life of the save.
+Schema 27 reads them. The facts below were measured on one 1.2 save made with random nodes,
+average purity and every multiplier at 75, and the enum spellings come from `FGGameState.h` and
+`FGResourceNode.h`.
+
+**`game_mode`** is read from `BP_GameState_C`: `{node_randomization, node_purity, seed,
+energy_cost, parts_cost, space_parts_cost}`.
+
+- `mNodeRandomization` is `ENodeRandomizationMode`: `none`, `strict` (the screen's "Random"),
+  `basic_rich`, `advanced_rich` or `fossil_fuel_rich`. The header spells the third one
+  `NRM_BasicReach`.
+- `mNodePuritySettings` is `ENodePuritySettings`: `no_change`, `all_pure`, `increase` ("Mostly
+  Pure"), `all_normal` ("Average"), `decrease` ("Mostly Impure"), `all_impure` or `all_random`.
+- `seed` is `mNodeRandomizationSeed`. The game log omits it, but the save holds it.
+- The three multipliers are float32 factors. The game log's `75` is the save's `0.75`, so the
+  log shows a percentage and the save a factor.
+- A save from before 1.2 has none of these properties, so every key reads as its default.
+
+**`node_state`** gains `resource` and `purity` on a randomized world. In the measured save, every
+`BP_ResourceNode`, every `BP_FrackingSatellite` and every `BP_FrackingCore` carries
+`mResourceClassOverride`, and every node and satellite carries `mPurityOverride`
+(`RP_Inpure`/`RP_Normal`/`RP_Pure`). That is 459 nodes, 118 satellites and 17 cores, and they
+match the node table instance for instance. A core carries a resource and no purity. The 31
+geysers carry nothing, because the purity setting does not reach them. A vanilla node writes
+neither property, so its `node_state` entry is unchanged and still holds only `resources_left`.
+
 ### Schema history
 
 `SCHEMA_VERSION` lives in `core/saveio/projection.py`, which keys the pickle cache on it; the
@@ -1282,6 +1310,7 @@ pickle then disagrees with the code rather than merely being thinner.
 | 23 | adds `fittings` (pipe junctions, pumps, valves) and `facilities` (the HUB, sink, MAM and other one-off buildings), so the map can draw them |
 | 24 | adds `hypertubes` (§6.16), `hypertube_entrances` and `map_markers` (§6.17), so the map can draw them |
 | 25 | files power switches as `facilities` with `switch_on` and `switch_sides`, and gives Power Storage `stored_mwh` (§6.12a) |
+| 27 | adds `game_mode`, and a randomized node's `resource` and `purity` in `node_state` (§6.18) |
 
 ---
 
