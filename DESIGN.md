@@ -613,9 +613,10 @@ Two traps, both found by measurement:
 
 ## 13. Licence
 
-**PolyForm Noncommercial 1.0.0**, the full text in [LICENSE](LICENSE) with the Required Notice
+**PolyForm Shield 1.0.0**, the full text in [LICENSE](LICENSE) with the Required Notice
 (`Copyright Lukas Szimtenings (https://github.com/lukszi/SatisfactoryMCP)`). Free for any
-noncommercial purpose; commercial use needs a separate licence from the owner. It covers this
+purpose except providing a product that competes with the software; that needs a separate
+licence from the licensor. Contributions come in under [CLA.md](CLA.md). It covers this
 repository's code, tooling and extracted tables and grants nothing over the game's content —
 Coffee Stain Studios retains all rights to Satisfactory and its assets.
 

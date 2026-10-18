@@ -130,13 +130,15 @@ answer says which file it read.
 
 ## Licence
 
-**[PolyForm Noncommercial 1.0.0](LICENSE).** Free to use, modify and share for any
-noncommercial purpose, provided the required notice travels with copies:
+**[PolyForm Shield 1.0.0](LICENSE).** Free to use, modify and share for any purpose,
+commercial or not, except providing a product that competes with this software, provided the
+required notice travels with copies:
 
 > Required Notice: Copyright Lukas Szimtenings (https://github.com/lukszi/SatisfactoryMCP)
 
-Commercial use requires a separate licence from the owner — get in touch via GitHub
-([@lukszi](https://github.com/lukszi)). The licence covers this repository's code, tooling and
+A competing product needs a separate licence from the licensor — get in touch via GitHub
+([@lukszi](https://github.com/lukszi)). Contributions are accepted under the
+[CLA](CLA.md); see [CONTRIBUTING.md](CONTRIBUTING.md). The licence covers this repository's code, tooling and
 extracted tables; it cannot and does not grant anyone rights over the game's content. All
 game-derived data describes Coffee Stain Studios' content — Coffee Stain retains all rights to
 Satisfactory and its assets, and this project is not affiliated with or endorsed by them.
