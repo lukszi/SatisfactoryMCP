@@ -4342,14 +4342,18 @@ export interface components {
         };
         /**
          * Ledger
-         * @description ``biomass_mw`` and ``biomass_generators`` are the wired burners left out of every
-         *     figure here under ``?biomass=exclude``; both are 0 under ``include``.
+         * @description ``capacity_mw`` is production capacity, ``generation_mw`` less what starved generators
+         *     cannot run; both headrooms are taken from it. ``biomass_mw`` and ``biomass_generators``
+         *     are the wired burners left out of every figure here under ``?biomass=exclude``; both are
+         *     0 under ``include``.
          */
         Ledger: {
             /** Generation Mw */
             generation_mw: number;
             /** Starved Generation Mw */
             starved_generation_mw: number;
+            /** Capacity Mw */
+            capacity_mw: number;
             /** Draw Mw */
             draw_mw: number;
             /** Measured Draw Mw */
@@ -6216,6 +6220,8 @@ export interface components {
         PowerReport: {
             /** Generation Mw */
             generation_mw: number;
+            /** Capacity Mw */
+            capacity_mw: number;
             /** Draw Mw */
             draw_mw: number;
             /** Headroom Mw */
@@ -7484,7 +7490,8 @@ export interface components {
         };
         /**
          * StarvedEntry
-         * @description A generator out of an input it burns, and idle for it; ``missing`` names the inputs.
+         * @description A generator out of an input it burns, and idle for it; ``missing`` names the inputs
+         *     and ``mw`` is the part of its rated output it cannot run.
          */
         StarvedEntry: {
             /** Instance */

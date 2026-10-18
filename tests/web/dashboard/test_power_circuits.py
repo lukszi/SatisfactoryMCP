@@ -28,7 +28,10 @@ def test_circuits_split_the_generation_without_losing_or_inventing_any(client, s
     assert total <= body["world"]["generation_mw"] + 0.1 * len(circuits)
     for c in circuits:
         led = c["ledger"]
-        assert led["headroom_mw"] == pytest.approx(led["generation_mw"] - led["draw_mw"], abs=0.2)
+        assert led["headroom_mw"] == pytest.approx(led["capacity_mw"] - led["draw_mw"], abs=0.2)
+        assert led["capacity_mw"] == pytest.approx(
+            led["generation_mw"] - led["starved_generation_mw"], abs=0.2
+        )
         if c["bbox_m"] is not None:
             x_min, y_min, x_max, y_max = c["bbox_m"]
             assert x_min <= c["centroid_m"][0] <= x_max
@@ -263,6 +266,9 @@ def test_a_generator_type_carries_its_starved_part_icon_and_place(game):
                 "icon": rated.descriptor,
             }
         ]
+    for led in (body["world"], body["circuits"][0]["ledger"]):
+        assert led["capacity_mw"] == pytest.approx(rated.power_production_mw)
+        assert led["headroom_mw"] == pytest.approx(rated.power_production_mw)
     for rows in (body["starved"], body["circuits"][0]["starved"]):
         assert [(s["instance"], s["circuit"], s["icon"]) for s in rows] == [
             ("Build_GeneratorCoal_C_1", 0, rated.descriptor)

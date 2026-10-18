@@ -61,7 +61,7 @@ def test_generation_is_capacity_on_both_figures(live):
     them by uptime would double-count the same idleness already seen on the draw side."""
     pw = live.power_report()
     assert pw["generation_mw"] > 0
-    assert pw["measured_headroom_mw"] == pytest.approx(pw["generation_mw"] - pw["measured_draw_mw"])
+    assert pw["measured_headroom_mw"] == pytest.approx(pw["capacity_mw"] - pw["measured_draw_mw"])
 
 
 def test_the_tool_shows_both_and_says_which_is_safe(game):
@@ -151,6 +151,23 @@ def test_a_dry_water_pipe_is_found_behind_a_full_coal_hopper(game):
     (row,) = pw["starved_generators"]
     assert row["missing"] == ["Water"], "names the input, not just the plant"
     assert row["instance"] == "Build_GeneratorCoal_C_1"
+
+
+def test_starved_generation_is_left_out_of_capacity_and_both_headrooms(game):
+    """Owner 2026-10-17: what a starved generator cannot run is no capacity at all. The
+    rated figure stays, so the page can draw the starved part past the capacity line."""
+    pw = _ledger(
+        game,
+        [
+            _coal_plant(1, coal=100, water=0, produce_s=0.0),
+            _coal_plant(2, coal=100, water=50000, produce_s=300.0),
+        ],
+    )
+    assert pw["generation_mw"] == pytest.approx(150.0)
+    assert pw["capacity_mw"] == pytest.approx(75.0)
+    assert pw["headroom_mw"] == pytest.approx(75.0 - pw["draw_mw"])
+    assert pw["measured_headroom_mw"] == pytest.approx(75.0 - pw["measured_draw_mw"])
+    assert [s["mw"] for s in pw["starved_generators"]] == [pytest.approx(75.0)]
 
 
 def test_a_load_following_generator_is_not_called_starved(game):

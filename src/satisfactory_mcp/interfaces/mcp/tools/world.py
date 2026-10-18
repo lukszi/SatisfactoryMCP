@@ -235,8 +235,8 @@ def power_report(
         notes.append(
             f"{render.num(power['starved_generation_mw'])} MW of the generation above stands on "
             f"{len(starved)} generator(s) whose input has run dry and which produced nothing "
-            "in their own window. Subtract it before planning against headroom -- that "
-            "capacity is a pipe or a belt away, not a build away"
+            "in their own window. Production capacity and both headrooms already leave it "
+            "out -- that capacity is a pipe or a belt away, not a build away"
         )
     return render.envelope(
         f"# {st.age_note}\n"
@@ -244,6 +244,7 @@ def power_report(
             [
                 ("generation_MW", render.num(power["generation_mw"])),
                 ("generation_MW_starved", render.num(power["starved_generation_mw"])),
+                ("capacity_MW", render.num(power["capacity_mw"])),
                 ("draw_MW_nameplate", render.num(power["draw_mw"])),
                 ("draw_MW_measured", render.num(power["measured_draw_mw"])),
                 ("headroom_MW_nameplate", render.num(power["headroom_mw"])),

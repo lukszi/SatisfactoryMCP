@@ -47,11 +47,14 @@ router = APIRouter(prefix="/api")
 
 
 class Ledger(TypedDict):
-    """``biomass_mw`` and ``biomass_generators`` are the wired burners left out of every
-    figure here under ``?biomass=exclude``; both are 0 under ``include``."""
+    """``capacity_mw`` is production capacity, ``generation_mw`` less what starved generators
+    cannot run; both headrooms are taken from it. ``biomass_mw`` and ``biomass_generators``
+    are the wired burners left out of every figure here under ``?biomass=exclude``; both are
+    0 under ``include``."""
 
     generation_mw: float
     starved_generation_mw: float
+    capacity_mw: float
     draw_mw: float
     measured_draw_mw: float
     headroom_mw: float
@@ -157,6 +160,7 @@ def _ledger(report: PowerReport) -> Ledger:
     return {
         "generation_mw": round(report["generation_mw"], 1),
         "starved_generation_mw": round(report["starved_generation_mw"], 1),
+        "capacity_mw": round(report["capacity_mw"], 1),
         "draw_mw": round(report["draw_mw"], 1),
         "measured_draw_mw": round(report["measured_draw_mw"], 1),
         "headroom_mw": report["headroom_mw"],

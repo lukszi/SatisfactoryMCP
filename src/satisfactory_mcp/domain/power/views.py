@@ -19,7 +19,8 @@ class GeneratorTotal(TypedDict):
 
 
 class StarvedEntry(TypedDict):
-    """A generator out of an input it burns, and idle for it; ``missing`` names the inputs."""
+    """A generator out of an input it burns, and idle for it; ``missing`` names the inputs
+    and ``mw`` is the part of its rated output it cannot run."""
 
     instance: str
     name: str
@@ -37,6 +38,9 @@ class PowerReport(TypedDict):
     """
 
     generation_mw: float
+    #: Production capacity: ``generation_mw`` less ``starved_generation_mw``. Both headrooms
+    #: are taken from it.
+    capacity_mw: float
     draw_mw: float
     headroom_mw: float
     measured_draw_mw: float
