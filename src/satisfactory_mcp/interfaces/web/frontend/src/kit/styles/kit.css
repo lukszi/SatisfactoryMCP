@@ -816,6 +816,46 @@ a.name:hover {
   justify-content: flex-end;
 }
 
+/* action slots: fixed widths, so buttons line up across rows; a text button fills its slot */
+.acts.aslots {
+  flex-wrap: nowrap;
+}
+
+.aslot-b,
+.aslot-s,
+.aslot-g {
+  display: flex;
+  flex: none;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.aslot-b,
+.aslot-s {
+  width: var(--act-w);
+}
+
+.aslot-g {
+  width: var(--col-act);
+}
+
+.aslot-s {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-1);
+}
+
+.aslot-b > .btn,
+.aslot-s > .btn {
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.aslot-s > .btn {
+  padding: 0;
+}
+
 .acts.full,
 .full {
   grid-column: 1 / -1;

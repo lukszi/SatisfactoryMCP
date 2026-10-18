@@ -44,6 +44,11 @@ phones are one `max-width: 600px` media query per stylesheet.
   `num-l` 96 (a long figure or a state word), `label` 112 (a bar, or a figure over a bar),
   `text` 150 (a short phrase), `name` 180 (the least a flexible name column gets). The flexible
   column is `minmax(0, 1fr)`. `--card-min-w` is the narrowest card in an auto-fill grid.
+- **Action slots**: `--act-w` (112) is the one text-button slot; `--col-acts` is that slot plus
+  the ⋯ slot (`--col-act`), `--col-acts-pin` adds a leading ◎ slot. See Action slots below.
+- **Chips**: a fixed box, `--chip-h` (18) on its own and `--chip-h-in` (14) inside a text line
+  (`.ctx`, `.nl`), the text centred by flex with `text-box` trimmed to the x-height; a
+  line-height box alone sat lowercase words low.
 - **Motion**: `--dur` with `--ease` for state changes, `--dur-fade` for a busy fade,
   `--flash-turn` for one beat of a node flash; spinners and sweeps keep `linear`.
 - A value that belongs to one page only (a map block's height, a roadmap node) is a custom
@@ -55,13 +60,24 @@ phones are one `max-width: 600px` media query per stylesheet.
 | module | parts |
 |---|---|
 | `kit/ui/text.ts` | `pageHead` (object-page header: breadcrumb, title, chips, figures, note, the object's own tabs), `dashH` (heading · n), `blockHead` + `fig` / `figSub` (at most two headline figures), `toolrow`, `note`, `emptyLine`, `icon` (game icon or monogram; a failed load becomes the monogram) |
-| `kit/ui/entry.ts` | `list(name, mode)` — the list's column template is `.l-<name> .entry { --cols: … }` in the page's CSS — `entry`, `identity`, `nameLine`, `metric`, `facts`, `chips`, `acts`, `chevron` + `expandBody` + `wireExpand`, `group` |
+| `kit/ui/entry.ts` | `list(name, mode)` — the list's column template is `.l-<name> .entry { --cols: … }` in the page's CSS — `entry`, `identity`, `nameLine`, `metric`, `facts`, `chips`, `acts`, `actSlots`, `chevron` + `expandBody` + `wireExpand`, `group` |
 | `kit/ui/marks.ts` | `chip` / `tagChip`, `pill` / `flow`, `bar` / `mixBar`, `jobBar`, `slotTile` |
 | `kit/ui/controls.ts` | `btn`, `busyBtn`, `glyphBtn`, `moreBtn`, `seg`, `selectBox`, `sortSelect`, `filterField`, `filterChip`, `switchBox`, `check` |
 | `kit/ui/forms.ts` | `frow` (label column + one control column), `form` (groups split by a soft rule), `fnum`, `ftext`, `fadd`, `frange`, `checks` |
 | `kit/overlay/*` | `openMenu` / `wireMoreMenus` (the ⋯ menu), `modal` (native `<dialog>`), `sidePanel`, `toast` |
 | `kit/ui/states.ts` | `loadingLine` / `loadingInto` and `failedInto` (what could not be read, why, try again): a read in place of a page or block |
 | `kit/busy.ts` | `busy(el, work)` and `busyButton(button, work)` |
+
+### Action slots
+
+A list's actions column is fixed slots that line up from row to row: `actSlots(action, { pin,
+more })` draws an optional ◎ slot, the one text-button slot (the button fills it), then the ⋯
+slot, always last and kept when empty. Two related actions may share the button slot as equal
+halves (`{ split: [a, b] }`, the running map job's log | cancel); every other row keeps one
+button. A state chip may stand in the button slot, never beside a button. Inline confirms reuse
+the slots: confirm in the button slot, × (keep) in the ⋯ slot. Everything else goes into ⋯.
+The list's template ends in `--col-acts` (`--col-acts-pin` with ◎, `--act-w` with `more:
+false`), so the buttons sit at one x on every row.
 
 The hidden route `#kit` (`dash/kit-gallery/`) renders every part in its states for screenshot
 checks.

@@ -139,6 +139,10 @@
   --col-label: 112px;
   --col-text: 150px;
   --col-name: 180px;
+  /* action slots: the one text-button slot, then the actions column with the ⋯ slot (and ◎) */
+  --act-w: 112px;
+  --col-acts: calc(var(--act-w) + var(--sp-1) + var(--col-act));
+  --col-acts-pin: calc(var(--col-acts) + var(--sp-1) + var(--col-act));
   --card-min-w: 320px;
 
   /* motion, overlays, loading */

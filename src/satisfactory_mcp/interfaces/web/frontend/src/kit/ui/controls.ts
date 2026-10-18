@@ -11,7 +11,7 @@ export function btn(label: Hole, attrs?: { id?: string; title?: string; extra?: 
 }
 
 /** An async action's button: busyButton() gives it the spinner. */
-export function busyBtn(label: Hole, attrs?: { id?: string; title?: string; extra?: string; disabled?: boolean }): Safe {
+export function busyBtn(label: Hole, attrs?: { id?: string; title?: string; extra?: string; disabled?: boolean; data?: Record<string, string> }): Safe {
   return btn(html`<span class="spinner" aria-hidden="true"></span>${label}`, attrs);
 }
 
