@@ -822,6 +822,23 @@ Two things in it are decisions rather than glue:
 An unreadable *path* is left as `OSError`, not converted. A missing or locked file is not a
 save that cannot be parsed, and the sidecar reports the two differently.
 
+**Modded objects may be partial.** A mod class can serialise its own bytes after the property
+list, which reads exactly like a list that stopped early; FicsIt-Networks'
+`FINModuleSystemPanel` leaves 600–2,900 bytes per panel. Every object entry declares its
+payload length, so one such object does not need to cost the save. The rule is
+`save.is_modded_class`: a class path **not** under `/Game/`, `/Script/FactoryGame.`,
+`/Script/Engine.` or `/Script/CoreUObject.` (`VANILLA_CLASS_ROOTS`) is modded, because mods
+mount their own content roots and script modules. For those, a `ParseError` inside the payload
+keeps the object with whatever was read before it (`ParsedObject.partial` holds the refusal),
+the walk continues at the payload's declared end, and the object is listed in
+`ParsedSave.partial_objects` (level, class, instance, offset, unread bytes, reason) and as one
+warning each, followed by a final `N modded objects kept partial` warning so the count
+survives in the stderr tail the sidecar folds into the projection's `warnings`. Headers carry
+no length of their own, so an unreadable header still fails the save. Vanilla classes keep
+the old refusal, and `read_full_save(path, strict=True)` refuses modded ones too. Measured on
+three shared 1.0 modded saves (Dunarr 019/027/076): 1, 3 and 5 panels partial, everything
+else read; 98 vanilla saves: none.
+
 **The switch.** `extract.py` resolves `SATISFACTORY_SAVPARSE` **at import**, to `own`
 or `vendor`, defaulting to `vendor`. A typo raises `RuntimeError` rather than falling back,
 because a silent fallback would make a parity run report perfect agreement between the

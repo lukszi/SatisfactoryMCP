@@ -28,7 +28,14 @@ from .objects import (
 from .properties import ParsedObject, TypeName, read_object
 from .reader import Reader
 from .references import ObjectReference
-from .save import ParsedLevel, ParsedSave, read_full_save, read_full_save_bytes
+from .save import (
+    ParsedLevel,
+    ParsedSave,
+    PartialObject,
+    is_modded_class,
+    read_full_save,
+    read_full_save_bytes,
+)
 from .trailers import TRAILER_READERS, read_trailer
 from .values import Properties, PropertyTypes, SaveValue
 from .versions import FIRST_LEVEL_LIST, FIRST_MODERN_BODY, KNOWN_HEADER_TYPES
@@ -51,6 +58,7 @@ __all__ = [
     "ParsedLevel",
     "ParsedObject",
     "ParsedSave",
+    "PartialObject",
     "Properties",
     "PropertyTypes",
     "Reader",
@@ -61,6 +69,7 @@ __all__ = [
     "body_hash",
     "check_body_hash",
     "decompress_body",
+    "is_modded_class",
     "read_body",
     "read_full_save",
     "read_full_save_bytes",
