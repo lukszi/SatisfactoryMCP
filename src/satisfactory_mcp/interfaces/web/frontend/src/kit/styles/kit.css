@@ -1549,6 +1549,16 @@ details.fold > summary {
     white-space: normal;
   }
 
+  /* what does not fit beside the name drops to a second line */
+  .nl {
+    flex-wrap: wrap;
+  }
+
+  .tools:has(> input[type="search"]),
+  .tools > input[type="search"] {
+    flex: 1 1 100%;
+  }
+
   .frow {
     grid-template-columns: minmax(0, 1fr);
   }
