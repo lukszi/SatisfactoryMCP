@@ -912,6 +912,35 @@ span of `graph["power"][i]` — **one pass writes both**, which is the only thin
 positional join true. **+78,671 bytes on the reference projection, +5.27%** (poles 24.3 KB over 701
 rows, wires 54.4 KB over 1,297).
 
+### 6.12a Switches and batteries — schema 25
+
+Power Switches, Priority Power Switches and Power Storage are filed under `facilities`, each with
+one field the power pages read. Measured on four publicly shared 1.0 saves (three from one world,
+one from another), since the reference world has built none of the three:
+
+- **`switch_on`**, on `Build_PowerSwitch_C` and `Build_PriorityPowerSwitch_C`, is `mIsSwitchOn`.
+  The property is written only while the switch is on, so an absent one reads `false`.
+- **`stored_mwh`**, on `Build_PowerStorageMk1_C`, is `mPowerStore`: the charge held, 0 to 100 MWh.
+  It is absent on an empty battery, which reads `0`. Every battery on one game circuit holds the
+  same figure, so the grid's charge is spread evenly rather than per building. The capacity is not
+  in the save; it is `mPowerStoreCapacity` in the docs dump, 100 MWh.
+
+**A switch splits a circuit even when it is on.** The game keeps each side of a switch in its own
+`FGPowerCircuit`, on or off: in one save a battery bank's circuit 22 joins the main circuit 75
+through an on switch, in the other circuit 37 joins circuit 40 the same way. The game's fuse treats
+circuits joined by on switches as one grid. The projection does not read those circuit objects,
+because `mCircuitID` holds only while a circuit's members stay the same. The server works on the
+wire graph instead, where a switch is one actor joined to both sides. A grid is therefore a
+connected component of `graph["power"]` with every **off** switch taken out (§6.1a).
+
+That rule was checked against the game's own circuits, merged through on switches, on the same
+saves. Every grid matched, with two exceptions, both rare and both outside switches:
+
+- A **Lights Control Panel** has an upstream and a downstream connection in two game circuits,
+  and the wire graph joins them. The downstream side carries lights, which no ledger counts.
+- **Rail power** has no wire: a train station or docking station takes power through the track,
+  so an outpost fed only by rail reads as a separate grid.
+
 ### 6.13 Crates — the inventory that is an event, not a place
 
 Schema 18. A death crate and a dismantle crate were the one thing in this world the projection
@@ -1246,6 +1275,7 @@ pickle then disagrees with the code rather than merely being thinner.
 | 22 | CORRECTS a false "possibly incomplete" note on saves whose older levels carry the previous build's changelist |
 | 23 | adds `fittings` (pipe junctions, pumps, valves) and `facilities` (the HUB, sink, MAM and other one-off buildings), so the map can draw them |
 | 24 | adds `hypertubes` (§6.16), `hypertube_entrances` and `map_markers` (§6.17), so the map can draw them |
+| 25 | files power switches as `facilities` with `switch_on`, and gives Power Storage `stored_mwh` (§6.12a) |
 
 ---
 

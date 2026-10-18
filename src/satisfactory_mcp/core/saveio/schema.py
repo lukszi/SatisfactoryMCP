@@ -267,6 +267,10 @@ class BuildableRecord(TypedDict):
     buffers: NotRequired[Buffers]
     #: Power Shards and Somersloops slotted, by item class.
     potential_slots: NotRequired[dict[str, float]]
+    #: A power switch's state, on its two classes only (§6.12a).
+    switch_on: NotRequired[bool]
+    #: The charge a Power Storage holds, MWh, on that class only (§6.12a).
+    stored_mwh: NotRequired[float]
 
 
 class MachineRecord(BuildableRecord):

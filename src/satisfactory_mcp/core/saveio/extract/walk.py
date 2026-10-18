@@ -65,7 +65,9 @@ from .registers import (
     MANUFACTURER_HINTS,
     PIPE_CLASSES,
     POWER_POLE_CLASSES,
+    POWER_STORAGE_CLASSES,
     STORAGE_CLASSES,
+    SWITCH_CLASSES,
 )
 from .routes import ChainActor, HeldNetwork, PipeActor
 
@@ -483,6 +485,11 @@ class _ProjectionWalk:
             record["pending_clock"] = round(to_float(properties["mPendingPotential"]), 6)
         if "mIsProductionPaused" in properties:
             record["paused"] = truthy(properties["mIsProductionPaused"])
+        # Both written only when set, so an absent one is a real off and a real 0 MWh.
+        if seen.cls in SWITCH_CLASSES:
+            record["switch_on"] = truthy(properties.get("mIsSwitchOn", 0))
+        if seen.cls in POWER_STORAGE_CLASSES:
+            record["stored_mwh"] = round(to_float(properties.get("mPowerStore", 0.0) or 0.0), 3)
         for name in _BOOST_PROPERTIES:
             if name in properties:
                 record["production_boost"] = to_float(properties[name])

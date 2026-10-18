@@ -23,8 +23,8 @@ CRATE_KINDS: dict[str, CrateKind] = {
 
 #: Where a wire can end at something placed to end wires at it (§6.12). Listed: the conveyor
 #: pole and pipeline support are "poles" with no power, and the tower platform has no "Pole"
-#: in its name. Switches and Power Storage are absent because no save here holds one; their
-#: wires still draw, since the geometry comes off the wire actor.
+#: in its name. Switches and Power Storage are facilities, not poles; their wires still draw,
+#: since the geometry comes off the wire actor.
 POWER_POLE_CLASSES = (
     "Build_PowerPoleMk1_C",
     "Build_PowerPoleMk2_C",
@@ -113,7 +113,16 @@ FACILITY_CLASSES = (
     "Build_PowerStorageMk1_C",
     "Build_AlienPowerBuilding_C",
     "Build_TreeGiftProducer_C",
+    "Build_PowerSwitch_C",
+    "Build_PriorityPowerSwitch_C",
 )
+
+#: The circuit bridges whose ``mIsSwitchOn`` decides whether two circuits are one grid; the
+#: property is written only while on (save-projection.md §6.12a).
+SWITCH_CLASSES = ("Build_PowerSwitch_C", "Build_PriorityPowerSwitch_C")
+
+#: The battery, whose ``mPowerStore`` is the charge it holds in MWh, written only when above 0.
+POWER_STORAGE_CLASSES = ("Build_PowerStorageMk1_C",)
 
 #: The classes whose whole point is to hold items in a ``StorageInventory``. Listed, because
 #: every splitter and merger owns a component by that name holding items in transit. Machine
