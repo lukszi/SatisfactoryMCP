@@ -5,11 +5,11 @@ progress and unlocks, spatial resource queries, and LP/MILP factory optimization
 
 **Status:** implemented. 42 tools, 4 resources, 3 prompts, 1,409 tests passing. See README.md for usage.
 **Target game version:** 1.2.2.1 (`saveVersion 60`, `buildVersion 495413`).
-**Licence:** PolyForm Noncommercial 1.0.0 — see [LICENSE](LICENSE) and [§13](#13-licence).
+**Licence:** PolyForm Shield 1.0.0 — see [LICENSE](LICENSE) and [§13](#13-licence).
 
 Every number in this document was measured from the local game files or the live save unless explicitly
-marked `[UNVERIFIED]` or `[WIKI]`. Claims were produced by one agent and independently re-checked by a
-second; ~90 corrections from that pass are folded in.
+marked `[UNVERIFIED]` or `[WIKI]`. Claims were independently re-checked; ~90 corrections from that
+pass are folded in.
 
 ---
 
@@ -613,9 +613,12 @@ Two traps, both found by measurement:
 
 ## 13. Licence
 
-**PolyForm Noncommercial 1.0.0**, the full text in [LICENSE](LICENSE) with the Required Notice
-(`Copyright Lukas Szimtenings (https://github.com/lukszi/SatisfactoryMCP)`). Free for any
-noncommercial purpose; commercial use needs a separate licence from the owner. It covers this
+**PolyForm Shield 1.0.0**, the full text in [LICENSE](LICENSE) with the Required Notice
+(`Copyright Lukas Szimtenings (https://github.com/lukszi/SatisfactoryMCP)`) and the Licensor Line
+of Business (`Satisfactory save analysis, factory planning and map software and hosted services
+(https://github.com/lukszi/SatisfactoryMCP)`). Free for any
+purpose except providing a product that competes with the software; that needs a separate
+licence from the licensor. Contributions come in under [CLA.md](CLA.md). It covers this
 repository's code, tooling and extracted tables and grants nothing over the game's content —
 Coffee Stain Studios retains all rights to Satisfactory and its assets.
 

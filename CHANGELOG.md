@@ -14,6 +14,8 @@ All notable changes to this project are recorded here. The format follows
 
 ### Changed
 
+- Licence: PolyForm Noncommercial 1.0.0 is replaced by PolyForm Shield 1.0.0; contributions
+  come in under a contributor licence agreement (CLA.md, CONTRIBUTING.md).
 - Planner: a request for a rate of an item ("Computer 2/min") with no objective solves for
   the least raw material, then the least power within 1% of it (`min_raw_power`), in chat and
   on the web planner; other requests still default to `max_mw`, and an explicit objective or a

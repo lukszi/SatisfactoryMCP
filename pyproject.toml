@@ -2,9 +2,9 @@
 name = "satisfactory-mcp"
 version = "0.2.0"
 description = "MCP server for planning Satisfactory factories"
-# PEP 639 licence expression. PolyForm Noncommercial is not OSI-approved and has no
+# PEP 639 licence expression. PolyForm Shield is not OSI-approved and has no
 # standard SPDX id, so it is named by LicenseRef pointing at the full text in LICENSE.
-license = "LicenseRef-PolyForm-Noncommercial-1.0.0"
+license = "LicenseRef-PolyForm-Shield-1.0.0"
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
