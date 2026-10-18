@@ -83,7 +83,8 @@ function line(row: ActivityRow): Safe {
   const who = whoOf(row);
   const plan = row.plan ? html`<a class="ictx" href="${hashFor("planner/" + row.plan)}">${row.name || row.plan}</a>` : "";
   const times = row.kind === "plan.view" && row.count > 1 ? html` <span class="ictx">×${row.count}</span>` : "";
-  return html`<li class="tl-ev ${who}"><i class="tl-dot" aria-hidden="true"></i><time>${timeOfDay(row.ts)}</time>${chip(actorWord(row.actor), "muted", row.actor.display)}<span class="nl"><span class="line1" title="${whatText(row)}">${whatText(row)}</span>${times}${plan}</span>${action(row)}</li>`;
+  const actor = chip(actorWord(row.actor), "muted", row.actor.display);
+  return html`<li class="tl-ev ${who}"><i class="tl-dot" aria-hidden="true"></i><time>${timeOfDay(row.ts)}</time>${actor}<span class="nl"><span class="line1" title="${whatText(row)}">${whatText(row)}</span><span class="tl-who">${actor}</span>${times}${plan}</span>${action(row)}</li>`;
 }
 
 const WHO_ITEMS = [

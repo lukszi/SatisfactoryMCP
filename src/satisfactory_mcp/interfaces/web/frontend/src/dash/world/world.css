@@ -315,6 +315,15 @@
 
 /* ---------- phones ---------- */
 @media (max-width: 600px) {
+  .qrow {
+    --hit-gap: var(--sp-3);
+    --hit-gap-y: var(--sp-2);
+  }
+
+  .qpair {
+    --hit-gap: var(--sp-2);
+  }
+
   .wsplit {
     display: flex;
     flex-direction: column;

@@ -37,7 +37,8 @@ phones are one `max-width: 600px` media query per stylesheet.
 - **Squares**: `--ic-s` / `--ic-m` / `--ic-l` (20 / 24 / 32) size icons and glyph buttons,
   `--dot` a status dot. **Bars**: `--bar-s` / `-m` / `-l` (4 / 6 / 8). **Heights**: `--ctl-h`
   (a control: line height plus two hairlines), `--row-h` (a list row), `--row-h-card`,
-  `--touch-h` (a phone sheet row).
+  `--touch-h` (a phone sheet row, and the least hit area of a control on phones; see Tap
+  targets).
 - **List columns** (`--col-*`): a list's `--cols` template is built from these, so the same kind
   of column has the same width on every page: `icon` 24, `icon-l` 32, `act` 24 (one glyph
   button), `short` 56 (a count, a percentage, a distance), `num` 72 (a number with its unit),
@@ -78,6 +79,37 @@ button. A state chip may stand in the button slot, never beside a button. Inline
 the slots: confirm in the button slot, × (keep) in the ⋯ slot. Everything else goes into ⋯.
 The list's template ends in `--col-acts` (`--col-acts-pin` with ◎, `--act-w` with `more:
 false`), so the buttons sit at one x on every row.
+
+### Tap targets (phones)
+
+Under 600 px every control keeps its look and gets a hit area of at least `--touch-h` (44 px),
+set once in `kit.css`, never per page. It covers `.btn` (glyph buttons, ⋯ and ◎ included),
+`.chev`, `.fchip`, segments, `.otabs` links, the × of a `.pchip`, link pills and chips, the
+switch, selects and text, search and number inputs.
+
+- **Buttons and links** get a transparent `::after`, positioned on the control
+  (`position: relative`), so neither layout nor the drawn box changes.
+- **Inputs and selects** have no `::after`: their top and bottom borders become the hit area
+  (transparent, with a negative margin of the same size), and the frame is an inset
+  `box-shadow` in `--frame` (`--bad` when `aria-invalid`). Focused, the border goes back to
+  nothing, so the focus ring sits where it does on desktop.
+- **Neighbours**: the hit area grows up and left only by half the gap to the neighbour there,
+  `--hit-gap` (column gap) and `--hit-gap-y` (row gap); the rest goes down and right. There it
+  passes under the next control, which comes later in the page and so paints over it: no hit
+  area covers another control's box, and a shared gap is split. The kit's rows declare their
+  gaps (`.acts`, `.chips`, `.pills`, `.fchips`, `.kv`, `.checks`, `.tools`, `.title`,
+  `.toolrow`, `.frow`, `.fadd`, `.btn-row`; `.seg` and `.otabs` have none); a page row with
+  its own gap declares it the same way (`.qrow` on World). Labels are positioned too, so a
+  label on the line below keeps its own taps.
+- **Bars** cap the height at their own (`--hit-h`): the top bar at `--hdr-h`, the status and
+  job strips at `--strip-h`. The top bar clips sideways, and `#dash` hides horizontal
+  overflow, so a hit area at the right edge never makes the page scroll.
+- **Clipping**: a segmented control drops its `overflow: hidden` and rounds its own ends; the
+  tab row, which scrolls and so clips, has room above its rule and below the tabs for the hit
+  areas; a slot button clips its label with `overflow: clip` and an `overflow-clip-margin`
+  past the hit area.
+- One look differs by a pixel: a select's arrow sits 1 px further right, because Chrome places
+  it by the border edge, not the padding.
 
 The hidden route `#kit` (`dash/kit-gallery/`) renders every part in its states for screenshot
 checks.
@@ -244,7 +276,9 @@ factory health, and `/api/power/generators` when its circuit is short.
   shared canvas in its card style (`NodeStyle "card"` in `prodgraph/draw.ts`: building disc,
   recipe and ×n beside it, the measured ring round the disc, line width in four rate steps), at
   1:1 and scrolled rather than fitted; the balance per item below, grouped by verdict. A floor
-  shown elsewhere is only noted. Hovering a balance row or a line lights that item.
+  shown elsewhere is only noted. Hovering a balance row or a line lights that item. On phones
+  the graph keeps scrolling inside its frame (a double tap fits it), on purpose, as the plan's
+  flows do.
 - **Worth a look** (`chat/advice.ts`), under the overview aspect: the advisories about this
   factory, one line each (kind chip, "new" or "back", the text; a hidden one says for how
   long), ◎ to the machines, the evidence in the row's expand, and ⋯ for trace, power, the plan,
@@ -369,7 +403,9 @@ while a field there has an unsaved value.
   what, the plan; repeated finds and views fold into one line. Undo on plan versions after v1
   (a new version, from the plan's head); open on chat's solves (the solve card above the
   cards) and finds (the World query). A filter shows all, you or chat. Sticky beside the cards;
-  under 1100 px and on phones it goes below them, cards one per row.
+  under 1100 px and on phones it goes below them, cards one per row. On phones the who column
+  goes: the text takes its room and wraps, and who leads a meta line under it (the plan, ×n);
+  the versions tab does the same.
 - **Chat** (`chat-lists.ts`): chat's last solve sits above the cards as one row (what chat
   asked for, its settings as chips, "not saved", then open its plan, new plan from it, ×).
   Pins and asks follow the cards as lists, one line per row: the `pin:N` or `ask:N` chip and

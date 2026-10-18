@@ -310,9 +310,21 @@ body.job-on {
 
 /* ---------- phones: brand, search icon, gear on top; sections in the bottom bar ---------- */
 @media (max-width: 600px) {
+  /* hit areas stay inside the bar they sit in */
   .hdr {
+    --hit-h: var(--hdr-h);
+    --hit-gap: var(--sp-2);
+    --hit-y: calc((var(--hdr-h) - var(--ctl-h)) / 2);
+
+    overflow-x: clip;
     gap: var(--sp-2);
     padding: 0 var(--sp-2);
+  }
+
+  .jobstrip,
+  #status {
+    --hit-h: var(--strip-h);
+    --hit-y: calc((var(--strip-h) - var(--ctl-h)) / 2);
   }
 
   .hdr .save,
@@ -436,8 +448,10 @@ body.job-on {
     height: calc(100% - var(--hdr-h) - var(--strip-h) - var(--jobstrip-h) - var(--bnav-h));
   }
 
+  /* hidden sideways: a hit area at the right edge must not make the page scroll */
   #dash {
     bottom: var(--bnav-h);
+    overflow-x: hidden;
     padding-right: var(--sp-3);
     padding-left: var(--sp-3);
   }

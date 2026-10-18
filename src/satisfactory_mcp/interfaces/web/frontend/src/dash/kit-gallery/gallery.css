@@ -46,4 +46,9 @@
   .kit-split {
     grid-template-columns: minmax(0, 1fr);
   }
+
+  .kit-row {
+    --hit-gap: var(--sp-2);
+    --hit-gap-y: var(--sp-2);
+  }
 }

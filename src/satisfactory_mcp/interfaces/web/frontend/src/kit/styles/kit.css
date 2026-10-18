@@ -1640,4 +1640,136 @@ details.fold > summary {
   .pill .nm {
     display: none;
   }
+
+  /* tap targets: the hit area grows to --touch-h, up and left only by half the gap, the rest
+     under the next control (docs/frontend_kit.md, "Tap targets"); labels join the order */
+  :where(.btn, .chev, .fchip, .seg > button, .seg > a, .otabs a, .pchip button, a.pill, a.chip, .switch, select, input[type="text"], input[type="search"], input[type="number"], label) {
+    position: relative;
+  }
+
+  :is(.btn, .chev, .fchip, .seg > button, .seg > a, .otabs a, .pchip button, a.pill, a.chip, .switch)::after {
+    --up: min(max(0px, (var(--hit-h) - 100%) / 2), var(--hit-gap-y) / 2);
+    --left: min(max(0px, (var(--touch-h) - 100%) / 2), var(--hit-gap) / 2);
+
+    content: "";
+    position: absolute;
+    top: calc(-1 * var(--up));
+    right: calc(-1 * max(0px, var(--touch-h) - 100% - var(--left)));
+    bottom: calc(-1 * max(0px, var(--hit-h) - 100% - var(--up)));
+    left: calc(-1 * var(--left));
+  }
+
+  /* an input or select has no ::after: a transparent border is its hit area, the frame a shadow */
+  :is(select, input[type="text"], input[type="search"], input[type="number"]) {
+    --hit-up: min(var(--hit-y), var(--hit-gap-y) / 2);
+    --hit-down: calc(2 * var(--hit-y) - var(--hit-up));
+
+    margin-top: calc(-1 * var(--hit-up));
+    margin-bottom: calc(-1 * var(--hit-down));
+    padding: calc(var(--sp-0) + 1px) calc(var(--sp-1) + 1px);
+    border: 0 solid transparent;
+    border-color: transparent !important;
+    border-top-width: var(--hit-up);
+    border-bottom-width: var(--hit-down);
+    border-radius: var(--r) / calc(var(--r) + var(--hit-up)) calc(var(--r) + var(--hit-up)) calc(var(--r) + var(--hit-down)) calc(var(--r) + var(--hit-down));
+    background-clip: padding-box;
+    box-shadow: inset 0 0 0 1px var(--frame, var(--line));
+  }
+
+  :is(input[type="text"], input[type="search"], .dash-select, .dash-number) {
+    padding-inline: calc(var(--sp-2) + 1px);
+  }
+
+  /* focused it needs no hit area, and the focus ring then sits where it always does */
+  :is(select, input[type="text"], input[type="search"], input[type="number"]):focus-visible {
+    margin-block: 0;
+    border-block-width: 0;
+    border-radius: var(--r);
+  }
+
+  [aria-invalid="true"] {
+    --frame: var(--bad);
+  }
+
+  /* the gaps of the kit's rows: column gap as --hit-gap, row gap as --hit-gap-y */
+  .acts,
+  .chips {
+    --hit-gap: var(--sp-1);
+  }
+
+  .pills,
+  .fchips {
+    --hit-gap: var(--sp-1);
+    --hit-gap-y: var(--sp-1);
+  }
+
+  .kv {
+    --hit-gap: var(--sp-2);
+    --hit-gap-y: var(--sp-1);
+  }
+
+  .checks {
+    --hit-gap: var(--sp-3);
+    --hit-gap-y: var(--sp-1);
+  }
+
+  .tools,
+  .title,
+  .fadd,
+  .fctl .btn-row {
+    --hit-gap: var(--sp-2);
+    --hit-gap-y: var(--sp-2);
+  }
+
+  .toolrow {
+    --hit-gap: var(--sp-3);
+    --hit-gap-y: var(--sp-2);
+  }
+
+  .frow {
+    --hit-gap-y: var(--sp-2);
+  }
+
+  .seg,
+  .otabs {
+    --hit-gap: 0px;
+  }
+
+  /* the segments round their own ends, so the hit areas are not clipped */
+  .seg {
+    overflow: visible;
+  }
+
+  .seg > :first-child {
+    border-radius: calc(var(--r) - 1px) 0 0 calc(var(--r) - 1px);
+  }
+
+  .seg > :last-child {
+    border-radius: 0 calc(var(--r) - 1px) calc(var(--r) - 1px) 0;
+  }
+
+  .seg > :only-child {
+    border-radius: calc(var(--r) - 1px);
+  }
+
+  /* the tab row scrolls, which clips: room above the rule and below the row for the hit areas */
+  .otabs {
+    margin-top: 0;
+    margin-bottom: calc(-1 * var(--sp-3));
+    padding-top: calc(var(--sp-2) + 1px);
+    padding-bottom: var(--sp-3);
+    overflow-y: hidden;
+    border-top: 0;
+    background: linear-gradient(var(--line), var(--line)) 0 var(--sp-2) / 100% 1px no-repeat;
+  }
+
+  /* a slot button clips its label for the ellipsis; the clip edge moves out past the hit area
+     (a plain length: Chrome drops a calc() that reaches this property through var()) */
+  @supports (overflow-clip-margin: 1px) {
+    .aslot-b > .btn,
+    .aslot-s > .btn {
+      overflow: clip;
+      overflow-clip-margin: var(--sp-3);
+    }
+  }
 }

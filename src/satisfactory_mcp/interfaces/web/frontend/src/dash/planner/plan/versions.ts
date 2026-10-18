@@ -64,7 +64,8 @@ function line(row: VersionRow, head: number, withDelta: boolean): Safe {
     row.rev === head
       ? chip("current", "muted")
       : html`<span class="acts"><button type="button" class="btn" data-pv="view" data-rev="${String(row.rev)}" title="${"open v" + row.rev + " read-only"}">view</button>${bench.gone ? "" : html`<button type="button" class="btn hide-phone" data-pv="restore" data-rev="${String(row.rev)}" title="${"a new version equal to v" + row.rev + "; nothing after it is lost"}"><span class="spinner" aria-hidden="true"></span>restore</button>`}</span>`;
-  return html`<li class="${"tl-ev " + whoOf(row) + (row.undone_by ? " undone" : "")}"${row.note ? html` title="${row.note}"` : ""}><i class="tl-dot" aria-hidden="true"></i><time>${timeOfDay(row.ts)}</time>${chip(actorWord(row.actor), "muted", row.actor.display)}<span class="nl"><b class="rev">v${row.rev}</b> <span class="line1">${commitWords(row.text)}</span>${chips}${said ? html`<span class="ictx">${said}</span>` : ""}</span>${actions}</li>`;
+  const actor = chip(actorWord(row.actor), "muted", row.actor.display);
+  return html`<li class="${"tl-ev " + whoOf(row) + (row.undone_by ? " undone" : "")}"${row.note ? html` title="${row.note}"` : ""}><i class="tl-dot" aria-hidden="true"></i><time>${timeOfDay(row.ts)}</time>${actor}<span class="nl"><b class="rev">v${row.rev}</b> <span class="line1">${commitWords(row.text)}</span><span class="tl-who">${actor}</span>${chips}${said ? html`<span class="ictx">${said}</span>` : ""}</span>${actions}</li>`;
 }
 
 const WHO = [
