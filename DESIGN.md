@@ -5,7 +5,7 @@ progress and unlocks, spatial resource queries, and LP/MILP factory optimization
 
 **Status:** implemented. 42 tools, 4 resources, 3 prompts, 1,409 tests passing. See README.md for usage.
 **Target game version:** 1.2.2.1 (`saveVersion 60`, `buildVersion 495413`).
-**Licence:** PolyForm Noncommercial 1.0.0 — see [LICENSE](LICENSE) and [§13](#13-licence).
+**Licence:** PolyForm Shield 1.0.0 — see [LICENSE](LICENSE) and [§13](#13-licence).
 
 Every number in this document was measured from the local game files or the live save unless explicitly
 marked `[UNVERIFIED]` or `[WIKI]`. Claims were produced by one agent and independently re-checked by a
