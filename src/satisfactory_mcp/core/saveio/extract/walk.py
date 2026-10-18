@@ -552,7 +552,7 @@ class _ProjectionWalk:
                 continue
             for (owner, role), (other, _role) in (ends, ends[::-1]):
                 if owner in sides:
-                    sides[owner].setdefault(role, set()).add(other)
+                    sides[owner].setdefault(role, set[str]()).add(other)
         for leaf, by_role in sides.items():
             self.switches[leaf]["switch_sides"] = [sorted(by_role[r]) for r in sorted(by_role)]
 
