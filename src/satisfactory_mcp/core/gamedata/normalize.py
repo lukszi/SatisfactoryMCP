@@ -261,6 +261,7 @@ def _build_buildings(dump: DocsDump, items: dict[str, Item]) -> dict[str, Buildi
                 items_per_min=speed * BELT_SPEED_TO_IPM if speed else 0.0,
                 flow_m3_min=as_float(docs_class.get("mFlowLimit")) * 60,
                 storage_capacity_m3=as_float(docs_class.get("mStorageCapacity")),
+                power_store_capacity_mwh=as_float(docs_class.get("mPowerStoreCapacity")),
                 head_lift_m=as_float(docs_class.get("mDesignPressure")),
                 max_head_lift_m=as_float(docs_class.get("mMaxPressure")),
                 machine_head_lift_m=_stated_head_lift(docs_class.get("mDescription")),

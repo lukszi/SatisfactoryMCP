@@ -22,9 +22,12 @@ from .....core.saveio.records import instance_leaf
 from .....core.singleflight import Singleflight
 from .....domain.factories import candidates
 from .....domain.factories.health import assess
+from .....core.saveio.schema import BuildableRecord
 from .....domain.power.report import (
+    BatteryBank,
     MachineGroups,
     PowerLedger,
+    battery_bank,
     generator_building,
     starved_cause,
 )
@@ -54,7 +57,9 @@ class Ledger(TypedDict):
     """``capacity_mw`` is production capacity, ``generation_mw`` less what starved generators
     cannot run; both headrooms are taken from it. ``biomass_mw`` and ``biomass_generators``
     are the wired burners left out of every figure here under ``?biomass=exclude``; both are
-    0 under ``include``."""
+    0 under ``include``. ``batteries`` counts the Power Storage on the grid, ``storage_mwh`` the
+    charge they hold and ``storage_capacity_mwh`` the most they can; all three are 0 on a grid
+    with none, and none of them is in either headroom."""
 
     generation_mw: float
     starved_generation_mw: float
@@ -69,6 +74,9 @@ class Ledger(TypedDict):
     paused: int
     biomass_mw: float
     biomass_generators: int
+    batteries: int
+    storage_mwh: float
+    storage_capacity_mwh: float
 
 
 class GeneratorGroup(TypedDict):
@@ -170,7 +178,7 @@ class CircuitsResponse(TypedDict):
     no_generator: list[MachineRef]
 
 
-def _ledger(report: PowerReport) -> Ledger:
+def _ledger(report: PowerReport, bank: BatteryBank) -> Ledger:
     return {
         "generation_mw": round(report["generation_mw"], 1),
         "starved_generation_mw": round(report["starved_generation_mw"], 1),
@@ -185,6 +193,9 @@ def _ledger(report: PowerReport) -> Ledger:
         "paused": report["paused_consumers"],
         "biomass_mw": round(report["biomass_mw"], 1),
         "biomass_generators": report["biomass_generators"],
+        "batteries": bank.batteries,
+        "storage_mwh": round(bank.stored_mwh, 1),
+        "storage_capacity_mwh": round(bank.capacity_mwh, 1),
     }
 
 
@@ -287,7 +298,7 @@ def _factory_draws(
 
 def _circuit_rows(
     st: WorldState, placed: Placed, label_of: dict[str, str], counted: bool
-) -> list[tuple[CircuitRow, set[str], PowerReport]]:
+) -> list[tuple[CircuitRow, set[str], PowerReport, BatteryBank]]:
     """Every circuit with a record on it, biggest ledger first, with its members and report.
 
     ``starved`` is filled by the caller: it names the circuit, whose index is known only once
@@ -297,7 +308,10 @@ def _circuit_rows(
     machines = {instance_leaf(r["instance"]): r for r in st.projection.get("machines") or ()}
     extractors = {instance_leaf(r["instance"]): r for r in st.projection.get("extractors") or ()}
     generators = {instance_leaf(r["instance"]): r for r in st.projection.get("generators") or ()}
-    rows: list[tuple[CircuitRow, set[str], PowerReport]] = []
+    facilities: dict[str, BuildableRecord] = {
+        instance_leaf(r["instance"]): r for r in st.projection.get("facilities") or ()
+    }
+    rows: list[tuple[CircuitRow, set[str], PowerReport, BatteryBank]] = []
     for component in graph.grids():
         members = set(component)
         sub: MachineGroups = {
@@ -305,7 +319,8 @@ def _circuit_rows(
             "extractors": [r for leaf, r in extractors.items() if leaf in members],
             "generators": [r for leaf, r in generators.items() if leaf in members],
         }
-        if not any(sub.values()):
+        bank = battery_bank((r for leaf, r in facilities.items() if leaf in members), st.game)
+        if not any(sub.values()) and not bank.batteries:
             continue
         report = PowerLedger(projection=sub, game=st.game).power_report(biomass=counted)
         standing = [leaf for leaf in component if leaf in placed]
@@ -314,7 +329,7 @@ def _circuit_rows(
         named = Counter(label_of[leaf] for leaf in standing if leaf in label_of)
         row: CircuitRow = {
             "index": 0,
-            "ledger": _ledger(report),
+            "ledger": _ledger(report, bank),
             "generators": _groups(report, st.game),
             "starved": [],
             "unmodellable": list(report["unmodellable"]),
@@ -327,9 +342,9 @@ def _circuit_rows(
             "centroid_m": None if centre is None else point_m(centre),
             "bbox_m": bbox_m(placed, standing),
         }
-        rows.append((row, members, report))
+        rows.append((row, members, report, bank))
     rows.sort(key=lambda r: -(r[0]["ledger"]["generation_mw"] + r[0]["ledger"]["draw_mw"]))
-    for index, (row, _members, _report) in enumerate(rows):
+    for index, (row, *_rest) in enumerate(rows):
         row["index"] = index
     return rows
 
@@ -375,20 +390,26 @@ def power_circuits(
     placed = candidates.positions(st.projection)
     label_of = {anchor: label.name for label in st.labels.labels for anchor in label.anchors}
     rows = _circuit_rows(st, placed, label_of, counted)
-    circuit_of = {leaf: row["index"] for row, members, _report in rows for leaf in members}
+    circuit_of = {leaf: row["index"] for row, members, *_rest in rows for leaf in members}
     places = _Places(st, placed, label_of, regions_or_none(), circuit_of)
-    for row, _members, report in rows:
+    for row, _members, report, _bank in rows:
         row["starved"] = _starved(report, places)
+    banks = [bank for *_rest, bank in rows]
+    wired_bank = BatteryBank(
+        sum(b.batteries for b in banks),
+        sum(b.stored_mwh for b in banks),
+        sum(b.capacity_mwh for b in banks),
+    )
 
     wiring = assess("world", st.graph.machines(), st.game, st.projection, st.graph)
     world_report = st.power_report(biomass=counted)
     return {
-        "world": _ledger(world_report),
+        "world": _ledger(world_report, wired_bank),
         "paused": world_report["paused_count"],
         "generators": _groups(world_report, st.game),
         "starved": _starved(world_report, places),
         "unmodellable": list(world_report["unmodellable"]),
-        "circuits": [row for row, _members, _report in rows],
+        "circuits": [row for row, *_rest in rows],
         "off_grid": {
             "consumers": world_report["unwired_consumers"],
             "paused": world_report["unwired_paused"],

@@ -169,6 +169,65 @@ def test_an_off_switch_keeps_each_side_whole(game):
     assert dark["consumers"] == 2
 
 
+def _banked(game, switch_on: bool):
+    """A coal plant with one charged battery, and a second bank of two behind a switch."""
+    from satisfactory_mcp.domain.world.state import WorldState
+
+    actors = [
+        "Build_PowerPoleMk1_C_1",
+        "Build_GeneratorCoal_C_1",
+        "Build_PowerStorageMk1_C_1",
+        "Build_PowerSwitch_C_1",
+        "Build_PowerStorageMk1_C_2",
+        "Build_PowerStorageMk1_C_3",
+    ]
+    battery = "Build_PowerStorageMk1_C"
+    projection = {
+        "generators": [{"instance": actors[1], "cls": "Build_GeneratorCoal_C"}],
+        "facilities": [
+            {"instance": actors[2], "cls": battery, "stored_mwh": 60.0},
+            {
+                "instance": actors[3],
+                "cls": "Build_PowerSwitch_C",
+                "switch_on": switch_on,
+                "switch_sides": [[actors[0]], [actors[4], actors[5]]],
+            },
+            {"instance": actors[4], "cls": battery, "stored_mwh": 25.0},
+            {"instance": actors[5], "cls": battery},
+        ],
+        "graph": {"actors": actors, "power": [[0, 1], [0, 2], [0, 3], [3, 4], [3, 5]]},
+    }
+    with client_over(WorldState(projection=projection, game=game), game) as client:
+        return client.get("/api/power/circuits").json()
+
+
+def test_a_grid_sums_its_batteries_charge_against_their_capacity(game):
+    capacity = game.buildings["Build_PowerStorageMk1_C"].power_store_capacity_mwh
+    assert capacity == 100.0, "Power Storage holds 100 MWh"
+    body = _banked(game, switch_on=True)
+    (grid,) = body["circuits"]
+    for led in (grid["ledger"], body["world"]):
+        assert led["batteries"] == 3
+        assert led["storage_mwh"] == pytest.approx(85.0)
+        assert led["storage_capacity_mwh"] == pytest.approx(3 * capacity)
+    assert grid["ledger"]["headroom_mw"] == pytest.approx(grid["ledger"]["capacity_mw"])
+
+
+def test_a_battery_bank_behind_an_off_switch_is_its_own_grid(game):
+    body = _banked(game, switch_on=False)
+    plant, bank = body["circuits"]
+    assert (plant["ledger"]["batteries"], plant["ledger"]["storage_mwh"]) == (1, 60.0)
+    assert (bank["ledger"]["batteries"], bank["ledger"]["storage_mwh"]) == (2, 25.0)
+    assert bank["consumers"] == 0 and bank["ledger"]["generation_mw"] == 0
+    assert body["world"]["batteries"] == 3
+
+
+def test_a_grid_with_no_battery_says_so_with_zeros(game):
+    body = _switched(game, on=True)
+    led = body["circuits"][0]["ledger"]
+    assert (led["batteries"], led["storage_mwh"], led["storage_capacity_mwh"]) == (0, 0.0, 0.0)
+
+
 def test_a_standing_biomass_burner_is_rated_from_game_data(game):
     """The save calls it Build_GeneratorBiomass_C; the dump rates it under another class."""
     burner = {"instance": "Build_GeneratorBiomass_C_1", "cls": "Build_GeneratorBiomass_C"}

@@ -116,9 +116,11 @@ limits are worth knowing before trusting it:
   members do, and the game keeps each side of an on switch as its own circuit, so it would
   number one grid twice. A link to a circuit therefore holds while the ranking does.
 - **Rail power has no wire.** An outpost fed only through the track reads as its own grid.
-- **Batteries are not in the ledger.** `PowerLedger` counts generators and consumers; a
-  circuit running on Power Storage reads as generation 0 with draw, which is also what a
-  circuit with no source looks like.
+- **Batteries sit beside the ledger, not in it.** Each ledger carries `batteries`,
+  `storage_mwh` (the charge the save records) and `storage_capacity_mwh` (100 MWh each, from
+  the docs dump), and the world's are the sum of the circuits'. Neither headroom counts them:
+  a battery covers a shortfall for a while, it does not raise capacity. So a circuit running on
+  Power Storage still reads as generation 0 with draw, but now says what it holds.
 - **Unwired records are in no ledger.** A machine or generator on no power edge draws from and
   feeds nothing, so `power_report` leaves it out of both sides and the circuit rows sum to the
   world line. `off_grid` carries its count and rated MW. One rule decides both the count and

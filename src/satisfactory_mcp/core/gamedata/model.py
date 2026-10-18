@@ -200,6 +200,9 @@ class Building:
     #: not a reading without a capacity beside it, and the save records only a bare
     #: ``mFluidBox`` float.
     storage_capacity_m3: float = 0.0
+    #: How much a battery holds, MWh, from ``mPowerStoreCapacity``: 100 on Power Storage, 0.0
+    #: on everything else. The save records only the charge.
+    power_store_capacity_mwh: float = 0.0
     #: Metres of head a pipeline pump lifts, from ``mDesignPressure``. 20 on Mk1, 50 on Mk2.
     #: ``mMaxPressure`` is higher (22 and 55) and is the point of failure rather than the
     #: rating, so the design figure is the one to plan against.
