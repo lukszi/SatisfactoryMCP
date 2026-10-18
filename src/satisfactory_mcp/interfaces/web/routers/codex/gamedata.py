@@ -20,8 +20,14 @@ from .....core.gamedata.model import Flow, GameData, Item, Recipe
 from .....core.gamedata.search import find_recipe, resolve_item
 from .....core.gamedata.unlocks import granted_by
 from .....core.text import ago
-from .....domain.world import gamemode
-from ...serial import error_response, game_data, machine_name, require_world, world_state
+from .....domain import rules
+from ...serial import (
+    error_response,
+    machine_name,
+    require_world,
+    vanilla_game_data,
+    world_state,
+)
 
 __all__ = ["router"]
 
@@ -186,9 +192,9 @@ def _lookup(request: Request, save: str | None, world: str | None) -> _Lookup:
         st = world_state(request, save, world)
     except Exception as exc:
         note = f"no save could be read ({exc}), so have and locked are unknown"
-        return _Lookup(game_data(request), None, note, 1.0)
-    game = gamemode.shown_game(st.game, st.projection)
-    return _Lookup(game, st.available_recipe_ids, None, gamemode.parts_cost(st.projection))
+        return _Lookup(vanilla_game_data(request), None, note, 1.0)
+    parts = rules.factors_of(st.game).parts
+    return _Lookup(st.game, st.available_recipe_ids, None, parts)
 
 
 def _rates(game: GameData, flows: Iterable[Flow]) -> list[Rate]:
@@ -274,7 +280,7 @@ def gamedata_items(
 ) -> ItemsResponse:
     """Items whose name contains ``q``, the ``search_items`` order. Answers without a save,
     with ``locked`` null then."""
-    game = game_data(request)
+    game = vanilla_game_data(request)
     hits = search.find_items(game, q.strip())
     have = _lookup(request, save, world).have
     return {

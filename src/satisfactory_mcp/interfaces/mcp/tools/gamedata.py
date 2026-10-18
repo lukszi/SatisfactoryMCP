@@ -13,12 +13,12 @@ from pydantic import Field
 from ....core.gamedata import search
 from ....core.gamedata.model import Building, GameData
 from ....core.gamedata.unlocks import granted_by_label
+from ....domain import rules
 from ....domain.planning.analysis import swaps
 from ....domain.planning.analysis.views import SwapOption
 from ....domain.planning.stored.planlog import PlanLog
 from ....domain.planning.stored.recall import expand_plan_pin
 from ....domain.session import journal
-from ....domain.world import gamemode
 from ....domain.world.state import WorldState
 from ....presenters.text import primitives as render
 from ....presenters.text.search import item_flows, render_search
@@ -40,7 +40,7 @@ def _no_save_note(reason: str | None) -> str:
 @app.tool()
 def search_items(query: str, limit: Limit = 10, offset: int = 0) -> str:
     """Find items by name. Returns form, energy and sink points."""
-    hits = search.find_items(app.game(), query)
+    hits = search.find_items(app.vanilla_game(), query)
     window = render.page(limit, offset)
     page = window.of(hits)
     rows = [
@@ -61,10 +61,9 @@ def search_items(query: str, limit: Limit = 10, offset: int = 0) -> str:
 def _shown(st: WorldState | None) -> tuple[GameData, list[str]]:
     """The recipe table a lookup shows: the world's game mode when a world is in scope, else
     vanilla; and the note naming the multiplier when the amounts differ from vanilla."""
-    if st is None:
-        return app.game(), []
-    note = gamemode.parts_note(st.projection)
-    return gamemode.shown_game(st.game, st.projection), [note] if note else []
+    g = app.game_of(st)
+    note = rules.scaling_note(g)
+    return g, [note] if note else []
 
 
 @app.tool()
@@ -158,7 +157,7 @@ def _alternates_in_plan(
     body = render.table([*headers, "Δmach", "ΔMW draw", "Δraw"], rows)
     footer = render.ids_footer((o["name"], o["recipe_id"]) for o in result["options"])
     notes = [echo] if echo else []
-    if mode := gamemode.parts_note(st.projection):
+    if mode := rules.scaling_note(st.game):
         notes.append(mode)
     if result["hidden"]:
         notes.append(f"{result['hidden']} locked recipe(s) hidden (include_locked=false)")
@@ -396,10 +395,10 @@ def list_buildings(
     """
     if gone := app.retired(("kind", kind, "building_kind")):
         return gone
-    g = app.game()
     # Game data alone is still a useful answer: without a save the columns go blank and a
     # note says which save could not be read and why.
     st, save_error = app.load_world_or_none(save, world, as_of)
+    g = app.game_of(st)
     unlocked, built = (st.unlocked_building_ids, st.built_counts) if st is not None else (None, {})
     chosen_kind = (building_kind or "").strip().casefold()
     want = _BUILDING_KINDS.get(chosen_kind)
@@ -447,6 +446,8 @@ def list_buildings(
         )
     elif unlocked is None:
         notes.append(_no_save_note(save_error))
+    if mode := rules.scaling_note(g):
+        notes.append(mode)
     # Page-scoped, like the footer: naming buildings this page does not show would read as
     # rows gone missing.
     unknown = [b.name for b in page if not b.footprint]

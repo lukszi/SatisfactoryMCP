@@ -258,13 +258,12 @@ class PowerLedger:
 
     ``paused_count`` is the build census's count, passed in because this class only needs
     the total to report it. ``switched_off`` holds the actors behind a power switch standing
-    off (``FactoryGraph.behind_off_switch``). ``energy_cost`` is the game mode's factor on
-    every consumer's rated draw; generation is never scaled.
+    off (``FactoryGraph.behind_off_switch``). ``game`` is the world's table, so rated draw
+    already carries its game mode.
     """
 
     projection: MachineGroups
     game: GameData
-    energy_cost: float = 1.0
     paused_count: int = 0
     wired: frozenset[str] | None = None
     switched_off: frozenset[str] = frozenset()
@@ -314,9 +313,6 @@ class PowerLedger:
                 tally.starved_mw += starved_mw
         return tally
 
-    def _scaled(self, rated: float | None) -> float | None:
-        return rated if rated is None or self.energy_cost == 1.0 else rated * self.energy_cost
-
     def _draw(self) -> _DrawTally:
         tally = _DrawTally()
         for machine_record in self.projection.get("machines", ()):
@@ -328,7 +324,7 @@ class PowerLedger:
                 building = self.game.buildings.get(machine_record["cls"])
                 rated = building.power_at(clock) if building else None
             tally.charge(
-                self._scaled(rated),
+                rated,
                 machine_record,
                 self._is_wired(machine_record),
                 self._is_off(machine_record),
@@ -337,7 +333,7 @@ class PowerLedger:
             building = self.game.buildings.get(extractor_record["cls"])
             rated = building.power_at(extractor_record.get("clock") or 1.0) if building else None
             tally.charge(
-                self._scaled(rated),
+                rated,
                 extractor_record,
                 self._is_wired(extractor_record),
                 self._is_off(extractor_record),

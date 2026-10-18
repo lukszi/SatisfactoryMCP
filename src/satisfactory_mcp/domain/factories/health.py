@@ -18,7 +18,6 @@ from ...core.saveio import ports
 from ...core.saveio.records import actor_class, iter_machine_records
 from ...core.saveio.schema import BuildableRecord, Projection
 from ..power.report import BIOMASS_BURNERS, NO_FUEL, dry_input_classes, dry_inputs
-from ..world import gamemode
 from ..world.headlift import HeadLift
 from ..world.logistics import BASIS_UNKNOWN, PhysicalGraph
 from .model import FactoryGraph
@@ -435,7 +434,6 @@ def assess(
     the first. Each is optional, and its absence leaves that answer UNKNOWN, never negative:
     silence must not read as "unpowered", "nothing feeds this" or "flow rate".
     """
-    game = gamemode.game_for(game, projection)
     wanted = set(machines)
     report = HealthReport(name=name)
 

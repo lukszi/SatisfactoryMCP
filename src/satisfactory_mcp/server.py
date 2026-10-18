@@ -16,7 +16,7 @@ from .domain.planning.stored import planlog
 from .domain.planning.stored.recall import PLAN_DEFAULTS
 from .domain.session import journal
 from .interfaces.mcp import tools as _registers_every_tool
-from .interfaces.mcp.app import game, mcp, recipe_names
+from .interfaces.mcp.app import mcp, recipe_names, vanilla_game
 from .interfaces.mcp.params import Limit
 from .interfaces.mcp.prompts import design_factory, pick_hard_drive, plan_power_plant
 from .interfaces.mcp.resources import current_save, docs_summary, factory_labels, map_regions
@@ -115,7 +115,6 @@ __all__ = [
     "factory_sites",
     "forget_factory",
     "forget_plan",
-    "game",
     "list_buildings",
     "list_factories",
     "list_pending_hard_drive_choices",
@@ -157,6 +156,7 @@ __all__ = [
     "trace_upstream",
     "ui_context",
     "unlocked_recipes",
+    "vanilla_game",
     "whereami",
     "world_summary",
 ]

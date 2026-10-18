@@ -13,7 +13,6 @@ from dataclasses import dataclass, field
 from typing_extensions import TypedDict
 
 from ....core.gamedata.model import GameData
-from ...world.gamemode import scaled_part
 
 __all__ = [
     "BuildingCost",
@@ -90,9 +89,8 @@ class MaterialsBill:
         return sorted([x for x in self.lines if not x.covered], key=lambda x: -x.short)
 
 
-def cost_of(game: GameData, building_id: str, count: int, parts_cost: float = 1.0) -> BuildingCost:
-    """What ``count`` of one building class costs to place, under the game mode's parts
-    multiplier, which rounds each part of ONE building before the count multiplies it."""
+def cost_of(game: GameData, building_id: str, count: int) -> BuildingCost:
+    """What ``count`` of one building class costs to place in ``game``'s world."""
     building = game.buildings.get(building_id)
     out = BuildingCost(
         building_id=building_id,
@@ -103,8 +101,7 @@ def cost_of(game: GameData, building_id: str, count: int, parts_cost: float = 1.
         out.unpriced = True
         return out
     for flow in building.build_cost:
-        amount = scaled_part(flow.amount, parts_cost)
-        out.parts[flow.item] = out.parts.get(flow.item, 0.0) + amount * count
+        out.parts[flow.item] = out.parts.get(flow.item, 0.0) + flow.amount * count
     return out
 
 
@@ -113,7 +110,6 @@ def build_materials(
     processes: Sequence[MachineCount],
     stock: dict[str, float] | None = None,
     foundations: int = 0,
-    parts_cost: float = 1.0,
 ) -> MaterialsBill:
     """Total what a plan costs to construct, machines and deck together.
 
@@ -136,7 +132,7 @@ def build_materials(
     totals: dict[str, float] = {}
     contributors: dict[str, dict[str, float]] = {}
     for bid, count in sorted(wanted.items(), key=lambda kv: -kv[1]):
-        entry = cost_of(game, bid, count, parts_cost)
+        entry = cost_of(game, bid, count)
         out.buildings.append(entry)
         if entry.unpriced:
             out.unpriced.append(entry.name)

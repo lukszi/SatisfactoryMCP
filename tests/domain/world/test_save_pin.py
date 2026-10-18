@@ -215,7 +215,7 @@ def autosaving(monkeypatch, ledger):
         return WorldState(projection={"header": disk["header"]}, game=None)
 
     monkeypatch.setattr(mcp_app, "load_state", load_state)
-    monkeypatch.setattr(mcp_app, "game", lambda: None)
+    monkeypatch.setattr(mcp_app, "vanilla_game", lambda: None)
     return disk
 
 

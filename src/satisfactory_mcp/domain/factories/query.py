@@ -19,7 +19,6 @@ from ...core.saveio.schema import BuildableRecord, Projection
 from ..power.report import measured_share
 from ..spatial import geo
 from ..spatial import nodes as nodes_mod
-from ..world import gamemode
 from .labels import LabelStore
 from .model import FactoryGraph
 from .views import BalanceRow
@@ -254,7 +253,6 @@ def _add_manufacturers(
     points: list[tuple[float, float]],
     members: Members,
     game: GameData,
-    draw: float = 1.0,
 ) -> None:
     for leaf, record in members:
         recipe_id = record.get("recipe")
@@ -282,7 +280,7 @@ def _add_manufacturers(
             # Silently contributing 0 MW would understate the whole factory's draw.
             view.issues.append(f"{leaf}: unknown building {record.get('cls')!r}, power not counted")
         else:
-            row.mw = -game.recipe_power_mw(recipe, row.clock) * draw
+            row.mw = -game.recipe_power_mw(recipe, row.clock)
             _charge_power(view, -row.mw, record)
 
 
@@ -331,7 +329,7 @@ def _add_extractors(
         building = game.buildings.get(record.get("cls", ""))
         if building is None:
             continue
-        row.mw = -building.power_at(row.clock) * gamemode.energy_cost(projection)
+        row.mw = -building.power_at(row.clock)
         _charge_power(view, -row.mw, record)
         share = measured_share(record)
         if resource and purity:
@@ -412,13 +410,11 @@ def build_view(
     labels: LabelStore | None = None,
 ) -> FactoryView:
     """Compute every aspect of one machine set in a single pass over the projection."""
-    game = gamemode.game_for(game, projection)
     wanted = set(machines)
     view = FactoryView(name=name)
     flows: Flows = defaultdict(_empty_flow)
     points: list[tuple[float, float]] = []
-    machines_in = _members(projection, "machines", wanted)
-    _add_manufacturers(view, flows, points, machines_in, game, gamemode.energy_cost(projection))
+    _add_manufacturers(view, flows, points, _members(projection, "machines", wanted), game)
     extractors = _members(projection, "extractors", wanted)
     _add_extractors(view, flows, points, extractors, game, projection)
     _add_generators(view, flows, points, _members(projection, "generators", wanted), game)

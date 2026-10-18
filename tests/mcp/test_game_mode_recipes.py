@@ -64,6 +64,25 @@ def test_a_build_recipe_shows_its_scaled_parts(cheap, use_world):
     assert "360 Cable" in _line(out, "in/min")
 
 
+def test_recipe_detail_shows_the_worlds_power(projection, game, use_world):
+    mode = {**CHEAP, "energy_cost": 0.75}
+    use_world(WorldState(projection={**projection, "game_mode": mode}, game=game))
+    out = srv.recipe_detail("Iron Plate")
+    assert "power=3MW" in _line(out, "machine="), "a Constructor's 4 MW x 0.75"
+    assert "power x0.75" in out
+    diamonds = srv.recipe_detail("Recipe_Diamond_C")
+    assert "variable power: 187.5-562.5 MW" in diamonds
+
+
+def test_list_buildings_shows_the_worlds_draw(projection, game, use_world):
+    mode = {**CHEAP, "energy_cost": 0.75}
+    use_world(WorldState(projection={**projection, "game_mode": mode}, game=game))
+    out = srv.list_buildings(building_kind="production")
+    row = next(line for line in out.splitlines() if "\tConstructor\t" in line)
+    assert "\t3MW\t" in row, "a Constructor's 4 MW x 0.75"
+    assert "power x0.75" in out
+
+
 def test_search_and_alternates_follow_the_world(cheap, use_world):
     use_world(cheap)
     found = srv.search_recipes(consumes="Iron Ingot", limit=50)

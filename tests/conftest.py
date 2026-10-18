@@ -96,7 +96,7 @@ def live(game) -> WorldState:
     from satisfactory_mcp.interfaces.mcp import app
 
     try:
-        return load_state(app.game(), path=None, world=None)
+        return load_state(app.vanilla_game(), path=None, world=None)
     except SaveError as exc:
         pytest.skip(f"needs a readable save: {exc}")
 

@@ -24,10 +24,9 @@ from ....core.gamedata.constants import (
 )
 from ....core.gamedata.model import GameData
 from ....core.gamedata.search import match_recipes, resolve_item
-from ... import settings
+from ... import rules, settings
 from ...spatial import nodes as nodes_mod
 from ...spatial.nodes.selectors import Selection, select_nodes
-from ...world import gamemode
 from .. import siting as siting_mod
 from ..stored.plan_args import inherits_default, is_power
 from . import prices as prices_mod
@@ -466,7 +465,6 @@ def build_scenario(
     ``exports`` REPLACES the default ``[MW]`` rather than extending it, because the grid
     import allowance is derived from it (docs/planning.md §8.9).
     """
-    game = gamemode.game_for(game, state.projection)
     export_ids, minimums, export_errors = _resolve_exports(game, exports, export_minimums)
     raw_caps = _supplied_caps(game, supplied, export_errors)
 
@@ -511,8 +509,6 @@ def build_scenario(
         # Zero spends none: a fixed number exist on the whole map (docs/planning.md §8.2f).
         sloop_budget=max(0, int(sloops or 0)),
         grid_import_mw=None if MW in export_ids else 1e6,
-        energy_cost=gamemode.energy_cost(state.projection),
-        parts_cost=gamemode.parts_cost(state.projection),
         **payback_fields,
     )
 
@@ -598,11 +594,12 @@ def _plan_id(sc: Scenario, only_free_nodes: bool, required: list[str] | None = N
     if sc.excluded_pids:
         # Only when present, so a plan without bans keeps the id it was stored under.
         fields["excluded_pids"] = sorted(sc.excluded_pids)
-    if sc.energy_cost != 1.0:
+    factors = rules.factors_of(sc.game)
+    if factors.energy != 1.0:
         # Likewise only off the default: a vanilla world's ids stay what they were.
-        fields["energy_cost"] = sc.energy_cost
-    if sc.parts_cost != 1.0:
-        fields["parts_cost"] = sc.parts_cost
+        fields["energy_cost"] = factors.energy
+    if factors.parts != 1.0:
+        fields["parts_cost"] = factors.parts
     payload = json.dumps(
         {
             **fields,

@@ -132,7 +132,7 @@ def _sited_cell(stored: Plan) -> str:
 def _built_cell(st: WorldState, stored: Plan) -> str:
     """``12/16 @oil setup``, ``?`` or ``not placed`` for the plans table."""
     try:
-        found = plan_progress(app.game(), st, stored)
+        found = plan_progress(st.game, st, stored)
     except Exception:  # a stored plan can outlive the thing it referenced
         return "?"
     if found is None:

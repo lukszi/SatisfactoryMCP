@@ -13,7 +13,7 @@ from typing_extensions import TypedDict
 
 from .....core.gamedata import search as gsearch
 from .....domain.factories.labels import Label
-from ...serial import game_data, machine_name, world_state
+from ...serial import machine_name, vanilla_game_data, world_state
 
 __all__ = ["router"]
 
@@ -91,7 +91,7 @@ def search(
             "save_note": None,
         }
     key = text.casefold()
-    game = game_data(request)
+    game = vanilla_game_data(request)
     items = gsearch.find_items(game, text)
     have: set[str] | None = None
     labels: list[Label] = []

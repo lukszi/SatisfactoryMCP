@@ -229,8 +229,8 @@ def search_conduits(
     """
     if gone := app.retired(("kind", kind, "conduit_kind")):
         return gone
-    g = app.game()
     st = app.load_world(save, world, as_of, purpose=" (conduits are read from the save)")
+    g = st.game
 
     want = (conduit_kind or "").strip().casefold() or None
     if want == "all":

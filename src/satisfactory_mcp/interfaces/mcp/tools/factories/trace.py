@@ -110,8 +110,8 @@ def trace_upstream(
     over-reported but never missed. Belts and pipes are walked THROUGH and left out of the
     table; a note names the runs the route crossed, with the ids `search_conduits` takes.
     """
-    g = app.game()
     st = app.load_world(save, world, as_of)
+    g = st.game
     seeds, subject = resolve_seeds(st, g, seed)
     if not seeds:
         return f"! nothing matches {seed!r} -- give a machine instance, a building name, or a factory label"

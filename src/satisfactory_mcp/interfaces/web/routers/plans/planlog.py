@@ -400,7 +400,7 @@ def create_plan(
         args = PlanArgs.from_dict(canon)
         draft = PlanState(key="", rev=1, name=body["name"], args=args)
         try:
-            stamped = summary.stamp_for(st.game, st)(draft)
+            stamped = summary.stamp_for(st)(draft)
         except Exception:
             _logger.warning(
                 "could not stamp new plan %r; saved unstamped", body["name"], exc_info=True
@@ -484,7 +484,7 @@ def push_ops(
             ops,
             actor=page_actor(),
             sav=sav,
-            stamp=summary.stamp_for(st.game, st),
+            stamp=summary.stamp_for(st),
             extend=extend,
         )
     except _ERRORS as exc:
@@ -519,7 +519,7 @@ def push_args(
             args,
             actor=page_actor(),
             sav=sav,
-            stamp=summary.stamp_for(st.game, st),
+            stamp=summary.stamp_for(st),
             note=_chat_solve_note(body.get("from_entry")),
         )
     except _ERRORS as exc:
@@ -550,7 +550,7 @@ def undo_rev(
             body["rev"],
             actor=page_actor(),
             sav=sav,
-            stamp=summary.stamp_for(st.game, st),
+            stamp=summary.stamp_for(st),
         )
     except _ERRORS as exc:
         _journal_rejection(st, key, sav, exc)
@@ -580,7 +580,7 @@ def restore_rev(
             body["rev"],
             actor=page_actor(),
             sav=sav,
-            stamp=summary.stamp_for(st.game, st),
+            stamp=summary.stamp_for(st),
         )
     except NameTaken as exc:
         return _name_taken(exc)
@@ -620,7 +620,7 @@ def duplicate_plan(
             rev=rev,
             name=body.get("name"),
             sav=_save_token(st, None),
-            stamp=summary.stamp_for(st.game, st),
+            stamp=summary.stamp_for(st),
         )
     except NameTaken as exc:
         return _name_taken(exc)

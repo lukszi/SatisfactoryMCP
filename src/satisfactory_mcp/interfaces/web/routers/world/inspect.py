@@ -29,7 +29,7 @@ from ...serial import (
     collectible_json,
     error_response,
     found_field_json,
-    game_data,
+    game_of,
     node_identity,
     region_json,
     stale_tables,
@@ -259,7 +259,7 @@ def inspect(
     except Exception as exc:
         save_error = f"could not read save: {exc}"
 
-    game = game_data(request)
+    game = game_of(request, st)
     x, y = x_m * 100.0, y_m * 100.0
     found = surroundings.describe_point(st, game, x, y, radius_m, terrain_field=terrain.field())
     nearest = found.nearest

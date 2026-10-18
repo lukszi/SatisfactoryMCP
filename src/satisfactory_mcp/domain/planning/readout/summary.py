@@ -413,13 +413,13 @@ def _solve_response(
     }
 
 
-def stamp_for(g: GameData, st: WorldState) -> Stamp:
+def stamp_for(st: WorldState) -> Stamp:
     """The ``planlog.Stamp`` for pushes read against ``st``: plan_id and selector provenance."""
 
     def stamp(state: PlanState) -> PlanStamp:
         return {
-            "plan_id": build_scenario(g, st, **state.kwargs()).plan_id,
-            "provenance": provenance.record(g, st, list(state.args.sources) or None),
+            "plan_id": build_scenario(st.game, st, **state.kwargs()).plan_id,
+            "provenance": provenance.record(st.game, st, list(state.args.sources) or None),
         }
 
     return stamp

@@ -16,7 +16,7 @@ from ....core.gamedata.constants import WATER_PUMP
 from ....core.gamedata.model import GameData
 from ....core.saveio.records import instance_leaf
 from ....core.text import num
-from ...world import gamemode
+from ... import rules
 from ...world.sites import near_selector
 from .. import geo, heightfield, ranking
 from .. import regions as regions_mod
@@ -306,11 +306,11 @@ def _tool_notes(
 
 def mode_notes(st: WorldState) -> list[str]:
     """The save's game mode where it is not the default, and what it means for the nodes."""
-    mode = gamemode.mode_of(st.projection)
-    line = gamemode.summary(mode)
+    mode = rules.mode_of(st.projection)
+    line = rules.summary(mode)
     if line is None:
         return []
-    if gamemode.randomized(mode):
+    if rules.randomized(mode):
         line += " -- node types and purities are this save's own, not the vanilla map's"
     return [line]
 

@@ -18,7 +18,7 @@ from . import app
 @app.mcp.resource("satisfactory://docs/summary", mime_type="text/plain")
 def docs_summary() -> str:
     """One-line census of the normalized game data, plus its content hash."""
-    g = app.game()
+    g = app.vanilla_game()
     kinds: dict[str, int] = {}
     for r in g.recipes.values():
         kinds[r.kind] = kinds.get(r.kind, 0) + 1

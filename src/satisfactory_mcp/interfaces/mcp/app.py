@@ -143,8 +143,9 @@ def biomass_setting(biomass: bool | None) -> tuple[bool, str]:
 
 
 @lru_cache(maxsize=1)
-def game() -> GameData:
-    """Normalized game data. ~90 ms cold, so built once in-process, no disk cache."""
+def vanilla_game() -> GameData:
+    """The game data as shipped, ~90 ms cold, so built once in-process. Only for answers
+    that hold no world: a world's own table is ``WorldState.game``."""
     return normalize(load_docs(config.docs_path()))
 
 
@@ -161,7 +162,7 @@ def load_world(
     own (``domain/world/pin.py``). ``purpose`` ends the refusal with why the save was needed.
     """
     try:
-        st = load_state(game(), path=save, world=world)
+        st = load_state(vanilla_game(), path=save, world=world)
         pin.check(st.header, as_of)
     except Exception as exc:
         raise Refusal(f"could not read save: {exc}{purpose}") from exc
@@ -176,6 +177,11 @@ def load_world_or_none(
         return load_world(save, world, as_of), ""
     except Refusal as exc:
         return None, str(exc.__cause__ if exc.__cause__ is not None else exc)
+
+
+def game_of(st: WorldState | None) -> GameData:
+    """The world's own game data, or the game as shipped when no world could be read."""
+    return st.game if st is not None else vanilla_game()
 
 
 def save_token(st: WorldState) -> str:
@@ -220,13 +226,13 @@ def journal_world_find(
 
 def resolve_item_id(query: str) -> str | None:
     """The item class id a name or id names, or None."""
-    return resolve_item(game(), query)
+    return resolve_item(vanilla_game(), query)
 
 
 def recipe_names() -> dict[str, str]:
     """Recipe class id -> display name; empty when the game data will not load."""
     try:
-        return {cls: r.name for cls, r in game().recipes.items()}
+        return {cls: r.name for cls, r in vanilla_game().recipes.items()}
     except Exception:
         return {}
 

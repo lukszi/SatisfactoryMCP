@@ -16,7 +16,7 @@ from satisfactory_mcp import server as srv
 from tests.support.reference_world import REFERENCE_FIELD
 
 #: ``usefixtures("game")`` is the guard, not decoration. Every test here calls a tool, and a
-#: tool reaches the game data through ``app.game()`` -- an lru_cache'd function, not this
+#: tool reaches the game data through ``app.vanilla_game()`` -- an lru_cache'd function, not this
 #: suite's fixture -- so with no ``Docs.json`` on the machine they raised FileNotFoundError
 #: out of the middle of a call rather than skipping. Requesting ``game`` puts the suite's own
 #: "is the install here" check in front of every one of them; it is session-scoped, so on a
@@ -421,7 +421,7 @@ def test_server_still_re_exports_what_callers_reach_for():
     name. Losing a re-export breaks them at import time rather than at call time."""
     for name in (
         "mcp",
-        "game",
+        "vanilla_game",
         "PLAN_DEFAULTS",
         "GRAPH_INDEX_WARNING",
         "plan_factory",

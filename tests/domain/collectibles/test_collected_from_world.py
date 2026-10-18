@@ -622,7 +622,7 @@ def test_an_unreadable_save_is_a_sentence_not_a_traceback(monkeypatch):
     def boom(game, path=None, world=None):
         raise RuntimeError("no such save")
 
-    monkeypatch.setattr(app, "game", lambda: None)
+    monkeypatch.setattr(app, "vanilla_game", lambda: None)
     monkeypatch.setattr(app, "load_state", boom)
     assert collected_from_world() == "could not read save: no such save"
 
