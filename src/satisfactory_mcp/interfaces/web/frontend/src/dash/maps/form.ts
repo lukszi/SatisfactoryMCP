@@ -1,5 +1,6 @@
-/* The "generate a map" form: what to make and how, its cost estimate, and the queue button.
- * What was typed lives here, so a redraw keeps it. */
+/* The generate form (a §2.12 card under the map types heading while `?gen=` is set): what to
+ * make and how, its cost estimate, and the queue button. The preset is in the address; what
+ * was typed lives here, so a redraw keeps it. */
 
 import { get } from "../../api/client";
 import { html, type Safe } from "../../kit/html";
@@ -8,12 +9,13 @@ import { checks, form, frange, frow, ftext } from "../../kit/ui/forms";
 import { bytes, duration } from "../../kit/format";
 import { friendlyError } from "../../kit/toast";
 import { mapRegistry } from "../../app/map-types";
-import { paintFirst, redraw, submit, submitRender } from "./maps-actions";
+import { GEN_PRESETS, type GenPreset } from "./address";
+import { paintFirst, redraw, submit, submitRender } from "./writes";
 
 import type { MapEstimateResponse, MapsResponse } from "../../api/shapes";
 
 const state = {
-  preset: "render",
+  preset: "render" as GenPreset,
   input: "heightmap",
   layers: { terrain: true, painted: true } as Record<string, boolean>,
   size: 4096,
@@ -25,7 +27,6 @@ const state = {
   restyle: false,
   enhance: false,
   label: "",
-  open: false,
 };
 
 let estimateSerial = 0;
@@ -79,21 +80,16 @@ function inputRows(): Safe {
     ["rocks", "rock collision"],
     ["paint", "paint layers (for game-painted)"],
   ];
-  return frow("input", html`${selectBox("gen-input", inputs, state.input)}<p class="note">replaces the input in place once the new one is whole; maps drawn from the old one turn amber</p>`, { forId: "gen-input" });
+  return frow("input", html`${selectBox("gen-input", inputs, state.input)}<p class="note">replaces the input in place once the new one is whole; maps drawn from the old one turn “older data”</p>`, { forId: "gen-input" });
 }
 
-export function formMarkup(body: MapsResponse): Safe {
-  const presets: [string, string][] = [
-    ["render", "render: a drawn style"],
-    ["artwork", "artwork from the game"],
-    ["inputs", "heightfield inputs"],
-  ];
+export function formMarkup(body: MapsResponse, preset: GenPreset): Safe {
+  state.preset = preset;
   const running = body.jobs.some((job) => job.status === "running" || job.status === "queued");
   const rows = state.preset === "render" ? renderRows(body) : state.preset === "artwork" ? artworkRows(body) : inputRows();
   const name = state.preset === "inputs" ? "" : frow("name", ftext("gen-name", state.label, "optional; the id is derived", 80), { forId: "gen-name" });
   const go = frow("", html`<span class="btn-row">${busyBtn(running ? "queue" : "generate", { id: "gen-go" })}</span><p class="note" id="gen-estimate">estimating…</p>`);
-  const open = state.open || !body.types.length;
-  return html`<details class="fold" id="gen-fold"${open ? html` open` : ""}><summary>generate a map</summary>${form(html`${frow("what", selectBox("gen-what", presets, state.preset), { forId: "gen-what" })}${rows}${name}${go}`, "gen-form")}</details>`;
+  return html`<section class="card gen-card" aria-label="generate a map">${form(html`${frow("what", selectBox("gen-what", GEN_PRESETS, state.preset), { forId: "gen-what" })}${rows}${name}${go}`, "gen-form")}</section>`;
 }
 
 function blockedReason(body: MapsResponse): string {
@@ -144,11 +140,6 @@ const CHECKS: Record<string, (on: boolean) => void> = {
 export function formChange(target: HTMLInputElement | HTMLSelectElement): boolean {
   const id = target.id;
   const box = target as HTMLInputElement;
-  if (id === "gen-what") {
-    state.preset = target.value;
-    redraw();
-    return true;
-  }
   if (id.indexOf("gen-layer-") === 0) state.layers[id.slice(10)] = box.checked;
   else if (CHECKS[id]) CHECKS[id]!(box.checked);
   else if (id === "gen-recipe") state.recipe = target.value;
@@ -168,10 +159,6 @@ export function formInput(target: HTMLInputElement): void {
   const size = mapRegistry.body?.sizes[Number(target.value)];
   const out = target.parentElement?.querySelector("output");
   if (size && out) out.textContent = size + " px";
-}
-
-export function rememberFold(open: boolean): void {
-  state.open = open;
 }
 
 /** Queues what the form says; false when the server refused it. */

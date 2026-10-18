@@ -16,9 +16,10 @@ export function busyBtn(label: Hole, attrs?: { id?: string; title?: string; extr
 }
 
 /** A glyph button (◎ ⋯ ×). */
-export function glyphBtn(glyph: string, label: string, attrs?: { id?: string; extra?: string }): Safe {
+export function glyphBtn(glyph: string, label: string, attrs?: { id?: string; extra?: string; data?: Record<string, string> }): Safe {
   const o = attrs || {};
-  return html`<button type="button" class="${cls("btn icon", o.extra)}"${o.id ? html` id="${o.id}"` : ""} aria-label="${label}" title="${label}">${glyph}</button>`;
+  const data = Object.keys(o.data || {}).map((key) => html` data-${key}="${o.data![key]!}"`);
+  return html`<button type="button" class="${cls("btn icon", o.extra)}"${o.id ? html` id="${o.id}"` : ""} aria-label="${label}" title="${label}"${data}>${glyph}</button>`;
 }
 
 /** The ⋯ button; its items open through kit/overlay/menu.ts. */

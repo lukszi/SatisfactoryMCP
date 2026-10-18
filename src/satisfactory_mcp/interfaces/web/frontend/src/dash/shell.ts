@@ -25,7 +25,7 @@ import { renderOverview } from "./overview/page";
 import { renderPower } from "./power/page";
 import { renderCircuit } from "./power/circuit";
 import { circuitName } from "./power/readings";
-import { renderMapsPage } from "./maps/maps-page";
+import { renderMapsPage } from "./maps/page";
 import { renderKitGallery } from "./kit-gallery/gallery";
 import { onMapRegistry } from "../app/map-types";
 import { bootScroll, dashParts, wireHistory } from "../app/nav";
@@ -39,7 +39,7 @@ import { setDashHooks } from "./actions";
 
 const SAVELESS: Page[] = ["items", "maps", "kit"];
 
-const PAGE_TITLE: Partial<Record<Page, string>> = { maps: "map types", kit: "kit" };
+const PAGE_TITLE: Partial<Record<Page, string>> = { maps: "map studio", kit: "kit" };
 
 let shownEpoch = 0;
 
@@ -140,7 +140,7 @@ function renderPage(body: HTMLElement, at: Route): void {
   } else if (page === "progress") renderProgress(body, at.subject);
   else if (page === "items") renderItems(body, at.subject);
   else if (page === "world") renderWorld(body, at.subject);
-  else if (page === "maps") renderMapsPage(body);
+  else if (page === "maps") renderMapsPage(body, at.subject);
   else if (page === "kit") renderKitGallery(body);
 }
 

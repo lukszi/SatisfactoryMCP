@@ -103,7 +103,7 @@ land elsewhere. A bare first word is a shorthand (`#maps` is `#dash=maps`).
 - Settings is a dialog (`app/settings-dialog/`), not a page: `settings=<section>` in the fragment
   opens it over the current page, so Back closes it. `#dash=settings` opens it over the page shown
   last; `#dash=settings/maps` goes to `#maps`.
-- Map types, jobs, the generate form and inputs are the `#maps` page (`dash/maps/`).
+- Map types, jobs, the generate form and inputs are the map studio, `#maps` (`dash/maps/`).
 
 ## Navigation
 
@@ -423,6 +423,37 @@ then the tab. The reads and writes are the planner's own (`reads.ts`, `writes.ts
 - **Versions** (`versions.ts`): the Planner timeline for one plan, with each version's delta
   against the one before (`/api/plan/delta`, the newest 30, read one at a time); view and
   restore.
+
+## Map studio
+
+`dash/maps/` is the map studio, `#maps` (breadcrumb Map): which pictures the map can draw and
+which it opens on, the render jobs, a new picture, and the inputs. All of it is `GET /api/maps`
+(`app/map-types.ts` holds it), refreshed by `maps` events; job progress redraws the jobs and the
+rendering cards' wells in place.
+
+- **Address** (`address.ts`, pure): `maps?gen=render|artwork|inputs` opens the generate form at
+  that preset, `&type=<id>` picks a type (accent outline, scrolled into view once). Both
+  replace; opening a card's picture on the map pushes.
+- **Header** (`page.ts`): one meta line, maps on disk · free · raster cache, and "clear cache"
+  (async). A setup problem or unregistered pyramids add one line each with their fix.
+- **Jobs** (`jobs.ts`, `model.ts`): running, queued and the last one that ended in the past
+  hour, on one grid: a state chip of the column's width | the type's title (linking `?type=`)
+  and one meta line | the time in one format ("32 min left", "3 min", "1 h 42 min") | action
+  slots. Running is the split slot log | cancel; queued remove; done make default, with "make
+  default and delete …" in ⋯ when it replaces a type; failed show log. The job bar, the cancel
+  confirm and the log tail run under the row from the name column.
+- **Map types** (`cards.ts`): a card grid (`--mt-w`, four across on a desktop page). The picture
+  is the type's own z1 tiles (`/api/maptiles/<id>/1/{x}/{y}`, 2 × 2), a click opens the map on
+  it; a type without tiles is a plain `--bg-deep` well with its render's percent, bar and time
+  left, never stand-in art. Then the title (no ★: the "default" chip says it), size in GB, a
+  chip line (default, building, older data / older build with the reasons as tooltip, newer
+  palette, re-render available, not in switcher) and "32,768 px · 15 Oct". Foot: regenerate or
+  re-render when freshness offers it, else set as default, then ⋯ (rename in place, show or
+  hide in the switcher, delete). Delete confirms in the same slots.
+- **Generate** (`form.ts`): the "generate" toggle writes `?gen=`; the form card sits under the
+  heading, then one estimate line from `GET /api/maps/estimate`.
+- **Inputs** (`inputs.ts`): name | version, build and date (a "queued" chip leads it) | the
+  number of types whose axes list the input | rebuild.
 
 ## Progress
 

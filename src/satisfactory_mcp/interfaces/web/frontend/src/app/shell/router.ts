@@ -79,9 +79,10 @@ export function routeOf(dash: string): Route {
 }
 
 /** What a scroll position belongs to: moving within it keeps the scroll. On Items that is the
- *  view, on World the query, so picking a row does not jump to the top. */
+ *  view, on World the query, so picking a row does not jump to the top; the map studio is one. */
 export function scrollKey(dash: string): string {
   const at = routeOf(dash);
+  if (at.page === "maps") return "maps";
   if (at.page === "items") return "items/" + itemsAddress(at.subject).view;
   return at.page + "/" + (at.page === "world" ? worldScrollKey(at.subject) : at.subject);
 }
