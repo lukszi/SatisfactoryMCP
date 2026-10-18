@@ -738,7 +738,7 @@ a.name:hover {
 
 .ctx .chip,
 .nl .chip {
-  height: var(--chip-h-in);
+  --chip-box: var(--chip-h-in);
 }
 
 .ctx .chip + .chip {
@@ -897,12 +897,15 @@ a.name:hover {
 }
 
 /* ---------- chips, pills, bars ---------- */
-/* a fixed box with the text centred in it: a line-height box alone sat lowercase words low */
+/* a fixed box with the x-height centred in it: the line is trimmed to the x-height and the
+   top padding takes half of what is left; a line-height box alone sat lowercase words low */
 .chip {
-  display: inline-flex;
-  align-items: center;
-  height: var(--chip-h);
-  padding: 0 var(--sp-2);
+  --chip-box: var(--chip-h);
+
+  display: inline-block;
+  box-sizing: border-box;
+  height: var(--chip-box);
+  padding: calc((var(--chip-box) - 2px - 1ex) / 2) var(--sp-2) 0;
   border: 1px solid var(--line);
   border-radius: var(--r-chip);
   color: var(--ink-soft);

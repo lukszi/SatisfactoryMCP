@@ -178,7 +178,7 @@
 
 .srow .kl .chip {
   flex: none;
-  height: var(--chip-h-in);
+  --chip-box: var(--chip-h-in);
 }
 
 .srow .d {
