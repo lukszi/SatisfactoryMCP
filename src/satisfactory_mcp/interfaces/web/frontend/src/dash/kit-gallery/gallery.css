@@ -34,6 +34,10 @@
   --cols: var(--col-icon) minmax(0, 1fr) var(--col-num-l) var(--col-text) auto;
 }
 
+.l-kitslots .entry {
+  --cols: minmax(0, 1fr) var(--col-acts-pin);
+}
+
 .l-kitcard .entry {
   --cols: var(--col-icon-l) minmax(0, 1fr) var(--col-num-l) auto;
 }

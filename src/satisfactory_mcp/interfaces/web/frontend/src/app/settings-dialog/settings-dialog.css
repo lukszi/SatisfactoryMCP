@@ -178,7 +178,7 @@
 
 .srow .kl .chip {
   flex: none;
-  line-height: calc(var(--t-chip-lh) - 2 * var(--sp-0));
+  --chip-box: var(--chip-h-in);
 }
 
 .srow .d {

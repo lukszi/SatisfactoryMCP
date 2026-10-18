@@ -7,7 +7,7 @@ import { html, mount, type Safe } from "../../kit/html";
 import { toast } from "../../kit/overlay/panels";
 import { wireMoreMenus } from "../../kit/overlay/menu";
 import { btn, busyBtn, check, filterChip, filterField, glyphBtn, moreBtn, seg, sortSelect, switchBox } from "../../kit/ui/controls";
-import { acts, chevron, chips, entry, expandBody, facts, group, identity, list, metric, nameLine, wireExpand } from "../../kit/ui/entry";
+import { acts, actSlots, chevron, chips, entry, expandBody, facts, group, identity, list, metric, nameLine, wireExpand } from "../../kit/ui/entry";
 import { fadd, fnum, form, frange, frow, ftext } from "../../kit/ui/forms";
 import { bar, chip, flow, jobBar, mixBar, pill, slotTile, tagChip } from "../../kit/ui/marks";
 import { sidePanel } from "../../kit/overlay/panels";
@@ -55,6 +55,17 @@ function cards(): Safe {
     );
   };
   return html`${dashH("cards · comfortable", 3, "h3")}${list("kitcard", "grid", [card("Iron Works North", "", "none", 95), card("Steel Valley", "bad", "3", 70), card("Rotor Hill", "", "none", 90)])}`;
+}
+
+/* Every row's buttons at one x: one slot, the split slot, a chip in the slot, ◎ leading. */
+function slotList(): Safe {
+  const rows = [
+    entry({}, html`${identity("Terrain · 15 Oct", "done · 1 h 42 min")}${actSlots(btn("make default"), { pin: "", more: moreBtn("Terrain", ["make default and delete"]) })}`),
+    entry({}, html`${identity("Satellite · 18 Oct", "46% · 32 min left")}${actSlots({ split: [btn("log"), btn("cancel")] }, { pin: "" })}`),
+    entry({}, html`${identity("paint layers", "queued")}${actSlots(chip("queued", "muted"), { pin: "" })}`),
+    entry({}, html`${identity("Iron Works North", "pinned on the map")}${actSlots(btn("rename"), { pin: glyphBtn("◎", "show on the map"), more: moreBtn("Iron Works North", ["delete"]) })}`),
+  ];
+  return html`${dashH("action slots", rows.length, "h3")}${list("kitslots", "stacked", rows, "nolead")}`;
 }
 
 function marks(): Safe {
@@ -110,7 +121,7 @@ function wireGallery(root: HTMLElement): void {
 export function renderKitGallery(parent: HTMLElement): void {
   const root = document.createElement("div");
   root.className = "kit-gallery";
-  mount(root, html`<h1>kit</h1><p class="note">every part of the design system in its states</p>${headings()}${section("lists and entries", html`${stackedList()}${cards()}`)}${marks()}${controls()}${forms()}${loading()}`);
+  mount(root, html`<h1>kit</h1><p class="note">every part of the design system in its states</p>${headings()}${section("lists and entries", html`${stackedList()}${cards()}${slotList()}`)}${marks()}${controls()}${forms()}${loading()}`);
   parent.appendChild(root);
   wireGallery(root);
 }

@@ -51,9 +51,6 @@
   --floor-up: #eef4f8;
   --floor-down: #93a5b4;
   --count-ink: #f2f4f6;
-  --thumb-terrain: #24302c;
-  --thumb-art: #3e4c4a;
-  --thumb-light: #a6ad9c;
 
   /* sizes and type roles: four sizes, 11 / 12 / 14 / 18 */
   --font-ui: "Segoe UI", system-ui, sans-serif;
@@ -95,6 +92,9 @@
   --t-emph-w: var(--w-bold);
   --t-ctl-lh: var(--lh-control);
   --t-chip-lh: var(--lh-chip);
+  /* a chip's box: on its own, and inside a text line */
+  --chip-h: 18px;
+  --chip-h-in: 14px;
 
   /* space, radius, edges */
   --sp-0: 2px;
@@ -136,6 +136,10 @@
   --col-label: 112px;
   --col-text: 150px;
   --col-name: 180px;
+  /* action slots: the one text-button slot, then the actions column with the ⋯ slot (and ◎) */
+  --act-w: 112px;
+  --col-acts: calc(var(--act-w) + var(--sp-1) + var(--col-act));
+  --col-acts-pin: calc(var(--col-acts) + var(--sp-1) + var(--col-act));
   --card-min-w: 320px;
 
   /* motion, overlays, loading */

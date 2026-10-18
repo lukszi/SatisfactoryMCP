@@ -179,6 +179,24 @@ export function isoDate(ts: number | null | undefined): string {
   return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
 }
 
+/** A job's time in one format: "45 s", "32 min", "1 h 42 min". */
+export function hoursMinutes(seconds: number | null | undefined): string {
+  const s = Math.max(0, Math.round(seconds || 0));
+  if (s < 60) return s + " s";
+  const m = Math.round(s / 60);
+  if (m < 60) return m + " min";
+  return Math.floor(m / 60) + " h" + (m % 60 ? " " + (m % 60) + " min" : "");
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** "15 Oct", local time; "–" when there is no date. */
+export function dayMonth(ts: number | null | undefined): string {
+  if (!ts) return "–";
+  const d = new Date(ts * 1000);
+  return d.getDate() + " " + MONTHS[d.getMonth()];
+}
+
 /** "text · detail", or the text alone when there is no detail. */
 export function withDetail(text: string, detail: string | null | undefined): string {
   return detail ? text + " · " + detail : text;

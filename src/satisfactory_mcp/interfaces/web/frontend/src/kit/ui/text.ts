@@ -38,6 +38,8 @@ export interface PageHead {
   acts?: Hole;
   figs?: Hole;
   note?: Hole;
+  /** Lines under the note, each its own `.note`: a setup problem with its fix. */
+  more?: Hole;
   /** The object's own tabs, an underline row on the card's bottom edge. */
   tabs?: { label: Hole; href: string; on: boolean }[];
   tabsLabel?: string;
@@ -47,7 +49,7 @@ export interface PageHead {
 export function pageHead(o: PageHead): Safe {
   const crumbs = o.crumbs.map((c) => html`<a href="${c[1]}" data-nav="up">${c[0]}</a><span class="sep">/</span>`);
   return html`<header class="phead"><nav class="crumbs" aria-label="breadcrumb">${crumbs}<span aria-current="page">${o.name}</span></nav>
-    <div class="title">${o.lead}<h1${o.nameTip ? html` title="${o.nameTip}"` : ""}>${o.name}</h1>${o.chips}${o.acts ? html`<span class="grow"></span><span class="acts">${o.acts}</span>` : ""}</div>${o.figs ? html`<div class="figs">${o.figs}</div>` : ""}${o.note ? note(o.note) : ""}${o.tabs ? objectTabs(o.tabs, o.tabsLabel || "sections") : ""}</header>`;
+    <div class="title">${o.lead}<h1${o.nameTip ? html` title="${o.nameTip}"` : ""}>${o.name}</h1>${o.chips}${o.acts ? html`<span class="grow"></span><span class="acts">${o.acts}</span>` : ""}</div>${o.figs ? html`<div class="figs">${o.figs}</div>` : ""}${o.note ? note(o.note) : ""}${o.more}${o.tabs ? objectTabs(o.tabs, o.tabsLabel || "sections") : ""}</header>`;
 }
 
 function objectTabs(tabs: NonNullable<PageHead["tabs"]>, label: string): Safe {

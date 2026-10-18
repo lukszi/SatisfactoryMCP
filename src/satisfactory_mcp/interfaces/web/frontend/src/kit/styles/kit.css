@@ -738,8 +738,7 @@ a.name:hover {
 
 .ctx .chip,
 .nl .chip {
-  line-height: calc(var(--t-chip-lh) - 2 * var(--sp-0));
-  vertical-align: middle;
+  --chip-box: var(--chip-h-in);
 }
 
 .ctx .chip + .chip {
@@ -817,6 +816,46 @@ a.name:hover {
   justify-content: flex-end;
 }
 
+/* action slots: fixed widths, so buttons line up across rows; a text button fills its slot */
+.acts.aslots {
+  flex-wrap: nowrap;
+}
+
+.aslot-b,
+.aslot-s,
+.aslot-g {
+  display: flex;
+  flex: none;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.aslot-b,
+.aslot-s {
+  width: var(--act-w);
+}
+
+.aslot-g {
+  width: var(--col-act);
+}
+
+.aslot-s {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-1);
+}
+
+.aslot-b > .btn,
+.aslot-s > .btn {
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.aslot-s > .btn {
+  padding: 0;
+}
+
 .acts.full,
 .full {
   grid-column: 1 / -1;
@@ -858,16 +897,24 @@ a.name:hover {
 }
 
 /* ---------- chips, pills, bars ---------- */
+/* a fixed box with the x-height centred in it: the line is trimmed to the x-height and the
+   top padding takes half of what is left; a line-height box alone sat lowercase words low */
 .chip {
+  --chip-box: var(--chip-h);
+
   display: inline-block;
-  padding: 0 var(--sp-2);
+  box-sizing: border-box;
+  height: var(--chip-box);
+  padding: calc((var(--chip-box) - 2px - 1ex) / 2) var(--sp-2) 0;
   border: 1px solid var(--line);
   border-radius: var(--r-chip);
   color: var(--ink-soft);
   font-size: var(--t-meta-size);
   font-weight: var(--t-meta-w);
-  line-height: var(--t-chip-lh);
+  line-height: 1;
+  vertical-align: baseline;
   white-space: nowrap;
+  text-box: trim-both ex alphabetic;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1475,8 +1522,7 @@ details.fold > summary {
 
   .entry > .ic,
   .entry > .mono,
-  .entry > .noic,
-  .entry > .thumb {
+  .entry > .noic {
     grid-row: 1;
     grid-column: 1;
     align-self: start;

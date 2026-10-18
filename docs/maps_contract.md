@@ -419,9 +419,9 @@ A `map` group with one row, **default base map**: every `ready` type by title, "
 a stale one, then "plain". It writes `PUT /api/maps/default`. The default lives in the manifest
 rather than `settings.json` (shared-settings.md §1 says why).
 
-### 6.2 Settings → maps (`#dash=settings/maps`)
+### 6.2 The map studio (`#maps`; `#dash=settings/maps` lands there)
 
-`dash/maps/settings-maps.ts`. One card per block; every confirm is inline.
+`dash/maps/`; its layout is docs/frontend_kit.md, Map studio. What it reads and writes:
 
 1. **Status**: "N map types · size · free", the raster cache with **clear cache**, a muted
    setup line when generation cannot run, and "found N unregistered pyramids · add".

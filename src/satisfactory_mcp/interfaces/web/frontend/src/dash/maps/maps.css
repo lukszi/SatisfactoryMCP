@@ -1,66 +1,213 @@
-/* The maps page: per-list column templates and the map-type thumbnail. */
+/* The map studio, shaped as a contact sheet: jobs and inputs are fixed-column rows; each map
+ * type is a card led by its own picture. */
 
-.l-job2 .entry {
-  --cols: minmax(0, 1fr) auto;
+.maps-page {
+  --mt-w: 280px;
+  --mt-w-phone: 152px;
+}
+
+.maps-page > section,
+#maps-jobs > .list {
+  margin-bottom: var(--sp-3);
+}
+
+/* jobs: state | name and meta | time | action slot | ⋯, every row on one baseline */
+.l-mjob .entry {
+  --cols: var(--col-num) minmax(0, 1fr) var(--col-num-l) var(--col-acts);
+
+  align-items: baseline;
+  padding-block: var(--sp-2);
+}
+
+.l-mjob .entry > .state {
+  display: flex;
+}
+
+/* every state is a chip of the column's width: the percent, queued, done, failed */
+.l-mjob .state > .chip {
+  width: 100%;
+  text-align: center;
+}
+
+.l-mjob .entry > .when {
+  color: var(--muted);
+  font-size: var(--t-meta-size);
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* the job bar, a confirm and the log run under the row from the name column */
+.l-mjob .entry > .full {
+  grid-column: 2 / -1;
+}
+
+.l-mjob .full:empty {
+  display: none;
+}
+
+.maps-page .confirm {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-2);
+  align-items: center;
+  margin-top: var(--sp-1);
+}
+
+/* map types: a card per type, the picture first */
+.maps-page .list.grid.l-mt {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--mt-w)), 1fr));
 }
 
 .l-mt .entry {
-  --cols: var(--col-short) minmax(0, 1fr) var(--col-num);
+  --cols: minmax(0, 1fr) var(--col-num);
 }
 
-.l-inp .entry {
-  --cols: var(--col-label) minmax(0, 1fr) var(--col-name);
+.l-mt .entry > .mpic {
+  grid-column: 1 / -1;
 }
 
-.l-inp .acts .ctx {
-  min-width: 0;
-}
-
-.thumb {
-  --thumb-h: 40px;
-
-  width: var(--col-short);
-  height: var(--thumb-h);
+.mpic {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  aspect-ratio: 1;
   padding: 0;
   overflow: hidden;
-  background: var(--thumb-terrain);
+  background: var(--bg-deep);
   border: 1px solid var(--line);
   border-radius: var(--r);
   cursor: pointer;
 }
 
-.thumb img {
+.mpic:hover {
+  border-color: var(--accent);
+}
+
+.mpic img {
   display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.thumb.none {
-  background: var(--bg-deep);
+.mpic img.whole {
+  grid-column: 1 / -1;
+  grid-row: span 2;
+}
+
+/* a type without tiles: a plain well with its render's progress, never stand-in art */
+.mpic.none {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  align-items: stretch;
+  justify-content: center;
+  padding: 0 var(--sp-5);
+  text-align: center;
   cursor: default;
 }
 
-.confirm,
-.rename {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: var(--sp-1);
+.mpic.none:hover {
+  border-color: var(--line);
+}
+
+.mt-foot {
+  display: flex;
+  gap: var(--sp-2);
   align-items: center;
+  justify-content: flex-end;
+  min-height: var(--ctl-h);
 }
 
-.maps-page .fold .form {
-  margin-top: var(--sp-2);
+.mt-foot > .ctx {
+  margin-right: auto;
 }
 
-.maps-page > .l-mt,
-.maps-page > .l-inp,
-.maps-page #maps-jobs .list {
-  margin-bottom: var(--sp-3);
+.l-mt .rename {
+  width: 100%;
+}
+
+.maps-page .gen-card {
+  margin: 0 0 var(--sp-3);
+}
+
+/* inputs: name | version line | maps drawn from it | rebuild */
+.l-minp .entry {
+  --cols: var(--col-label) minmax(0, 1fr) var(--col-num) var(--act-w);
 }
 
 @media (max-width: 600px) {
+  .maps-page .list.grid.l-mt {
+    grid-template-columns: repeat(auto-fill, minmax(var(--mt-w-phone), 1fr));
+  }
+
+  /* a card is the picture, name and chips, then size and the slots on their own row */
   .l-mt .entry {
-    --cols: var(--col-short) minmax(0, 1fr) auto !important;
+    --cols: minmax(0, 1fr) auto !important;
+
+    padding: var(--sp-1) var(--sp-1) var(--sp-1) calc(var(--sp-1) + var(--edge));
+  }
+
+  .l-mt .entry > * {
+    grid-row: auto;
+    grid-column: 1 / -1;
+  }
+
+  .l-mt .entry > .metric {
+    grid-column: 1;
+    text-align: left;
+  }
+
+  .l-mt .entry > .mt-foot {
+    flex-wrap: wrap;
+  }
+
+  .l-mjob .entry {
+    --cols: var(--col-num) minmax(0, 1fr) var(--col-acts) !important;
+  }
+
+  .l-mjob .entry > .state {
+    grid-row: 1;
+    grid-column: 1;
+  }
+
+  .l-mjob .entry > .id {
+    grid-row: 1;
+    grid-column: 2;
+  }
+
+  .l-mjob .entry > .acts {
+    grid-row: 1;
+    grid-column: 3;
+  }
+
+  .l-mjob .entry > .when {
+    grid-row: 2;
+    grid-column: 2;
+    text-align: left;
+  }
+
+  .l-mjob .entry > .full {
+    grid-row: 3;
+    grid-column: 2 / -1;
+  }
+
+  .l-minp .entry {
+    --cols: minmax(0, 1fr) auto var(--act-w) !important;
+  }
+
+  .l-minp .entry > .name {
+    grid-row: 1;
+    grid-column: 1;
+  }
+
+  .l-minp .entry > .metric {
+    grid-row: 1;
+    grid-column: 2;
+  }
+
+  .l-minp .entry > .ctx {
+    grid-row: 2;
+    grid-column: 1 / -1;
   }
 }

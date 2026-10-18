@@ -44,6 +44,11 @@ phones are one `max-width: 600px` media query per stylesheet.
   `num-l` 96 (a long figure or a state word), `label` 112 (a bar, or a figure over a bar),
   `text` 150 (a short phrase), `name` 180 (the least a flexible name column gets). The flexible
   column is `minmax(0, 1fr)`. `--card-min-w` is the narrowest card in an auto-fill grid.
+- **Action slots**: `--act-w` (112) is the one text-button slot; `--col-acts` is that slot plus
+  the ⋯ slot (`--col-act`), `--col-acts-pin` adds a leading ◎ slot. See Action slots below.
+- **Chips**: a fixed box, `--chip-h` (18) on its own and `--chip-h-in` (14) inside a text line
+  (`.ctx`, `.nl`), the text centred by flex with `text-box` trimmed to the x-height; a
+  line-height box alone sat lowercase words low.
 - **Motion**: `--dur` with `--ease` for state changes, `--dur-fade` for a busy fade,
   `--flash-turn` for one beat of a node flash; spinners and sweeps keep `linear`.
 - A value that belongs to one page only (a map block's height, a roadmap node) is a custom
@@ -55,13 +60,24 @@ phones are one `max-width: 600px` media query per stylesheet.
 | module | parts |
 |---|---|
 | `kit/ui/text.ts` | `pageHead` (object-page header: breadcrumb, title, chips, figures, note, the object's own tabs), `dashH` (heading · n), `blockHead` + `fig` / `figSub` (at most two headline figures), `toolrow`, `note`, `emptyLine`, `icon` (game icon or monogram; a failed load becomes the monogram) |
-| `kit/ui/entry.ts` | `list(name, mode)` — the list's column template is `.l-<name> .entry { --cols: … }` in the page's CSS — `entry`, `identity`, `nameLine`, `metric`, `facts`, `chips`, `acts`, `chevron` + `expandBody` + `wireExpand`, `group` |
+| `kit/ui/entry.ts` | `list(name, mode)` — the list's column template is `.l-<name> .entry { --cols: … }` in the page's CSS — `entry`, `identity`, `nameLine`, `metric`, `facts`, `chips`, `acts`, `actSlots`, `chevron` + `expandBody` + `wireExpand`, `group` |
 | `kit/ui/marks.ts` | `chip` / `tagChip`, `pill` / `flow`, `bar` / `mixBar`, `jobBar`, `slotTile` |
 | `kit/ui/controls.ts` | `btn`, `busyBtn`, `glyphBtn`, `moreBtn`, `seg`, `selectBox`, `sortSelect`, `filterField`, `filterChip`, `switchBox`, `check` |
 | `kit/ui/forms.ts` | `frow` (label column + one control column), `form` (groups split by a soft rule), `fnum`, `ftext`, `fadd`, `frange`, `checks` |
 | `kit/overlay/*` | `openMenu` / `wireMoreMenus` (the ⋯ menu), `modal` (native `<dialog>`), `sidePanel`, `toast` |
 | `kit/ui/states.ts` | `loadingLine` / `loadingInto` and `failedInto` (what could not be read, why, try again): a read in place of a page or block |
 | `kit/busy.ts` | `busy(el, work)` and `busyButton(button, work)` |
+
+### Action slots
+
+A list's actions column is fixed slots that line up from row to row: `actSlots(action, { pin,
+more })` draws an optional ◎ slot, the one text-button slot (the button fills it), then the ⋯
+slot, always last and kept when empty. Two related actions may share the button slot as equal
+halves (`{ split: [a, b] }`, the running map job's log | cancel); every other row keeps one
+button. A state chip may stand in the button slot, never beside a button. Inline confirms reuse
+the slots: confirm in the button slot, × (keep) in the ⋯ slot. Everything else goes into ⋯.
+The list's template ends in `--col-acts` (`--col-acts-pin` with ◎, `--act-w` with `more:
+false`), so the buttons sit at one x on every row.
 
 The hidden route `#kit` (`dash/kit-gallery/`) renders every part in its states for screenshot
 checks.
@@ -87,7 +103,7 @@ land elsewhere. A bare first word is a shorthand (`#maps` is `#dash=maps`).
 - Settings is a dialog (`app/settings-dialog/`), not a page: `settings=<section>` in the fragment
   opens it over the current page, so Back closes it. `#dash=settings` opens it over the page shown
   last; `#dash=settings/maps` goes to `#maps`.
-- Map types, jobs, the generate form and inputs are the `#maps` page (`dash/maps/`).
+- Map types, jobs, the generate form and inputs are the map studio, `#maps` (`dash/maps/`).
 
 ## Navigation
 
@@ -407,6 +423,37 @@ then the tab. The reads and writes are the planner's own (`reads.ts`, `writes.ts
 - **Versions** (`versions.ts`): the Planner timeline for one plan, with each version's delta
   against the one before (`/api/plan/delta`, the newest 30, read one at a time); view and
   restore.
+
+## Map studio
+
+`dash/maps/` is the map studio, `#maps` (breadcrumb Map): which pictures the map can draw and
+which it opens on, the render jobs, a new picture, and the inputs. All of it is `GET /api/maps`
+(`app/map-types.ts` holds it), refreshed by `maps` events; job progress redraws the jobs and the
+rendering cards' wells in place.
+
+- **Address** (`address.ts`, pure): `maps?gen=render|artwork|inputs` opens the generate form at
+  that preset, `&type=<id>` picks a type (accent outline, scrolled into view once). Both
+  replace; opening a card's picture on the map pushes.
+- **Header** (`page.ts`): one meta line, maps on disk · free · raster cache, and "clear cache"
+  (async). A setup problem or unregistered pyramids add one line each with their fix.
+- **Jobs** (`jobs.ts`, `model.ts`): running, queued and the last one that ended in the past
+  hour, on one grid: a state chip of the column's width | the type's title (linking `?type=`)
+  and one meta line | the time in one format ("32 min left", "3 min", "1 h 42 min") | action
+  slots. Running is the split slot log | cancel; queued remove; done make default, with "make
+  default and delete …" in ⋯ when it replaces a type; failed show log. The job bar, the cancel
+  confirm and the log tail run under the row from the name column.
+- **Map types** (`cards.ts`): a card grid (`--mt-w`, four across on a desktop page). The picture
+  is the type's own z1 tiles (`/api/maptiles/<id>/1/{x}/{y}`, 2 × 2), a click opens the map on
+  it; a type without tiles is a plain `--bg-deep` well with its render's percent, bar and time
+  left, never stand-in art. Then the title (no ★: the "default" chip says it), size in GB, a
+  chip line (default, building, older data / older build with the reasons as tooltip, newer
+  palette, re-render available, not in switcher) and "32,768 px · 15 Oct". Foot: regenerate or
+  re-render when freshness offers it, else set as default, then ⋯ (rename in place, show or
+  hide in the switcher, delete). Delete confirms in the same slots.
+- **Generate** (`form.ts`): the "generate" toggle writes `?gen=`; the form card sits under the
+  heading, then one estimate line from `GET /api/maps/estimate`.
+- **Inputs** (`inputs.ts`): name | version, build and date (a "queued" chip leads it) | the
+  number of types whose axes list the input | rebuild.
 
 ## Progress
 

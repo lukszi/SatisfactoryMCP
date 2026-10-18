@@ -41,7 +41,7 @@ function navMarkup(searching: boolean): Safe {
 function paneMarkup(): Safe {
   if (!query.trim()) {
     const rows = inSection(ROWS, section);
-    const link = section === "map" ? html`<p class="sd-more"><a href="${hashFor("maps")}">manage map types →</a></p>` : "";
+    const link = section === "map" ? html`<p class="sd-more"><a href="${hashFor("maps")}">map studio →</a></p>` : "";
     return html`<h3 class="sd-h">${SECTIONS.filter((s) => s.id === section)[0]!.label}</h3>${rows.map((r) => settingRow(r, ""))}${link}`;
   }
   const hits = searchSettings(ROWS, query);

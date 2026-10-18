@@ -8,8 +8,10 @@ import {
   bytes,
   coords,
   count,
+  dayMonth,
   countRange,
   duration,
+  hoursMinutes,
   flow,
   formatNumber,
   isoDate,
@@ -107,6 +109,10 @@ describe("numbers", () => {
     expect(duration(89)).toBe("89 s");
     expect(duration(90)).toBe("2 min");
     expect(duration(5400)).toBe("1.5 h");
+    expect(hoursMinutes(45)).toBe("45 s");
+    expect(hoursMinutes(1920)).toBe("32 min");
+    expect(hoursMinutes(6120)).toBe("1 h 42 min");
+    expect(hoursMinutes(7200)).toBe("2 h");
   });
 });
 
@@ -194,6 +200,8 @@ describe("times", () => {
     const noon = Date.UTC(2026, 0, 5, 12) / 1000;
     expect(isoDate(noon)).toBe("2026-01-05");
     expect(isoDate(null)).toBe("–");
+    expect(dayMonth(noon)).toBe("5 Jan");
+    expect(dayMonth(null)).toBe("–");
     expect(timeOfDay(noon)).toMatch(/^\d\d:\d\d$/);
   });
 });

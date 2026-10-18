@@ -1,15 +1,15 @@
-/* What the maps page sends: registry writes, job submissions, and the one inline confirm
+/* What the map studio sends: registry writes, job submissions, and the one inline confirm
  * open at a time. */
 
 import { send } from "../../api/client";
-import { adoptMapRegistry, fetchMapRegistry } from "../../app/map-types";
+import { adoptMapRegistry, fetchMapRegistry, mapRegistry } from "../../app/map-types";
 import { fail, friendlyError } from "../../kit/toast";
 import { requestRender } from "../actions";
 
 import type { ApiPath, StatusError } from "../../api/client";
 import type { MapJobResponse, MapsResponse } from "../../api/shapes";
 
-/* `delete:<id>`, `cancel:<job>` or `replace:<job>`; "" when none is open. */
+/* `delete:<id>` or `cancel:<job>`; "" when none is open. */
 let confirming = "";
 
 export function redraw(): void {
@@ -76,4 +76,13 @@ export function submit(preset: string, options: Record<string, unknown>, label: 
 
 export function closeConfirm(): void {
   confirming = "";
+}
+
+export function setDefault(id: string): Promise<unknown> {
+  return write("PUT", "/api/maps/default", { id: id, version: mapRegistry.body?.version }).catch(refused("the default map was not changed"));
+}
+
+/** The registry row of a type id, if it is listed. */
+export function typeRow(id: string | null | undefined): MapsResponse["types"][number] | undefined {
+  return mapRegistry.body?.types.filter((t) => t.id === id)[0];
 }
