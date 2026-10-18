@@ -223,6 +223,11 @@
   color: var(--ink);
 }
 
+/* the who chip again, inside the line: shown on phones in place of the who column */
+.tl-who {
+  display: none;
+}
+
 .tl-ev .ictx {
   margin-left: var(--sp-2);
 }
@@ -254,5 +259,46 @@
 
   .l-csolve .id > .chips {
     flex-wrap: wrap;
+  }
+
+  /* timeline: no who column; the text takes its room, who leads the meta line under it */
+  .tl-ev {
+    grid-template-columns: var(--tl-dot) var(--tl-time-w) minmax(0, 1fr) auto;
+  }
+
+  .tl-ev > time + .chip {
+    display: none;
+  }
+
+  .tl-ev .nl {
+    row-gap: var(--sp-0);
+  }
+
+  .tl-ev .nl > * {
+    order: 2;
+  }
+
+  .tl-ev .nl > .rev,
+  .tl-ev .nl > .line1 {
+    order: 0;
+  }
+
+  .tl-ev .nl > .line1 {
+    flex: 1 1 0;
+    white-space: normal;
+  }
+
+  .tl-ev .nl::after {
+    content: "";
+    flex-basis: 100%;
+    order: 1;
+  }
+
+  .tl-ev .tl-who {
+    display: inline;
+  }
+
+  .tl-ev .tl-who > .chip {
+    margin-left: 0;
   }
 }

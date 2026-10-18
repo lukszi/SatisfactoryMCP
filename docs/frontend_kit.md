@@ -401,7 +401,9 @@ while a field there has an unsaved value.
   what, the plan; repeated finds and views fold into one line. Undo on plan versions after v1
   (a new version, from the plan's head); open on chat's solves (the solve card above the
   cards) and finds (the World query). A filter shows all, you or chat. Sticky beside the cards;
-  under 1100 px and on phones it goes below them, cards one per row.
+  under 1100 px and on phones it goes below them, cards one per row. On phones the who column
+  goes: the text takes its room and wraps, and who leads a meta line under it (the plan, ×n);
+  the versions tab does the same.
 - **Chat** (`chat-lists.ts`): chat's last solve sits above the cards as one row (what chat
   asked for, its settings as chips, "not saved", then open its plan, new plan from it, ×).
   Pins and asks follow the cards as lists, one line per row: the `pin:N` or `ask:N` chip and
