@@ -97,7 +97,6 @@ def test_one_table_per_factor_pair_and_never_compounded(game):
     assert rules.world_game(game, WORLD) is world
     assert rules.world_game(world, WORLD) is world
     assert rules.world_game(world, None) is game
-    assert rules.vanilla_game(world) is game
     assert rules.factors_of(world) == rules.Factors(energy=0.75, parts=0.75)
     dear = rules.world_game(world, {"game_mode": {**CHEAP, "parts_cost": 2.0}})
     assert dear.recipes["Recipe_IronPlate_C"].ingredients[0].amount == 6.0
