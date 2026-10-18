@@ -128,7 +128,7 @@ export function faultCount(faults: Faults): number {
 /* The first three factories on a circuit, and how many more there are. */
 export function factoriesOn(row: CircuitRow): string {
   const more = row.factory_count > 3 ? " +" + (row.factory_count - 3) : "";
-  return row.factories.slice(0, 3).join(", ") + more;
+  return row.factories.slice(0, 3).map((f) => f.name).join(", ") + more;
 }
 
 export function circuitName(row: CircuitRow): string {

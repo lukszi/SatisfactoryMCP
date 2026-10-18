@@ -2902,8 +2902,9 @@ export interface components {
         /**
          * CircuitRow
          * @description ``bbox_m`` is null when no record on the circuit has a position. ``factories`` is
-         *     every named factory on it, most machines first; ``unmodellable`` the generator classes
-         *     on it that game data cannot rate, whose output the ledger leaves out.
+         *     every named factory on it, most machines first, with its draw on this circuit alone;
+         *     ``unmodellable`` the generator classes on it that game data cannot rate, whose output
+         *     the ledger leaves out.
          */
         CircuitRow: {
             /** Index */
@@ -2920,7 +2921,7 @@ export interface components {
             /** Poles */
             poles: number;
             /** Factories */
-            factories: string[];
+            factories: components["schemas"]["FactoryDraw"][];
             /** Factory Count */
             factory_count: number;
             /** Centroid M */
@@ -3426,6 +3427,19 @@ export interface components {
             links: components["schemas"]["AspectLink"][];
             /** Issues */
             issues: components["schemas"]["AspectIssue"][];
+        };
+        /**
+         * FactoryDraw
+         * @description A named factory's draw on one circuit, counting only its machines standing on it:
+         *     ``draw_mw`` is maximum consumption, ``measured_draw_mw`` power consumption.
+         */
+        FactoryDraw: {
+            /** Name */
+            name: string;
+            /** Draw Mw */
+            draw_mw: number;
+            /** Measured Draw Mw */
+            measured_draw_mw: number;
         };
         /**
          * FactoryGraphResponse

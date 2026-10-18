@@ -83,6 +83,6 @@ export function renderCircuit(body: HTMLElement, subject: string): void {
   const problems = problemsOf(data, row.index);
   const problemPart = problems.length ? html`${dashH(WORDS.powerProblems, problems.length)}${problemList(problems)}` : "";
   const health = vitals().health;
-  const factories = row.factories.length ? html`${dashH("factories on this circuit", row.factories.length)}${factoryList(row.factories, health ? health.factories : [])}` : "";
+  const factories = row.factories.length ? html`${dashH("factories on this circuit", row.factories.length)}${factoryList(row.factories.map((f) => f.name), health ? health.factories : [])}` : "";
   mountPage(body, html`${head}${supply}${problemPart}${factories}${note("circuit numbers follow size and can change with the next save")}`);
 }

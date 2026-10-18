@@ -17,6 +17,7 @@ from typing_extensions import TypedDict
 
 from .....core.gamedata.model import GameData
 from .....core.saveio.records import instance_leaf
+from .....core.saveio.schema import BuildableRecord
 from .....domain.factories import candidates
 from .....domain.factories.health import assess
 from .....domain.power.report import (
@@ -122,10 +123,20 @@ class Unwired(TypedDict):
     generation_mw: float
 
 
+class FactoryDraw(TypedDict):
+    """A named factory's draw on one circuit, counting only its machines standing on it:
+    ``draw_mw`` is maximum consumption, ``measured_draw_mw`` power consumption."""
+
+    name: str
+    draw_mw: float
+    measured_draw_mw: float
+
+
 class CircuitRow(TypedDict):
     """``bbox_m`` is null when no record on the circuit has a position. ``factories`` is
-    every named factory on it, most machines first; ``unmodellable`` the generator classes
-    on it that game data cannot rate, whose output the ledger leaves out."""
+    every named factory on it, most machines first, with its draw on this circuit alone;
+    ``unmodellable`` the generator classes on it that game data cannot rate, whose output
+    the ledger leaves out."""
 
     index: int
     ledger: Ledger
@@ -134,7 +145,7 @@ class CircuitRow(TypedDict):
     unmodellable: list[str]
     consumers: int
     poles: int
-    factories: list[str]
+    factories: list[FactoryDraw]
     factory_count: int
     centroid_m: tuple[float, float] | None
     bbox_m: tuple[float, float, float, float] | None
@@ -244,6 +255,33 @@ def _starved(report: PowerReport, places: _Places) -> list[StarvedGenerator]:
     return rows
 
 
+def _factory_draws(
+    sub: MachineGroups, names: list[str], label_of: dict[str, str], game: GameData
+) -> list[FactoryDraw]:
+    """Each named factory's draw from this circuit's consumers only, so a factory spanning two
+    circuits is split between them rather than counted on both."""
+    rows: list[FactoryDraw] = []
+    for name in names:
+
+        def mine(record: BuildableRecord) -> bool:
+            return label_of.get(instance_leaf(record["instance"])) == name
+
+        own: MachineGroups = {
+            "machines": [r for r in sub["machines"] if mine(r)],
+            "extractors": [r for r in sub["extractors"] if mine(r)],
+            "generators": [],
+        }
+        report = PowerLedger(projection=own, game=game).power_report()
+        rows.append(
+            {
+                "name": name,
+                "draw_mw": round(report["draw_mw"], 1),
+                "measured_draw_mw": round(report["measured_draw_mw"], 1),
+            }
+        )
+    return rows
+
+
 def _circuit_rows(
     st: WorldState, placed: Placed, label_of: dict[str, str], counted: bool
 ) -> list[tuple[CircuitRow, set[str], PowerReport]]:
@@ -279,7 +317,9 @@ def _circuit_rows(
             "unmodellable": list(report["unmodellable"]),
             "consumers": len(sub["machines"]) + len(sub["extractors"]),
             "poles": sum(1 for leaf in component if graph.kind(leaf) in ("pole", "tower")),
-            "factories": [name for name, _count in named.most_common()],
+            "factories": _factory_draws(
+                sub, [name for name, _count in named.most_common()], label_of, st.game
+            ),
             "factory_count": len(named),
             "centroid_m": None if centre is None else point_m(centre),
             "bbox_m": bbox_m(placed, standing),

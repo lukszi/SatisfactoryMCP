@@ -311,3 +311,50 @@ def test_a_paused_machine_on_no_wire_is_listed_and_counted_but_draws_nothing(gam
     assert body["off_grid"]["consumers"] == len(body["unwired"]) == 2
     assert body["off_grid"]["paused"] == 1
     assert body["off_grid"]["draw_mw"] == pytest.approx(rated, abs=0.1)
+
+
+def test_a_factory_draw_counts_only_its_machines_on_that_circuit(game):
+    """A factory spanning two circuits is split between them, never counted on both."""
+    from satisfactory_mcp.interfaces.web.routers.dashboard.power_circuits import _factory_draws
+
+    def smelter(n):
+        return {"instance": f"L:P.Build_SmelterMk1_C_{n}", "cls": "Build_SmelterMk1_C"}
+
+    label_of = {"Build_SmelterMk1_C_1": "Works", "Build_SmelterMk1_C_2": "Works"}
+    on_this = {"machines": [smelter(1), smelter(3)], "extractors": [], "generators": []}
+    rated = game.buildings["Build_SmelterMk1_C"].power_at(1.0)
+    (row,) = _factory_draws(on_this, ["Works"], label_of, game)
+    assert row == {
+        "name": "Works",
+        "draw_mw": pytest.approx(rated, abs=0.1),
+        "measured_draw_mw": pytest.approx(rated, abs=0.1),
+    }
+
+
+def test_factory_draws_add_up_across_circuits(labelled, labelled_client):
+    """Per circuit they fit inside its draw; over all circuits they are the factory's wired
+    draw exactly once."""
+    from satisfactory_mcp.core.saveio.records import instance_leaf
+    from satisfactory_mcp.domain.power.report import PowerLedger, wired_actors
+
+    body = labelled_client.get("/api/power/circuits").json()
+    spread: dict[str, float] = {}
+    assert any(c["factories"] for c in body["circuits"])
+    for c in body["circuits"]:
+        rows = c["factories"]
+        assert sum(r["draw_mw"] for r in rows) <= c["ledger"]["draw_mw"] + 0.1 * len(rows)
+        for r in rows:
+            assert r["measured_draw_mw"] <= r["draw_mw"] + 0.1
+            spread[r["name"]] = spread.get(r["name"], 0.0) + r["draw_mw"]
+    projection = labelled.projection
+    for label in labelled.labels.labels:
+        if label.name not in spread:
+            continue
+        anchors = set(label.anchors)
+
+        def own(group, anchors=anchors):
+            return [r for r in projection.get(group) or () if instance_leaf(r["instance"]) in anchors]
+
+        groups = {"machines": own("machines"), "extractors": own("extractors"), "generators": []}
+        whole = PowerLedger(projection=groups, game=labelled.game, wired=wired_actors(projection))
+        assert spread[label.name] == pytest.approx(whole.power_report()["draw_mw"], abs=0.5)

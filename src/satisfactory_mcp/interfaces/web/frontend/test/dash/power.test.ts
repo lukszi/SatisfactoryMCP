@@ -9,6 +9,7 @@ function ledger(over: Partial<Ledger>): Ledger {
   const base: Ledger = {
     generation_mw: 100,
     starved_generation_mw: 0,
+    capacity_mw: 100,
     draw_mw: 50,
     measured_draw_mw: 40,
     headroom_mw: 50,
@@ -21,8 +22,9 @@ function ledger(over: Partial<Ledger>): Ledger {
     biomass_generators: 0,
   };
   const out = { ...base, ...over };
-  out.headroom_mw = out.generation_mw - out.draw_mw;
-  out.measured_headroom_mw = out.generation_mw - out.measured_draw_mw;
+  out.capacity_mw = out.generation_mw - out.starved_generation_mw;
+  out.headroom_mw = out.capacity_mw - out.draw_mw;
+  out.measured_headroom_mw = out.capacity_mw - out.measured_draw_mw;
   return out;
 }
 
