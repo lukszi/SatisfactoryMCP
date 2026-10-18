@@ -30,6 +30,9 @@ import { targetsForm } from "./targets";
 import type { SolveResponse, SolveRow } from "../../../api/shapes";
 import type { Op } from "../state";
 
+/* kit.css hides the row's alternates button under 600 px; the ⋯ menu carries it there. */
+const PHONE = window.matchMedia("(max-width: 600px)");
+
 function zone(cls: string, label: string, inner: Safe[]): Safe {
   return html`<div class="${cls}"><span class="k">${label}</span><div class="pills">${inner.length ? inner : html`<em class="na">–</em>`}</div></div>`;
 }
@@ -65,11 +68,21 @@ function mainItem(data: SolveResponse, row: SolveRow): string | null {
   return node ? node.itemId : null;
 }
 
+/** The item a row's alternates open for; null when the row offers none. */
+function altItem(data: SolveResponse, row: SolveRow, live: boolean): string | null {
+  return live && !bench.gone && row.recipe_id ? mainItem(data, row) : null;
+}
+
+function openAlternates(item: string): void {
+  showAlternates(item, "");
+  go(altDash(bench.key, item));
+}
+
 function buildRow(data: SolveResponse, row: SolveRow, live: boolean): Safe {
   const look = lookupOf(data);
   const [clock, last] = clockWords(row);
-  const item = mainItem(data, row);
-  const alt = live && !bench.gone && item && row.recipe_id ? html`<button type="button" class="btn hide-phone" data-pm="alt" data-item="${item}" title="${"every recipe for " + (row.item || row.recipe) + " and what requiring each would change"}">alternates</button>` : "";
+  const item = altItem(data, row, live);
+  const alt = item ? html`<button type="button" class="btn hide-phone" data-pm="alt" data-item="${item}" title="${"every recipe for " + (row.item || row.recipe) + " and what requiring each would change"}">alternates</button>` : "";
   const more = live && !bench.gone ? html`<button class="btn icon more" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="${"more for " + row.recipe}" data-rowmenu="${row.id}">⋯</button>` : "";
   return entry(
     { key: row.id, picked: live && bench.picked === row.id, focusable: live, extra: "proc", title: row.building + " · " + row.recipe },
@@ -148,6 +161,8 @@ function rowMenu(row: SolveRow, button: HTMLElement): void {
       },
     },
   ];
+  const alt = PHONE.matches && bench.result ? altItem(bench.result, row, true) : null;
+  if (alt) items.push({ label: "alternates", act: () => openAlternates(alt) });
   if (row.recipe_id) items.push({ label: WORDS.pin, act: () => createPin("process", { plan: bench.key, recipe: row.recipe_id! }) });
   items.push({ label: WORDS.askChat, act: () => openAsk({ kind: "process", label: row.building + " · " + row.recipe, ref: member, plan: bench.key, rev: bench.plan ? bench.plan.rev : null }, "row:" + row.id) });
   button.title = row.overclock_option ? optionWords(row.overclock_option) : "";
@@ -175,9 +190,7 @@ export function machinesClick(target: Element): boolean {
     changed();
   } else if (what === "undo" && bench.plan) undoRev(bench.plan.rev);
   else if (what === "alt") {
-    const item = b!.dataset.item || "";
-    showAlternates(item, "");
-    go(altDash(bench.key, item));
+    openAlternates(b!.dataset.item || "");
   } else if (what === "restore") {
     const rev = Number(b!.dataset.rev);
     busyButton(b as HTMLButtonElement, function () {
