@@ -30,6 +30,32 @@ def test_a_switch_is_on_only_while_the_save_says_so(cls):
     assert _filed(cls, {})["switch_on"] is False, "the property is written only while on"
 
 
+def test_a_switch_lists_who_is_wired_to_each_of_its_connections():
+    walk = _ProjectionWalk(out=cast("Any", {}))
+    switch: dict[str, Any] = {"cls": "Build_PowerSwitch_C", "switch_on": False}
+    walk.switches["Build_PowerSwitch_C_1"] = cast("Any", switch)
+    walk.wire_ends = {
+        "w1": [
+            ("Build_PowerPoleMk1_C_1", "PowerConnection"),
+            ("Build_PowerSwitch_C_1", "PowerConnection1"),
+        ],
+        "w2": [
+            ("Build_PowerSwitch_C_1", "PowerConnection2"),
+            ("Build_PowerStorageMk1_C_2", "PowerConnection"),
+        ],
+        "w3": [
+            ("Build_PowerStorageMk1_C_1", "PowerConnection"),
+            ("Build_PowerSwitch_C_1", "PowerConnection2"),
+        ],
+        "w4": [("Build_PowerPoleMk1_C_1", "PowerConnection")],
+    }
+    walk._attach_switch_sides()
+    assert switch["switch_sides"] == [
+        ["Build_PowerPoleMk1_C_1"],
+        ["Build_PowerStorageMk1_C_1", "Build_PowerStorageMk1_C_2"],
+    ]
+
+
 def test_a_battery_carries_its_charge_and_an_empty_one_reads_zero():
     assert _filed("Build_PowerStorageMk1_C", {"mPowerStore": 87.25})["stored_mwh"] == 87.25
     assert _filed("Build_PowerStorageMk1_C", {})["stored_mwh"] == 0.0

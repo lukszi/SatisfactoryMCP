@@ -916,12 +916,16 @@ rows, wires 54.4 KB over 1,297).
 
 ### 6.12a Switches and batteries — schema 25
 
-Power Switches, Priority Power Switches and Power Storage are filed under `facilities`, each with
-one field the power pages read. Measured on four publicly shared 1.0 saves (three from one world,
+Power Switches, Priority Power Switches and Power Storage are filed under `facilities`, with the
+fields the power pages read. Measured on four publicly shared 1.0 saves (three from one world,
 one from another), since the reference world has built none of the three:
 
 - **`switch_on`**, on `Build_PowerSwitch_C` and `Build_PriorityPowerSwitch_C`, is `mIsSwitchOn`.
   The property is written only while the switch is on, so an absent one reads `false`.
+- **`switch_sides`**, on the same two classes, lists the actors wired to each of the switch's two
+  connections (`PowerConnection1`, `PowerConnection2`) by short name. `graph["power"]` joins
+  every wire to the switch actor and so cannot say which side a neighbour is on.
+  `build_graph` uses the sides to cut an off switch without cutting a side from itself.
 - **`stored_mwh`**, on `Build_PowerStorageMk1_C`, is `mPowerStore`: the charge held, 0 to 100 MWh.
   It is absent on an empty battery, which reads `0`. Every battery on one game circuit holds the
   same figure, so the grid's charge is spread evenly rather than per building. The capacity is not
@@ -1277,7 +1281,7 @@ pickle then disagrees with the code rather than merely being thinner.
 | 22 | CORRECTS a false "possibly incomplete" note on saves whose older levels carry the previous build's changelist |
 | 23 | adds `fittings` (pipe junctions, pumps, valves) and `facilities` (the HUB, sink, MAM and other one-off buildings), so the map can draw them |
 | 24 | adds `hypertubes` (§6.16), `hypertube_entrances` and `map_markers` (§6.17), so the map can draw them |
-| 25 | files power switches as `facilities` with `switch_on`, and gives Power Storage `stored_mwh` (§6.12a) |
+| 25 | files power switches as `facilities` with `switch_on` and `switch_sides`, and gives Power Storage `stored_mwh` (§6.12a) |
 
 ---
 

@@ -102,7 +102,12 @@ def _switched(game, on: bool):
         "Build_PowerPoleMk1_C_2",
         "Build_ConstructorMk1_C_1",
     ]
-    switch = {"instance": "Build_PowerSwitch_C_1", "cls": "Build_PowerSwitch_C", "switch_on": on}
+    switch = {
+        "instance": "Build_PowerSwitch_C_1",
+        "cls": "Build_PowerSwitch_C",
+        "switch_on": on,
+        "switch_sides": [[actors[0]], [actors[3]]],
+    }
     projection = {
         "generators": [{"instance": actors[1], "cls": "Build_GeneratorCoal_C"}],
         "machines": [
@@ -129,6 +134,39 @@ def test_a_switch_standing_off_keeps_its_two_sides_apart(game):
     assert dark["consumers"] == 1 and dark["ledger"]["generation_mw"] == 0
     assert [r["instance"] for r in body["no_generator"]] == ["Build_ConstructorMk1_C_1"]
     assert body["no_generator"][0]["circuit"] == dark["index"]
+
+
+def test_an_off_switch_keeps_each_side_whole(game):
+    """Two machines wired straight to the far side of an off switch stay one grid."""
+    from satisfactory_mcp.domain.world.state import WorldState
+
+    actors = [
+        "Build_PowerPoleMk1_C_1",
+        "Build_GeneratorCoal_C_1",
+        "Build_PowerSwitch_C_1",
+        "Build_ConstructorMk1_C_1",
+        "Build_ConstructorMk1_C_2",
+    ]
+    projection = {
+        "generators": [{"instance": actors[1], "cls": "Build_GeneratorCoal_C"}],
+        "machines": [
+            {"instance": leaf, "cls": "Build_ConstructorMk1_C", "recipe": "Recipe_IronPlate_C"}
+            for leaf in actors[3:]
+        ],
+        "facilities": [
+            {
+                "instance": actors[2],
+                "cls": "Build_PowerSwitch_C",
+                "switch_on": False,
+                "switch_sides": [[actors[0]], actors[3:]],
+            }
+        ],
+        "graph": {"actors": actors, "power": [[0, 1], [0, 2], [2, 3], [2, 4]]},
+    }
+    with client_over(WorldState(projection=projection, game=game), game) as client:
+        body = client.get("/api/power/circuits").json()
+    _plant, dark = body["circuits"]
+    assert dark["consumers"] == 2
 
 
 def test_a_standing_biomass_burner_is_rated_from_game_data(game):

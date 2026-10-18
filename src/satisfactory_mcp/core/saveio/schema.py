@@ -269,6 +269,8 @@ class BuildableRecord(TypedDict):
     potential_slots: NotRequired[dict[str, float]]
     #: A power switch's state, on its two classes only (§6.12a).
     switch_on: NotRequired[bool]
+    #: The actors wired to each of a switch's two connections, by short name (§6.12a).
+    switch_sides: NotRequired[list[list[str]]]
     #: The charge a Power Storage holds, MWh, on that class only (§6.12a).
     stored_mwh: NotRequired[float]
 

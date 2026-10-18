@@ -47,10 +47,12 @@ def build_graph(projection: Projection) -> FactoryGraph:
         if len(row) < 2:
             continue
         graph.power.append(Edge(a=actors[row[0]], b=actors[row[1]]))
-    graph.switched_off = {
-        instance_leaf(record["instance"])
-        for record in projection.get("facilities") or ()
-        if record.get("switch_on") is False
-    }
+    for record in projection.get("facilities") or ():
+        if record.get("switch_on") is False:
+            graph.switched_off.add(instance_leaf(record["instance"]))
+            # Skipping the switch must not split one side from itself: chain each side's
+            # neighbours, which were already joined through the switch.
+            for side in record.get("switch_sides") or ():
+                graph.power.extend(Edge(a=a, b=b) for a, b in zip(side, side[1:]))
 
     return graph
