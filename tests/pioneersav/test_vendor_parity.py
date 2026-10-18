@@ -76,6 +76,9 @@ POST_11_ADDITIONS = {
     #: Schema 27. The one ``node_state`` field the oracle read; a randomized world adds each
     #: node's resource and purity, and no banked save is one.
     "node_state_fields": ("resources_left",),
+    #: Schema 26. A new ``graph`` member: buildables joined with no wire. ``graph`` is compared,
+    #: so the member is named; ``actors`` and ``power`` inside it still are.
+    "graph_fields": ("hidden_power",),
 }
 
 
@@ -147,6 +150,9 @@ def as_schema_11(projection: dict) -> dict:
             for node, state in out["node_state"].items()
         }
         out["node_state"] = {node: state for node, state in trimmed.items() if state}
+    if isinstance(out.get("graph"), dict):
+        dropped = POST_11_ADDITIONS["graph_fields"]
+        out["graph"] = {k: v for k, v in out["graph"].items() if k not in dropped}
     for key, width in POST_11_ADDITIONS["row_width"].items():
         payload = out.get(key)
         if isinstance(payload, dict) and isinstance(payload.get("instances"), list):
@@ -244,6 +250,7 @@ def test_the_schema_11_filter_removes_the_new_fields_and_only_those():
             "storage": {"Desc_IronPlate_C": 40},
             "machine": {"Desc_IronPlate_C": 60, "Desc_Rubber_C": 5},
         },
+        "graph": {"actors": ["Pole_1", "Station_2", "Platform_3"], "power": [[0, 1]]},
         "warnings": [],
     }
     latest = {
@@ -323,6 +330,12 @@ def test_the_schema_11_filter_removes_the_new_fields_and_only_those():
             "machine": {},
             "crate": {"Desc_Rubber_C": 5},
         },
+        # Schema 26, populated so the drop is real: a station and a platform on one third rail.
+        "graph": {
+            "actors": ["Pole_1", "Station_2", "Platform_3"],
+            "power": [[0, 1]],
+            "hidden_power": [[1, 2]],
+        },
         "warnings": [],
     }
     filtered = as_schema_11(latest)
@@ -335,6 +348,12 @@ def test_the_schema_11_filter_removes_the_new_fields_and_only_those():
     moved["machines"] = [{**latest["machines"][0], "pos": [1.0, 2.0, 99.0]}]
     assert _digest(as_schema_11(moved)["machines"]) != _digest(eleven["machines"]), (
         "the filter hides a changed schema-11 field, which is the drift the bank exists to catch"
+    )
+
+    rewired = dict(latest)
+    rewired["graph"] = {**latest["graph"], "power": [[0, 2]]}
+    assert _digest(as_schema_11(rewired)["graph"]) != _digest(eleven["graph"]), (
+        "dropping hidden_power hid a changed wire, which graph is compared to catch"
     )
 
     # And the same demand of the schema-16 undo specifically, because it is a step that
