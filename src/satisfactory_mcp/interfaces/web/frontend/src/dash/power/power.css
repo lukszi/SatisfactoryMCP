@@ -393,6 +393,10 @@ a.sg {
     column-gap: var(--sp-2);
   }
 
+  .sd > .k {
+    white-space: normal;
+  }
+
   .ccols {
     grid-template-columns: minmax(0, 1fr);
     gap: var(--sp-4);

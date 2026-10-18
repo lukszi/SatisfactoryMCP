@@ -220,10 +220,6 @@
   gap: var(--sp-3);
 }
 
-.pg-rate .dash-number {
-  width: var(--num-w-s);
-}
-
 @media (prefers-reduced-motion: reduce) {
   .pg-node.flash .pg-disc {
     animation: none;
