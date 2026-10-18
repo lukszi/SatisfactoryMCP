@@ -403,7 +403,7 @@ def test_this_parser_still_produces_what_the_two_agreed_on(banked, saves_root):
             pool, present, lambda item: _projection(item[2]), width=width
         ):
             assert "error" not in proj, (name, proj.get("detail"))
-            assert proj["schema_version"] == 22, (name, "unexpected schema for the filter")
+            assert proj["schema_version"] == 25, (name, "unexpected schema for the filter")
             header = {k: v for k, v in proj["header"].items() if k not in VOLATILE}
             if AUTOSAVE.search(name) and _digest(header) != entry["header"]:
                 continue
