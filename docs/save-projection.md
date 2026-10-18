@@ -101,10 +101,12 @@ the wires supports exactly one claim, in two shapes:
 
 **Everything else is refused.** A brownout, a tripped grid, a coal plant out of coal, a machine
 whose circuit is at 0 MW — none of these are in the file, and a machine some generator *can* reach
-is therefore never called unpowered no matter what the report otherwise says about it. An **open
-power switch** is the one known blind spot and it fails in the safe direction: the switch is a node
-joined to both sides, so a genuinely dark sub-circuit behind one reads as reached and is not
-reported. Under-report, never over-report.
+is therefore never called unpowered no matter what the report otherwise says about it. A **power
+switch standing off** stops the walk, as it stops power in the game: since schema 25 the save's
+`mIsSwitchOn` is read (§6.12a), so a sub-circuit behind an off switch with no generator of its own
+is reported. A switch standing on joins its two sides. Rail power is the remaining blind spot, and
+it fails in the direction that over-reports: an outpost fed only through the track has no wire to a
+generator.
 
 Two absences are also refused as findings. No graph supplied, no verdict. And **no generator
 anywhere in the projection**, which would make every actor in the world unreachable: that is a

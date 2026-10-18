@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from ...core.saveio import ports
-from ...core.saveio.records import actor_class, iter_machine_records
+from ...core.saveio.records import actor_class, instance_leaf, iter_machine_records
 from ...core.saveio.schema import Projection
 from .model import Edge, FactoryGraph, kind_of
 
@@ -47,5 +47,10 @@ def build_graph(projection: Projection) -> FactoryGraph:
         if len(row) < 2:
             continue
         graph.power.append(Edge(a=actors[row[0]], b=actors[row[1]]))
+    graph.switched_off = {
+        instance_leaf(record["instance"])
+        for record in projection.get("facilities") or ()
+        if record.get("switch_on") is False
+    }
 
     return graph

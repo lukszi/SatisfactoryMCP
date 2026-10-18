@@ -91,6 +91,46 @@ def _one_circuit(game, generators, machines=(), query=""):
         return client.get("/api/power/circuits" + query).json()
 
 
+def _switched(game, on: bool):
+    """A coal plant and a constructor on two poles, joined through one power switch."""
+    from satisfactory_mcp.domain.world.state import WorldState
+
+    actors = [
+        "Build_PowerPoleMk1_C_1",
+        "Build_GeneratorCoal_C_1",
+        "Build_PowerSwitch_C_1",
+        "Build_PowerPoleMk1_C_2",
+        "Build_ConstructorMk1_C_1",
+    ]
+    switch = {"instance": "Build_PowerSwitch_C_1", "cls": "Build_PowerSwitch_C", "switch_on": on}
+    projection = {
+        "generators": [{"instance": actors[1], "cls": "Build_GeneratorCoal_C"}],
+        "machines": [
+            {"instance": actors[4], "cls": "Build_ConstructorMk1_C", "recipe": "Recipe_IronPlate_C"}
+        ],
+        "facilities": [switch],
+        "graph": {"actors": actors, "power": [[0, 1], [0, 2], [2, 3], [3, 4]]},
+    }
+    with client_over(WorldState(projection=projection, game=game), game) as client:
+        return client.get("/api/power/circuits").json()
+
+
+def test_a_switch_standing_on_joins_its_two_sides_into_one_grid(game):
+    body = _switched(game, on=True)
+    (grid,) = body["circuits"]
+    assert grid["consumers"] == 1 and grid["ledger"]["generation_mw"] > 0
+    assert body["no_generator"] == []
+
+
+def test_a_switch_standing_off_keeps_its_two_sides_apart(game):
+    body = _switched(game, on=False)
+    plant, dark = body["circuits"]
+    assert plant["consumers"] == 0 and plant["ledger"]["generation_mw"] > 0
+    assert dark["consumers"] == 1 and dark["ledger"]["generation_mw"] == 0
+    assert [r["instance"] for r in body["no_generator"]] == ["Build_ConstructorMk1_C_1"]
+    assert body["no_generator"][0]["circuit"] == dark["index"]
+
+
 def test_a_standing_biomass_burner_is_rated_from_game_data(game):
     """The save calls it Build_GeneratorBiomass_C; the dump rates it under another class."""
     burner = {"instance": "Build_GeneratorBiomass_C_1", "cls": "Build_GeneratorBiomass_C"}

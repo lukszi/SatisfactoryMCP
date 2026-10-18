@@ -1,7 +1,8 @@
 """``/api/power/circuits``: the ``power_report`` ledger, world-wide and per wired circuit.
 
-A circuit is a connected component of the save's power edges; each one's figures are the same
-``PowerLedger`` run over only the records standing on it. The limits of that reading are in
+A circuit is a grid as the game runs it: a connected component of the save's power edges, cut
+at every switch standing off and joined through every one standing on (save-projection.md
+§6.12a). Each one's figures are the same ``PowerLedger`` run over only the records on it. The limits of that reading are in
 docs/spatial-and-map.md §21; wire rules in docs/web-wire.md.
 
 Handler names are operation_ids (wire rule 1).
@@ -297,7 +298,7 @@ def _circuit_rows(
     extractors = {instance_leaf(r["instance"]): r for r in st.projection.get("extractors") or ()}
     generators = {instance_leaf(r["instance"]): r for r in st.projection.get("generators") or ()}
     rows: list[tuple[CircuitRow, set[str], PowerReport]] = []
-    for component in graph.components("power"):
+    for component in graph.grids():
         members = set(component)
         sub: MachineGroups = {
             "machines": [r for leaf, r in machines.items() if leaf in members],

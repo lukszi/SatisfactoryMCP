@@ -990,7 +990,7 @@ actually supports, measured on the reference save rather than assumed:
 | `mHasPower` | **0 of 44,307 objects** | Carries no `SaveGame` specifier on `UFGPowerInfoComponent` (checked in Headers.zip). Not in the file. |
 | `mCircuitID` | **0** | Same — grid membership is rebuilt at load, so *which grid a machine is on* is not readable. |
 | `BP_CircuitSubsystem` | 1 object, **empty property set** | Confirms the above from the other direction. |
-| `mIsSwitchOn` | *is* `SaveGame` on `AFGBuildableCircuitSwitch` | …but this world has built **no power switch at all**, and the projection does not read one. Even the per-block switch § 8.5d recommends would be unreadable today. |
+| `mIsSwitchOn` | *is* `SaveGame` on `AFGBuildableCircuitSwitch` | This world has built **no power switch at all**. Since schema 25 the projection reads it as `switch_on` (save-projection.md §6.12a), so the per-block switch § 8.5d recommends is readable, and a block behind an off switch reads as having no generator. |
 
 So a stage reports `running` — what it can prove — and **refuses to convert silence into
 "unpowered"**. The residue after the save's own explanations (paused, starved, blocked, no recipe,
