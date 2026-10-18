@@ -331,6 +331,14 @@ def test_a_factory_draw_counts_only_its_machines_on_that_circuit(game):
     }
 
 
+def test_the_generator_candidates_are_served_biggest_first(client):
+    rows = client.get("/api/power/generators").json()
+    assert rows, "game data has fuelled generators"
+    assert [r["mw"] for r in rows] == sorted((r["mw"] for r in rows), reverse=True)
+    assert all(r["verdict"] for r in rows)
+    assert client.get("/api/power/generators").json() == rows
+
+
 def test_factory_draws_add_up_across_circuits(labelled, labelled_client):
     """Per circuit they fit inside its draw; over all circuits they are the factory's wired
     draw exactly once."""
@@ -353,7 +361,9 @@ def test_factory_draws_add_up_across_circuits(labelled, labelled_client):
         anchors = set(label.anchors)
 
         def own(group, anchors=anchors):
-            return [r for r in projection.get(group) or () if instance_leaf(r["instance"]) in anchors]
+            return [
+                r for r in projection.get(group) or () if instance_leaf(r["instance"]) in anchors
+            ]
 
         groups = {"machines": own("machines"), "extractors": own("extractors"), "generators": []}
         whole = PowerLedger(projection=groups, game=labelled.game, wired=wired_actors(projection))

@@ -696,6 +696,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/power/generators": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Power Generators
+         * @description Every fuelled generator type, biggest first, with whether the world can run it: the
+         *     first runnable one is what a circuit short of power builds out with.
+         */
+        get: operations["power_generators_api_power_generators_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/progress/milestones": {
         parameters: {
             query?: never;
@@ -4058,6 +4079,29 @@ export interface components {
             steps: components["schemas"]["NextStep"][];
             /** Solves */
             solves: number;
+        };
+        /**
+         * GeneratorCandidate
+         * @description One generator type, biggest first: ``mw`` its rated output at 100% (game data),
+         *     ``runnable`` whether it is unlocked and a fuel of it makeable, ``verdict`` why in a few
+         *     words and ``why`` the planner's reason a fuel is not makeable ("" otherwise), ``fuel``
+         *     the fuel that made it runnable (null when none did).
+         */
+        GeneratorCandidate: {
+            /** Name */
+            name: string;
+            /** Icon */
+            icon: string | null;
+            /** Mw */
+            mw: number;
+            /** Runnable */
+            runnable: boolean;
+            /** Verdict */
+            verdict: string;
+            /** Why */
+            why: string;
+            /** Fuel */
+            fuel: string | null;
         };
         /**
          * GeneratorGroup
@@ -9516,6 +9560,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CircuitsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    power_generators_api_power_generators_get: {
+        parameters: {
+            query?: {
+                save?: string | null;
+                world?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GeneratorCandidate"][];
                 };
             };
             /** @description Validation Error */

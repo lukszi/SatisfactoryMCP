@@ -10,6 +10,7 @@ Handler names are operation_ids (wire rule 1).
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Hashable
 from dataclasses import dataclass
 
 from fastapi import APIRouter, Request
@@ -17,7 +18,7 @@ from typing_extensions import TypedDict
 
 from .....core.gamedata.model import GameData
 from .....core.saveio.records import instance_leaf
-from .....core.saveio.schema import BuildableRecord
+from .....core.singleflight import Singleflight
 from .....domain.factories import candidates
 from .....domain.factories.health import assess
 from .....domain.power.report import (
@@ -27,6 +28,7 @@ from .....domain.power.report import (
     starved_cause,
 )
 from .....domain.power.views import PowerReport
+from .....domain.progression.generators import GeneratorCandidate, generator_candidates
 from .....domain.spatial import geo
 from .....domain.spatial.regions import RegionMap
 from .....domain.world.state import WorldState
@@ -260,18 +262,18 @@ def _factory_draws(
 ) -> list[FactoryDraw]:
     """Each named factory's draw from this circuit's consumers only, so a factory spanning two
     circuits is split between them rather than counted on both."""
+    own: dict[str, MachineGroups] = {
+        name: {"machines": [], "extractors": [], "generators": []} for name in names
+    }
+    for machine in sub["machines"]:
+        if (mine := own.get(label_of.get(instance_leaf(machine["instance"]), ""))) is not None:
+            mine["machines"].append(machine)
+    for extractor in sub["extractors"]:
+        if (mine := own.get(label_of.get(instance_leaf(extractor["instance"]), ""))) is not None:
+            mine["extractors"].append(extractor)
     rows: list[FactoryDraw] = []
     for name in names:
-
-        def mine(record: BuildableRecord) -> bool:
-            return label_of.get(instance_leaf(record["instance"])) == name
-
-        own: MachineGroups = {
-            "machines": [r for r in sub["machines"] if mine(r)],
-            "extractors": [r for r in sub["extractors"] if mine(r)],
-            "generators": [],
-        }
-        report = PowerLedger(projection=own, game=game).power_report()
+        report = PowerLedger(projection=own[name], game=game).power_report()
         rows.append(
             {
                 "name": name,
@@ -397,3 +399,21 @@ def power_circuits(
         "unwired_generators": _machine_refs(wiring.unwired_generators, places),
         "no_generator": _machine_refs(wiring.no_generator, places),
     }
+
+
+#: (projection, world) -> the projection and the candidates: planner solves, kept per save
+#: like the progress reads. The entry holds the projection, so its id is not reused.
+_CANDIDATES: Singleflight[Hashable, tuple[object, list[GeneratorCandidate]]] = Singleflight(
+    maxsize=8
+)
+
+
+@router.get("/power/generators", response_model=list[GeneratorCandidate])
+def power_generators(
+    request: Request, save: str | None = None, world: str | None = None
+) -> list[GeneratorCandidate]:
+    """Every fuelled generator type, biggest first, with whether the world can run it: the
+    first runnable one is what a circuit short of power builds out with."""
+    st = require_world(request, save, world)
+    key = (id(st.projection), st.world_id)
+    return _CANDIDATES.get(key, lambda: (st.projection, generator_candidates(st)))[1]
