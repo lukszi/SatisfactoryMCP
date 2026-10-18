@@ -10,7 +10,9 @@ from satisfactory_mcp.core.gamedata import search
 from satisfactory_mcp.core.gamedata.categories import item_categories
 from satisfactory_mcp.core.gamedata.search import find_recipe
 from satisfactory_mcp.core.gamedata.unlocks import granted_by
-from tests.support.web import failing_state_loader
+from satisfactory_mcp.domain.world import gamemode
+from satisfactory_mcp.domain.world.state import WorldState
+from tests.support.web import client_over, failing_state_loader
 
 
 def test_items_follow_the_search_items_order(client, game):
@@ -223,3 +225,30 @@ def test_makers_name_the_machine_icon_and_users_their_main_product(client, game)
     assert users["recipes"]
     for u in users["recipes"]:
         assert u["product"] == game.recipes[u["cls"]].main_product
+
+
+def _ingots(rates: list[dict]) -> float:
+    return next(r["amount"] for r in rates if r["item"] == "Desc_IronIngot_C")
+
+
+def test_a_game_mode_world_shows_its_own_amounts_and_the_multiplier(client, game, projection):
+    mode = {**gamemode.DEFAULT, "parts_cost": 0.75}
+    cheap = WorldState(projection={**projection, "game_mode": mode}, game=game)
+    with client_over(cheap, game) as moded:
+        detail = moded.get("/api/gamedata/recipe", params={"recipe": "Iron Plate"}).json()
+        makers = moded.get("/api/gamedata/alternates", params={"item": "Iron Plate"}).json()
+        users = moded.get("/api/gamedata/recipes", params={"consumes": "Iron Ingot"}).json()
+    assert detail["parts_cost"] == makers["parts_cost"] == users["parts_cost"] == 0.75
+    assert _ingots(detail["ingredients"]) == 2.0
+    plate = next(m for m in makers["recipes"] if m["cls"] == "Recipe_IronPlate_C")
+    assert _ingots(plate["ingredients"]) == 2.0
+    assert next(u for u in users["recipes"] if u["cls"] == "Recipe_IronPlate_C")["qty"] == 20.0
+
+    vanilla = client.get("/api/gamedata/recipe", params={"recipe": "Iron Plate"}).json()
+    assert vanilla["parts_cost"] == 1.0 and _ingots(vanilla["ingredients"]) == 3.0
+
+
+def test_without_a_save_the_amounts_are_vanilla(client, monkeypatch):
+    monkeypatch.setattr(client.app.state, "load_state", failing_state_loader)
+    body = client.get("/api/gamedata/recipe", params={"recipe": "Iron Plate"}).json()
+    assert body["parts_cost"] == 1.0 and _ingots(body["ingredients"]) == 3.0

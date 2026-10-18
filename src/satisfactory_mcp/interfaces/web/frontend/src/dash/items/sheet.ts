@@ -11,6 +11,7 @@ import { buildingIcon } from "../factories/model";
 import { slug, itemsDash, type ItemsAddress } from "./address";
 import { boxFill, boxName, boxRegion, findItem, placesOf, SHARD, shownRecipe, SLOOP, type Index, type Item, type Offers } from "./model";
 import { itemHref } from "./grid";
+import { partsCostText } from "../../kit/words";
 
 import type { AlternatesResponse, MakerRow, Rate, RecipeRow, RecipesResponse, ShardsResponse, SloopsResponse, StockPlace } from "../../api/shapes";
 
@@ -133,7 +134,8 @@ function recipeBlocks(c: SheetCtx, it: Item, reads: Reads): Safe {
   const why = raw ? "extracted" : reads.makers.recipes.length ? "every recipe is locked" : "no recipe makes it in a machine";
   const madeBlock = made.length ? html`${list("mk", "stacked", made.map((r) => makeRow(c, r)))}${note("per minute, one machine at 100%")}` : emptyLine(why);
   const usedBlock = used.length ? list("use", "stacked", used.map((u) => useRow(c, u, it.fluid))) : emptyLine(reads.users.recipes.length ? "every recipe that uses it is locked" : "no recipe uses it");
-  return html`${dashH("made by", made.length, "h3")}${madeBlock}${dashH("used by", used.length, "h3")}${usedBlock}`;
+  const parts = partsCostText(reads.makers.parts_cost ?? reads.users.parts_cost);
+  return html`${dashH("made by", made.length, "h3")}${madeBlock}${dashH("used by", used.length, "h3")}${usedBlock}${parts ? note(parts) : ""}`;
 }
 
 /** The item sheet: header, have (only when any is held), made by, used by. */

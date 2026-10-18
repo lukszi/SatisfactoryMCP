@@ -2279,6 +2279,7 @@ export interface components {
         /**
          * AlternatesResponse
          * @description ``build_recipe`` is the build-gun recipe when the item is a building, else null.
+         *     ``parts_cost`` is the world's parts multiplier the amounts carry, 1 for vanilla.
          */
         AlternatesResponse: {
             /** Item */
@@ -2293,6 +2294,8 @@ export interface components {
             sink_points: number;
             /** Save Note */
             save_note: string | null;
+            /** Parts Cost */
+            parts_cost: number;
             /** Build Recipe */
             build_recipe: string | null;
             /** Recipes */
@@ -6584,7 +6587,10 @@ export interface components {
             /** Amount */
             amount: number;
         };
-        /** RecipeDetail */
+        /**
+         * RecipeDetail
+         * @description ``parts_cost`` is the world's parts multiplier the amounts carry, 1 for vanilla.
+         */
         RecipeDetail: {
             /** Cls */
             cls: string;
@@ -6617,6 +6623,8 @@ export interface components {
             spoiler: boolean;
             /** Save Note */
             save_note: string | null;
+            /** Parts Cost */
+            parts_cost: number;
         };
         /**
          * RecipeHit
@@ -6670,11 +6678,14 @@ export interface components {
         /**
          * RecipesResponse
          * @description ``save_note`` says why ``unlocked`` is null on every row, and is null otherwise.
+         *     ``parts_cost`` is the world's parts multiplier the amounts carry, 1 for vanilla.
          */
         RecipesResponse: {
             census: components["schemas"]["Census"];
             /** Save Note */
             save_note: string | null;
+            /** Parts Cost */
+            parts_cost: number;
             /** Recipes */
             recipes: components["schemas"]["RecipeRow"][];
         };

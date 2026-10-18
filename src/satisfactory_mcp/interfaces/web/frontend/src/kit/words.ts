@@ -189,3 +189,9 @@ export function gameModeText(mode: GameMode | null | undefined): string | null {
   for (const [label, value] of factors) if (value !== 1) parts.push(label + " " + pct(value));
   return parts.length ? parts.join(" · ") : null;
 }
+
+/** The note beside recipe amounts a game mode's parts multiplier scaled; null at 100%. */
+export function partsCostText(factor: number | null | undefined): string | null {
+  if (factor === null || factor === undefined || factor === 1) return null;
+  return "inputs at this world's parts cost, " + pct(factor);
+}

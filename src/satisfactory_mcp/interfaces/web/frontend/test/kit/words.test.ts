@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { counted, gameModeText, gapText, objectiveText, staleText, version, WORDS } from "../../src/kit/words";
+import { counted, gameModeText, gapText, partsCostText, objectiveText, staleText, version, WORDS } from "../../src/kit/words";
 
 import type { GameMode, TableAge } from "../../src/api/shapes";
 
@@ -48,5 +48,11 @@ describe("words", () => {
     const test = { ...vanilla, node_randomization: "strict", node_purity: "all_normal", energy_cost: 0.75, parts_cost: 0.75, space_parts_cost: 0.75 };
     expect(gameModeText(test)).toBe("random nodes, average purity · power 75% · parts 75% · space elevator 75%");
     expect(gameModeText({ ...vanilla, parts_cost: 2 })).toBe("parts 200%");
+  });
+
+  it("notes scaled recipe amounts only off 100%", () => {
+    expect(partsCostText(1)).toBeNull();
+    expect(partsCostText(undefined)).toBeNull();
+    expect(partsCostText(0.75)).toBe("inputs at this world's parts cost, 75%");
   });
 });

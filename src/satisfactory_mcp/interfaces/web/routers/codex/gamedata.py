@@ -8,6 +8,7 @@ Handler names are operation_ids (wire rule 1).
 from __future__ import annotations
 
 from collections.abc import Iterable
+from dataclasses import dataclass
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -19,6 +20,7 @@ from .....core.gamedata.model import Flow, GameData, Item, Recipe
 from .....core.gamedata.search import find_recipe, resolve_item
 from .....core.gamedata.unlocks import granted_by
 from .....core.text import ago
+from .....domain.world import gamemode
 from ...serial import error_response, game_data, machine_name, require_world, world_state
 
 __all__ = ["router"]
@@ -70,10 +72,12 @@ class Census(TypedDict):
 
 
 class RecipesResponse(TypedDict):
-    """``save_note`` says why ``unlocked`` is null on every row, and is null otherwise."""
+    """``save_note`` says why ``unlocked`` is null on every row, and is null otherwise.
+    ``parts_cost`` is the world's parts multiplier the amounts carry, 1 for vanilla."""
 
     census: Census
     save_note: str | None
+    parts_cost: float
     recipes: list[RecipeRow]
 
 
@@ -88,6 +92,8 @@ class Rate(TypedDict):
 
 
 class RecipeDetail(TypedDict):
+    """``parts_cost`` is the world's parts multiplier the amounts carry, 1 for vanilla."""
+
     cls: str
     name: str
     kind: str
@@ -102,6 +108,7 @@ class RecipeDetail(TypedDict):
     unlocked: bool | None
     spoiler: bool
     save_note: str | None
+    parts_cost: float
 
 
 class MakerRow(TypedDict):
@@ -121,7 +128,8 @@ class MakerRow(TypedDict):
 
 
 class AlternatesResponse(TypedDict):
-    """``build_recipe`` is the build-gun recipe when the item is a building, else null."""
+    """``build_recipe`` is the build-gun recipe when the item is a building, else null.
+    ``parts_cost`` is the world's parts multiplier the amounts carry, 1 for vanilla."""
 
     item: str
     name: str
@@ -129,6 +137,7 @@ class AlternatesResponse(TypedDict):
     energy_mj: float
     sink_points: int
     save_note: str | None
+    parts_cost: float
     build_recipe: str | None
     recipes: list[MakerRow]
 
@@ -160,14 +169,26 @@ class UnlockedResponse(TypedDict):
     recipes: list[UnlockedRow]
 
 
-def _unlocked_ids_or_note(
-    request: Request, save: str | None, world: str | None
-) -> tuple[set[str] | None, str | None]:
-    """The save's unlocked recipe ids, or ``None`` and the note that says why not."""
+@dataclass(frozen=True)
+class _Lookup:
+    """What a recipe view reads against: the recipes as the world's game mode shows them
+    (vanilla with no world), its unlocked ids or ``None`` and the note saying why not, and
+    the parts multiplier the amounts carry."""
+
+    game: GameData
+    have: set[str] | None
+    note: str | None
+    parts_cost: float
+
+
+def _lookup(request: Request, save: str | None, world: str | None) -> _Lookup:
     try:
-        return world_state(request, save, world).available_recipe_ids, None
+        st = world_state(request, save, world)
     except Exception as exc:
-        return None, f"no save could be read ({exc}), so have and locked are unknown"
+        note = f"no save could be read ({exc}), so have and locked are unknown"
+        return _Lookup(game_data(request), None, note, 1.0)
+    game = gamemode.shown_game(st.game, st.projection)
+    return _Lookup(game, st.available_recipe_ids, None, gamemode.parts_cost(st.projection))
 
 
 def _rates(game: GameData, flows: Iterable[Flow]) -> list[Rate]:
@@ -255,7 +276,7 @@ def gamedata_items(
     with ``locked`` null then."""
     game = game_data(request)
     hits = search.find_items(game, q.strip())
-    have, _ = _unlocked_ids_or_note(request, save, world)
+    have = _lookup(request, save, world).have
     return {
         "total": len(hits),
         "items": [_item_row(game, item, have) for item in hits[: max(0, min(limit, ITEMS_MAX))]],
@@ -279,14 +300,14 @@ def gamedata_recipes(
 
     With ``spoilers=0`` locked recipes leave the rows and the census alike.
     """
-    game = game_data(request)
+    found = _lookup(request, save, world)
+    game, have, note = found.game, found.have, found.note
     ids: dict[str, str | None] = {}
     for key, text in (("consumes", consumes), ("produces", produces)):
         if text:
             ids[key] = resolve_item(game, text)
             if ids[key] is None:
                 return error_response(f"no item matching “{text}”", 404)
-    have, note = _unlocked_ids_or_note(request, save, world)
     question: RecipeQuestion = {
         "query": q,
         "consumes": ids.get("consumes"),
@@ -310,6 +331,7 @@ def gamedata_recipes(
     return {
         "census": counted,
         "save_note": note,
+        "parts_cost": found.parts_cost,
         "recipes": [
             {
                 "cls": hit.recipe.cls,
@@ -339,9 +361,9 @@ def gamedata_recipe(
 
     With ``spoilers=0`` an ambiguous name counts only the unlocked candidates.
     """
-    game = game_data(request)
+    lookup = _lookup(request, save, world)
+    game, have, note = lookup.game, lookup.have, lookup.note
     found, hits = find_recipe(game, recipe)
-    have, note = _unlocked_ids_or_note(request, save, world)
     if found is None and spoilers is False and have is not None:
         hits = [hit for hit in hits if hit in have]
     if found is None and hits:
@@ -368,6 +390,7 @@ def gamedata_recipe(
         "unlocked": unlocked,
         "spoiler": unlocked is False,
         "save_note": note,
+        "parts_cost": lookup.parts_cost,
     }
 
 
@@ -380,11 +403,11 @@ def gamedata_alternates(
     spoilers: bool | None = None,
 ) -> AlternatesResponse | JSONResponse:
     """``alternates_for_item``: every automatable recipe that makes an item, alternates first."""
-    game = game_data(request)
+    lookup = _lookup(request, save, world)
+    game, have, note = lookup.game, lookup.have, lookup.note
     item_id = resolve_item(game, item)
     if item_id is None:
         return error_response(f"no item named “{item}”", 404)
-    have, note = _unlocked_ids_or_note(request, save, world)
     rows: list[MakerRow] = []
     for maker in search.makers_of(game, item_id):
         unlocked = None if have is None else maker.cls in have
@@ -407,6 +430,7 @@ def gamedata_alternates(
         "energy_mj": found["energy_mj"],
         "sink_points": found["sink_points"],
         "save_note": note,
+        "parts_cost": lookup.parts_cost,
         "build_recipe": built,
         "recipes": rows,
     }
