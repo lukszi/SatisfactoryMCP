@@ -77,7 +77,9 @@ halves (`{ split: [a, b] }`, the running map job's log | cancel); every other ro
 button. A state chip may stand in the button slot, never beside a button. Inline confirms reuse
 the slots: confirm in the button slot, × (keep) in the ⋯ slot. Everything else goes into ⋯.
 The list's template ends in `--col-acts` (`--col-acts-pin` with ◎, `--act-w` with `more:
-false`), so the buttons sit at one x on every row.
+false`), so the buttons sit at one x on every row. A list whose rows carry only glyphs (◎ on
+the Power lists and build jobs, ◎ ⋯ on factory cards) passes `null` for the button slot and ends in
+`--col-act` per glyph slot (`--col-glyphs` for two).
 
 The hidden route `#kit` (`dash/kit-gallery/`) renders every part in its states for screenshot
 checks.

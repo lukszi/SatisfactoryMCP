@@ -856,6 +856,12 @@ a.name:hover {
   padding: 0;
 }
 
+.aslot-b > .chip {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .acts.full,
 .full {
   grid-column: 1 / -1;
