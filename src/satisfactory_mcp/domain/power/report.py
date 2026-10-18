@@ -208,9 +208,14 @@ class _DrawTally:
     unwired: int = 0
     unwired_mw: float = 0.0
     unwired_paused: int = 0
+    switched_off: int = 0
+    switched_off_mw: float = 0.0
 
-    def charge(self, rated: float | None, record: BuildableRecord, wired: bool) -> None:
-        """Add one machine to both totals, weighting the measured one by uptime."""
+    def charge(
+        self, rated: float | None, record: BuildableRecord, wired: bool, off: bool = False
+    ) -> None:
+        """Add one machine to both totals, weighting the measured one by uptime. One behind
+        an off switch counts in maximum consumption only."""
         if not wired:
             self.unwired += 1
             if record.get("paused"):
@@ -224,6 +229,10 @@ class _DrawTally:
         if rated is None:
             return
         self.draw_mw += rated
+        if off:
+            self.switched_off += 1
+            self.switched_off_mw += rated
+            return
         share = measured_share(record)
         if share is None:
             self.unmonitored += 1
@@ -246,13 +255,18 @@ class PowerLedger:
     """Generation and draw over one save.
 
     ``paused_count`` is the build census's count, passed in because this class only needs
-    the total to report it.
+    the total to report it. ``switched_off`` holds the actors behind a power switch standing
+    off (``FactoryGraph.behind_off_switch``).
     """
 
     projection: MachineGroups
     game: GameData
     paused_count: int = 0
     wired: frozenset[str] | None = None
+    switched_off: frozenset[str] = frozenset()
+
+    def _is_off(self, record: BuildableRecord) -> bool:
+        return instance_leaf(record["instance"]) in self.switched_off
 
     def _is_wired(self, record: BuildableRecord) -> bool:
         return self.wired is None or instance_leaf(record["instance"]) in self.wired
@@ -306,11 +320,18 @@ class PowerLedger:
             else:
                 building = self.game.buildings.get(machine_record["cls"])
                 rated = building.power_at(clock) if building else None
-            tally.charge(rated, machine_record, self._is_wired(machine_record))
+            tally.charge(
+                rated, machine_record, self._is_wired(machine_record), self._is_off(machine_record)
+            )
         for extractor_record in self.projection.get("extractors", ()):
             building = self.game.buildings.get(extractor_record["cls"])
             rated = building.power_at(extractor_record.get("clock") or 1.0) if building else None
-            tally.charge(rated, extractor_record, self._is_wired(extractor_record))
+            tally.charge(
+                rated,
+                extractor_record,
+                self._is_wired(extractor_record),
+                self._is_off(extractor_record),
+            )
         return tally
 
     def power_report(self, *, biomass: bool = False) -> PowerReport:
@@ -346,6 +367,8 @@ class PowerLedger:
             "unwired_consumers": draw.unwired,
             "unwired_draw_mw": draw.unwired_mw,
             "unwired_paused": draw.unwired_paused,
+            "switched_off_consumers": draw.switched_off,
+            "switched_off_draw_mw": draw.switched_off_mw,
             "biomass_counted": biomass,
             "biomass_generators": generation.burners,
             "biomass_mw": generation.burner_mw,

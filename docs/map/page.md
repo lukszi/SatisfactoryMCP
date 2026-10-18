@@ -115,6 +115,12 @@ limits are worth knowing before trusting it:
   draw, biggest first. The game's own `mCircuitID` is not read: it changes whenever a circuit's
   members do, and the game keeps each side of an on switch as its own circuit, so it would
   number one grid twice. A link to a circuit therefore holds while the ranking does.
+- **What stands behind an off switch is switched off, not unpowered.** A grid with no
+  generator that faces a generating grid across switches standing off is folded into that
+  grid's row, which is what switching them on would make. Its consumers count in `draw_mw`
+  (maximum consumption), in neither measured figure, and apart in `switched_off` and
+  `switched_off_draw_mw`, on the circuit and on the world. `assess` gives them the state
+  `switched off`, so they are in no problem list. A grid holding batteries is never folded.
 - **Rail power has no wire.** An outpost fed only through the track reads as its own grid.
 - **Batteries sit beside the ledger, not in it.** Each ledger carries `batteries`,
   `storage_mwh` (the charge the save records) and `storage_capacity_mwh` (100 MWh each, from

@@ -62,6 +62,10 @@ class PowerReport(TypedDict):
     unwired_consumers: int
     unwired_draw_mw: float
     unwired_paused: int
+    #: Consumers behind a power switch standing off: in ``draw_mw``, since flipping the switch
+    #: adds them, and in neither measured figure.
+    switched_off_consumers: int
+    switched_off_draw_mw: float
     #: Whether hand-fed biomass burners count; when they do not, the wired, unpaused ones
     #: and their MW are what was left out.
     biomass_counted: bool

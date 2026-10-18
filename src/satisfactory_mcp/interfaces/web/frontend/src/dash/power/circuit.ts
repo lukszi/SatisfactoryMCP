@@ -36,6 +36,10 @@ interface Ctx {
   scale: Scale;
 }
 
+function sliceName(d: DrawSlice): string {
+  return d.off ? WORDS.behindSwitch : (d.name ?? REST);
+}
+
 function healthOf(c: Ctx, name: string | null): FactoryHealthRow | undefined {
   return name === null ? undefined : c.health.find((r) => r.name === name);
 }
@@ -54,7 +58,8 @@ function headChip(row: CircuitRow): Safe {
 function headNote(row: CircuitRow): string {
   const factories = row.factory_count ? counted(row.factory_count, "factory", "factories") + " · " : "";
   const paused = row.ledger.paused ? ", " + count(row.ledger.paused) + " " + WORDS.paused : "";
-  return factories + counted(row.consumers, "consumer") + paused + " · " + counted(row.poles, "pole or tower", WORDS.polesAndTowers);
+  const off = row.ledger.switched_off ? ", " + count(row.ledger.switched_off) + " " + WORDS.behindSwitch : "";
+  return factories + counted(row.consumers, "consumer") + paused + off + " · " + counted(row.poles, "pole or tower", WORDS.polesAndTowers);
 }
 
 /* ------------------------------------------------------------------ the segment popover */
@@ -78,7 +83,7 @@ function drawTip(c: Ctx, d: DrawSlice): Safe {
     const need = health.actionable ? html`<span class="bad-t">${health.actionable}</span>` : "0";
     rows = html`${rows}<span class="sep"></span>${tipRow(WORDS.paused, String(paused), unit(paused), "")}${tipRow(WORDS.needAction, need, unit(health.actionable), "")}`;
   }
-  return html`<div class="nm">${d.name ?? REST}</div><div class="g">${rows}</div>`;
+  return html`<div class="nm">${sliceName(d)}</div><div class="g">${rows}</div>`;
 }
 
 function whichTip(candidates: GeneratorCandidate[]): Safe {
@@ -93,8 +98,9 @@ function drawSegs(c: Ctx, key: "np" | "ms", p: Scale): Safe {
   const segs = c.draws.map(function (d, i) {
     if (!d[key]) return "";
     const width = p(d[key]);
-    const name = d.name ?? REST;
+    const name = sliceName(d);
     const at = html`${tipAttrs(key + ":" + i, drawTip(c, d))} aria-label="${name}" style="width:${pctW(width)}"`;
+    if (d.off) return html`<span class="${cls} off" tabindex="0"${at}><i></i>${width >= 14 ? html`<span class="lb"><span class="t">${name}</span></span>` : ""}</span>`;
     if (d.name === null) return html`<span class="${cls}" tabindex="0"${at}><i></i></span>`;
     const health = healthOf(c, d.name);
     const ic = health && factoryIcon(health) ? icon(factoryIcon(health), name) : "";
@@ -170,9 +176,9 @@ function drawList(c: Ctx): Safe {
   const rows = c.draws.map(function (d) {
     const health = healthOf(c, d.name);
     const lead = health ? factoryLead(health) : iconLead(null, "");
-    const name = d.name === null ? html`<span class="name">${REST}</span>` : html`<a class="name" href="${factoryHref(d.name)}" title="${d.name}">${d.name}</a>`;
+    const name = d.name === null ? html`<span class="name"${d.off ? html` title="${WORDS.behindSwitchTip}"` : ""}>${sliceName(d)}</span>` : html`<a class="name" href="${factoryHref(d.name)}" title="${d.name}">${d.name}</a>`;
     const title = mw(d.ms) + " " + WORDS.consumption + " · " + mw(d.np) + " " + WORDS.maxConsumption;
-    const bar = html`<div class="ubar" title="${title}"><i class="np" style="width:${pctW(c.scale(d.np))}"></i><i class="ms" style="width:${pctW(c.scale(d.ms))}"></i></div>`;
+    const bar = html`<div class="ubar" title="${title}"><i class="${d.off ? "np off" : "np"}" style="width:${pctW(c.scale(d.np))}"></i><i class="ms" style="width:${pctW(c.scale(d.ms))}"></i></div>`;
     const metric = html`<div class="metric"><b>${count(Math.round(d.ms))}</b><span>MW</span><span class="line2">${count(Math.round(d.np))} ${WORDS.maxConsumptionShort}</span></div>`;
     const map = d.name === null ? noMap() : factoryMap(d.name, health);
     return entry({ href: d.name === null ? undefined : factoryHref(d.name) }, html`${lead}<div class="id">${name}</div>${bar}${metric}${acts(map)}`);

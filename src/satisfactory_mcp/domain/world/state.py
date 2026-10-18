@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, ClassVar, TypeVar, cast
 
 from ...core.gamedata.model import GameData, Recipe
 from ...core.saveio import projection as proj
+from ...core.saveio.records import instance_leaf
 from ...core.saveio.schema import (
     BuildableRecord,
     MachineRecord,
@@ -133,7 +134,17 @@ class WorldState:
             game=self.game,
             paused_count=len(self.census.paused),
             wired=wired_actors(self.projection),
+            switched_off=frozenset(self.behind_off_switch),
         )
+
+    @cached_property
+    def behind_off_switch(self) -> set[str]:
+        """The actors a generator would reach with every power switch on, and does not now.
+        Empty without an off switch, which spares the graph."""
+        if not any(r.get("switch_on") is False for r in self.projection.get("facilities") or ()):
+            return set()
+        sources = {instance_leaf(r["instance"]) for r in self.projection.get("generators") or ()}
+        return self.graph.behind_off_switch(sources)
 
     @cached_property
     def phases(self) -> PhaseLedger:

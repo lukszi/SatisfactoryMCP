@@ -127,13 +127,55 @@ def test_a_switch_standing_on_joins_its_two_sides_into_one_grid(game):
     assert body["no_generator"] == []
 
 
-def test_a_switch_standing_off_keeps_its_two_sides_apart(game):
+def test_machines_behind_an_off_switch_are_switched_off_not_unpowered(game):
+    """The far side joins the plant's circuit as maximum consumption only, and no generator
+    fault names it: flipping the switch would power it."""
+    rated = game.recipe_power_mw(game.recipes["Recipe_IronPlate_C"], 1.0)
     body = _switched(game, on=False)
-    plant, dark = body["circuits"]
-    assert plant["consumers"] == 0 and plant["ledger"]["generation_mw"] > 0
-    assert dark["consumers"] == 1 and dark["ledger"]["generation_mw"] == 0
-    assert [r["instance"] for r in body["no_generator"]] == ["Build_ConstructorMk1_C_1"]
-    assert body["no_generator"][0]["circuit"] == dark["index"]
+    (plant,) = body["circuits"]
+    for led in (plant["ledger"], body["world"]):
+        assert (led["switched_off"], led["switched_off_draw_mw"]) == (1, pytest.approx(rated))
+        assert led["draw_mw"] == pytest.approx(rated)
+        assert led["measured_draw_mw"] == 0
+    assert plant["consumers"] == 1
+    assert body["no_generator"] == []
+
+
+def test_a_switch_standing_on_has_nothing_switched_off(game):
+    led = _switched(game, on=True)["circuits"][0]["ledger"]
+    assert (led["switched_off"], led["switched_off_draw_mw"]) == (0, 0.0)
+
+
+def test_an_off_switch_between_two_dark_sides_is_still_no_generator(game):
+    """No generator stands on either side, so switching it on would power nothing."""
+    from satisfactory_mcp.domain.world.state import WorldState
+
+    actors = [
+        "Build_PowerPoleMk1_C_1",
+        "Build_GeneratorCoal_C_1",
+        "Build_PowerPoleMk1_C_2",
+        "Build_PowerSwitch_C_1",
+        "Build_ConstructorMk1_C_1",
+    ]
+    projection = {
+        "generators": [{"instance": actors[1], "cls": "Build_GeneratorCoal_C"}],
+        "machines": [
+            {"instance": actors[4], "cls": "Build_ConstructorMk1_C", "recipe": "Recipe_IronPlate_C"}
+        ],
+        "facilities": [
+            {
+                "instance": actors[3],
+                "cls": "Build_PowerSwitch_C",
+                "switch_on": False,
+                "switch_sides": [[actors[2]], [actors[4]]],
+            }
+        ],
+        "graph": {"actors": actors, "power": [[0, 1], [2, 3], [3, 4]]},
+    }
+    with client_over(WorldState(projection=projection, game=game), game) as client:
+        body = client.get("/api/power/circuits").json()
+    assert [r["instance"] for r in body["no_generator"]] == [actors[4]]
+    assert body["world"]["switched_off"] == 0
 
 
 def test_an_off_switch_keeps_each_side_whole(game):
@@ -165,8 +207,8 @@ def test_an_off_switch_keeps_each_side_whole(game):
     }
     with client_over(WorldState(projection=projection, game=game), game) as client:
         body = client.get("/api/power/circuits").json()
-    _plant, dark = body["circuits"]
-    assert dark["consumers"] == 2
+    (plant,) = body["circuits"]
+    assert plant["consumers"] == 2 and plant["ledger"]["switched_off"] == 2
 
 
 def _banked(game, switch_on: bool):

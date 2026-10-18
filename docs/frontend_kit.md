@@ -177,7 +177,9 @@ factory health, and `/api/power/generators` when its circuit is short.
   white line marks it, so the gap to it is the headroom, and consumption past it turns red.
   Under the bars, "not counted" chips with tooltips name what the figures leave out: hand-fed
   biomass, starved MW, unmeasured machines, paused buildings, what stands on no wire, and
-  generator types game data cannot rate (no line then).
+  generator types game data cannot rate (no line then). What stands behind an off switch ends
+  the maximum-consumption row, hatched in `--off` ("behind an off switch"); on a circuit page it
+  is its own last slice and its own row under draw by factory.
 - **Problems** (`model.ts` `problemsOf`): one building with one fault at one place is one row;
   no wire and no generator first, starved generators next, generators on no wire last and
   muted (they are not a fault, just left out).

@@ -103,8 +103,10 @@ the wires supports exactly one claim, in two shapes:
 whose circuit is at 0 MW — none of these are in the file, and a machine some generator *can* reach
 is therefore never called unpowered no matter what the report otherwise says about it. A **power
 switch standing off** stops the walk, as it stops power in the game: since schema 25 the save's
-`mIsSwitchOn` is read (§6.12a), so a sub-circuit behind an off switch with no generator of its own
-is reported. A switch standing on joins its two sides. Rail power is the remaining blind spot, and
+`mIsSwitchOn` is read (§6.12a). A machine a generator would reach with every switch on is
+reported as **switched off** (`SWITCHED_OFF`, its own state, not actionable), not as `no generator`:
+the switch is a choice, not a wiring fault. One no generator reaches even then is still reported.
+A switch standing on joins its two sides. Rail power is the remaining blind spot, and
 it fails in the direction that over-reports: an outpost fed only through the track has no wire to a
 generator.
 

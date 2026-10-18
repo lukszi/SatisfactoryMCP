@@ -15,6 +15,8 @@ export const WORDS = {
   noFuel: "no fuel loaded",
   blocked: "blocked",
   paused: "paused",
+  behindSwitch: "behind an off switch",
+  behindSwitchTip: "counted in maximum consumption: switching it on adds them",
   factory: "factory",
   factories: "factories",
   unnamedCluster: "unnamed cluster",

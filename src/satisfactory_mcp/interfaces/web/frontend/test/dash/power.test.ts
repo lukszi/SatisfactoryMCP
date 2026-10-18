@@ -23,6 +23,8 @@ function ledger(over: Partial<Ledger>): Ledger {
     batteries: 0,
     storage_mwh: 0,
     storage_capacity_mwh: 0,
+    switched_off: 0,
+    switched_off_draw_mw: 0,
   };
   const out = { ...base, ...over };
   out.capacity_mw = out.generation_mw - out.starved_generation_mw;
@@ -160,6 +162,13 @@ describe("supply block", () => {
     expect(out).toContain("8 batteries");
   });
 
+  it("hatches the maximum consumption behind an off switch at the end of its row", () => {
+    const out = supplyBlock({ gens: [], gen: 100, cap: 100, np: 80, ms: 40, off: 20 }, []).safeHtml;
+    expect(out).toContain('<i class="np" style="width:60.00%"></i>');
+    expect(out).toContain('class="np off" style="left:60.00%;width:20.00%" title="20 MW behind an off switch"');
+    expect(out).toContain("80 <span>MW</span>");
+  });
+
   it("draws no line and no overdraw when generation is unknown", () => {
     const out = supplyBlock({ gens: [], gen: 0, cap: 0, np: 50, ms: 40, unknown: true }, []).safeHtml;
     expect(out).not.toContain('class="gl"');
@@ -191,6 +200,15 @@ describe("circuit page", () => {
     ]);
     const whole = circuit(0, { draw_mw: 90, measured_draw_mw: 30 }, { factories: [works, mill] });
     expect(circuitDraws(whole).map((d) => d.name)).toEqual(["Mill", "Works"]);
+  });
+
+  it("puts what stands behind an off switch last, in maximum consumption only", () => {
+    const row = circuit(0, { draw_mw: 115, measured_draw_mw: 30, switched_off: 2, switched_off_draw_mw: 25 }, { factories: [works, mill] });
+    expect(circuitDraws(row)).toEqual([
+      { name: "Mill", ms: 20, np: 60 },
+      { name: "Works", ms: 10, np: 30 },
+      { name: null, off: true, ms: 0, np: 25 },
+    ]);
   });
 
   const candidate = (name: string, mw: number, runnable: boolean): GeneratorCandidate => ({ name, icon: null, mw, runnable, verdict: "", why: "", fuel: null });

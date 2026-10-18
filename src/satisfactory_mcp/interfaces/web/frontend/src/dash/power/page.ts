@@ -17,7 +17,7 @@ import type { CircuitRow, CircuitsResponse } from "../../api/shapes";
 
 /** The circuits heading's tooltip; the Overview's power block carries it too. */
 export const CIRCUITS_TIP =
-  "worst first · the bar is " + WORDS.consumption + " and " + WORDS.maxConsumption + " against the circuit's " + WORDS.capacity + ", the tick at 100% · switches read as closed, batteries are not counted";
+  "worst first · the bar is " + WORDS.consumption + " and " + WORDS.maxConsumption + " against the circuit's " + WORDS.capacity + ", the tick at 100% · what stands " + WORDS.behindSwitch + " counts in " + WORDS.maxConsumption + " only, batteries in neither";
 
 export function retryCircuits(): void {
   loadOne("/api/power/circuits");
@@ -40,7 +40,7 @@ export function headroomFigs(rated: Rated, now = readHeadroomNow(rated)): Safe {
 }
 
 export function supplyOf(gens: CircuitsResponse["generators"], ledger: CircuitRow["ledger"], rated: Rated): Supply {
-  return { gens, gen: ledger.generation_mw, cap: ledger.capacity_mw, np: ledger.draw_mw, ms: ledger.measured_draw_mw, unknown: unrated(rated) };
+  return { gens, gen: ledger.generation_mw, cap: ledger.capacity_mw, np: ledger.draw_mw, ms: ledger.measured_draw_mw, off: ledger.switched_off_draw_mw, unknown: unrated(rated) };
 }
 
 export function mountPage(body: HTMLElement, markup: Safe): HTMLElement {

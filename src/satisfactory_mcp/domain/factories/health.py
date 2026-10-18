@@ -30,6 +30,7 @@ __all__ = [
     "OK",
     "RUNGS",
     "STATES",
+    "SWITCHED_OFF",
     "Feed",
     "MachineHealth",
     "assess",
@@ -47,6 +48,7 @@ FULL_FRACTION = 0.95
 #: States a machine can be in, worst first. Order is the report order.
 STATES = (
     "paused",
+    "switched off",
     "dead node",
     "no recipe",
     "blocked",
@@ -83,6 +85,8 @@ NO_SOURCE = f"{CONNECTION}: no source on its network"
 #: Why nothing can power a machine: two different builds to finish (§6.1a).
 NO_WIRE = "no power connection"
 NO_GENERATOR = "no generator on its circuit"
+#: Not a fault: a generator would reach it with every power switch on.
+SWITCHED_OFF = "behind a power switch standing off"
 
 
 @dataclass(frozen=True)
@@ -143,6 +147,8 @@ class HealthReport:
     #: nine; both empty when no graph was supplied.
     unwired: list[str] = field(default_factory=list[str])
     no_generator: list[str] = field(default_factory=list[str])
+    #: Machines a generator would reach with every switch on: switched off, not unpowered.
+    switched_off: list[str] = field(default_factory=list[str])
     #: Generators on no wire: capacity nothing can draw, kept out of ``unwired``.
     unwired_generators: list[str] = field(default_factory=list[str])
 
@@ -276,6 +282,8 @@ def _classify(
 
     if record.get("paused"):
         state, cause = "paused", ()
+    elif unpowered_reason == SWITCHED_OFF:
+        state, cause = "switched off", ()
     elif group == "extractors" and not record.get("node"):
         # mExtractableResource ABSENT, not merely unresolvable: a water pump's node is set.
         state, cause = "dead node", ("no resource node",)
@@ -311,16 +319,7 @@ def _generator_reach(graph: FactoryGraph, sources: set[str]) -> set[str] | None:
     """
     if not sources:
         return None
-    seen: set[str] = set()
-    stack = list(sources)
-    while stack:
-        node = stack.pop()
-        if node in seen:
-            continue
-        seen.add(node)
-        if node not in graph.switched_off:
-            stack.extend(graph.neighbours(node, "power"))
-    return seen
+    return graph.power_reach(sources)
 
 
 def _makes(record: BuildableRecord, item_cls: str, game: GameData) -> bool:
@@ -448,6 +447,7 @@ def assess(
     conduits = _Conduits.of(physical, records_by_leaf) if physical is not None else None
     sources = {s for s, (group, _r) in records_by_leaf.items() if group == "generators"}
     reached = _generator_reach(graph, sources) if graph is not None else None
+    behind = graph.behind_off_switch(sources) if graph is not None else set[str]()
 
     def unpowered_reason(actor: str) -> str:
         """Why nothing can power ``actor``; empty where something can or nothing is known.
@@ -459,7 +459,9 @@ def assess(
             return ""
         if not graph.neighbours(actor, "power"):
             return NO_WIRE
-        return NO_GENERATOR if reached is not None and actor not in reached else ""
+        if reached is None or actor in reached:
+            return ""
+        return SWITCHED_OFF if actor in behind else NO_GENERATOR
 
     def far_health(actor: str) -> tuple[BuildableRecord | None, str]:
         found = records_by_leaf.get(actor)
@@ -496,6 +498,8 @@ def assess(
             (report.unwired_generators if group == "generators" else report.unwired).append(leaf)
         elif reason == NO_GENERATOR:
             report.no_generator.append(leaf)
+        elif reason == SWITCHED_OFF:
+            report.switched_off.append(leaf)
         if state == "blocked":
             for item in entry.cause:
                 report.blocked_on[item] += 1
