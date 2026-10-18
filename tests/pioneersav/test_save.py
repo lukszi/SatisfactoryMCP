@@ -27,7 +27,14 @@ import zlib
 
 import pytest
 
-from pioneersav import CHUNK_TAG, ParseError, read_full_save_bytes, read_info_bytes
+from pioneersav import (
+    CHUNK_TAG,
+    ParseError,
+    is_modded_class,
+    read_full_save,
+    read_full_save_bytes,
+    read_info_bytes,
+)
 from satisfactory_mcp.core.saveio.extract import parser as extract_parser
 from satisfactory_mcp.core.saveio.extract.census import Drops
 from satisfactory_mcp.core.saveio.extract.structures import lightweight, structures
@@ -347,3 +354,68 @@ def test_the_deleted_library_is_really_gone():
     when the parser became ``src/pioneersav``, so the directory's absence is what says it.
     """
     assert not (REPO_ROOT / "sidecar").exists()
+
+
+# --------------------------------------------------------------- modded objects kept partial
+
+
+def _s(text: str) -> bytes:
+    return struct.pack("<i", len(text) + 1) + text.encode("latin-1") + b"\0"
+
+
+def _one_component_body(class_path: str, unread: int) -> bytes:
+    """A body holding one component whose declared payload runs ``unread`` bytes past what its
+    empty property list and plain trailer consume, the shape FicsIt-Networks panels leave."""
+    header = (
+        struct.pack("<i", 0)
+        + _s(class_path)
+        + _s("Persistent_Level")
+        + _s("Persistent_Level:PersistentLevel.Build_Case_C_1.panel")
+        + struct.pack("<I", 0)
+        + _s("Persistent_Level:PersistentLevel.Build_Case_C_1")
+    )
+    payload = _s("None") + b"\0" * 4 + b"\xab" * unread
+    toc = struct.pack("<i", 1) + header
+    data = struct.pack("<iiii", 1, 52, 1, len(payload)) + payload
+    rest = struct.pack("<ii", 0, 0)  # no grids, no sub-levels
+    rest += struct.pack("<q", len(toc)) + toc + struct.pack("<q", len(data)) + data
+    rest += struct.pack("<i", 0)  # an empty closing destroyed-actor table
+    return struct.pack("<q", len(rest)) + rest
+
+
+MODDED = "/Script/FicsItNetworksMisc.FINModuleSystemPanel"
+
+
+def test_a_modded_object_that_does_not_read_to_its_end_is_kept_partial(header_prefix):
+    save = read_full_save_bytes(header_prefix + _chunk_stream(_one_component_body(MODDED, 64)))
+    (record,) = save.partial_objects
+    assert (record.class_path, record.level, record.unread) == (MODDED, "Persistent_Level", 68)
+    assert record.instance_name.endswith(".panel")
+    (obj,) = save.levels[0].objects
+    assert obj.partial is not None and obj.properties == []
+    assert save.warnings[-1][1].startswith("1 modded objects kept partial")
+
+
+def test_strict_mode_and_vanilla_classes_still_refuse(header_prefix):
+    modded = header_prefix + _chunk_stream(_one_component_body(MODDED, 64))
+    with pytest.raises(ParseError, match="64-byte|68 bytes"):
+        read_full_save_bytes(modded, strict=True)
+    vanilla = "/Script/FactoryGame.FGInventoryComponent"
+    with pytest.raises(ParseError, match="trailer is exactly"):
+        read_full_save_bytes(header_prefix + _chunk_stream(_one_component_body(vanilla, 64)))
+
+
+def test_which_classes_count_as_modded():
+    assert is_modded_class(MODDED)
+    assert is_modded_class("/FicsItNetworks/Buildings/Build_Case.Build_Case_C")
+    assert not is_modded_class("/Script/FactoryGame.FGInventoryComponent")
+    assert not is_modded_class("/Game/FactoryGame/Buildable/Build_Thing.Build_Thing_C")
+
+
+def test_a_public_modded_save_loads_with_its_panels_partial():
+    """Dunarr-019, a shared modded save kept out of git; skipped where it is not present."""
+    path = REPO_ROOT / "data" / "local" / "external-saves" / "etothepii4-sfp" / "Dunarr-019.sav"
+    if not path.exists():
+        pytest.skip("the external modded saves are not on this machine")
+    save = read_full_save(path)
+    assert [p.class_path for p in save.partial_objects] == [MODDED]

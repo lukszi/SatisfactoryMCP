@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from ..errors import expect
+from ..errors import ParseError, expect
 from ..objects import ObjectSlice
 from ..reader import Reader
 from ..references import ObjectReference, read_reference, read_references
@@ -45,6 +45,9 @@ class ParsedObject:
     decode_trailer: Callable[[], list[SaveValue]] | None = None
     #: Anything skipped rather than understood, as ``(offset, what)``.
     warnings: list[tuple[int, str]] = field(default_factory=list[tuple[int, str]])
+    #: Set only by a lenient read that hit a refusal: its message. What was read before it is
+    #: kept, and ``extra_offset``/``extra_length`` then span everything left unread.
+    partial: str | None = None
 
     @property
     def actorSpecificInfo(self) -> list[SaveValue] | None:
@@ -64,16 +67,33 @@ def read_object(
     *,
     actor: bool,
     save_version: int = FIRST_MODERN_BODY,
+    lenient: bool = False,
 ) -> ParsedObject:
     """Decode one object's property block, the ``slot`` of ``body`` that ``read_body`` found.
 
     ``actor`` comes from the object's header, since only an actor's payload opens with
     reference lists and the payload does not say which it is. ``save_version`` is the file's,
-    and picks the float width of ``FVector``/``FQuat``/``FBox``.
+    and picks the float width of ``FVector``/``FQuat``/``FBox``. ``lenient`` turns a refusal
+    into a ``partial`` object instead of a raise; ``pioneersav.save`` decides who gets it.
     """
     r = Reader(body, slot.offset)
-    end = slot.end
     parsed = ParsedObject(version=slot.version)
+    try:
+        _read_payload(r, slot, parsed, actor=actor, save_version=save_version)
+    except ParseError as exc:
+        if not lenient:
+            raise
+        parsed.partial = str(exc)
+        parsed.extra_offset = min(r.pos, slot.end)
+        parsed.extra_length = slot.end - parsed.extra_offset
+    return parsed
+
+
+def _read_payload(
+    r: Reader, slot: ObjectSlice, parsed: ParsedObject, *, actor: bool, save_version: int
+) -> None:
+    """Fill ``parsed`` from the payload at ``r``, raising on the first byte that does not fit."""
+    end = slot.end
 
     if actor:
         parsed.parent_reference = read_reference(r)
@@ -105,4 +125,3 @@ def read_object(
             f"{' or '.join(map(str, PLAIN_TRAILER))} bytes, so the list terminated early "
             "and the properties after that point are missing",
         )
-    return parsed

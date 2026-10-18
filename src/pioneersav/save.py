@@ -24,8 +24,11 @@ from .versions import FIRST_MODERN_BODY
 
 __all__ = [
     "UNDECODED_TRAILER_CLASSES",
+    "VANILLA_CLASS_ROOTS",
     "ParsedLevel",
     "ParsedSave",
+    "PartialObject",
+    "is_modded_class",
     "read_full_save",
     "read_full_save_bytes",
 ]
@@ -50,6 +53,19 @@ class ParsedLevel:
         return self.headers
 
 
+@dataclass(frozen=True)
+class PartialObject:
+    """An object of a modded class kept with only what could be read; see ``is_modded_class``."""
+
+    level: str
+    class_path: str
+    instance_name: str
+    #: Body offset where reading stopped, and the bytes of the declared payload left after it.
+    offset: int
+    unread: int
+    reason: str
+
+
 @dataclass
 class ParsedSave:
     """A whole save: its header, its levels, and the bytes they point into.
@@ -72,10 +88,22 @@ class ParsedSave:
     #: above reads the fields they name, and the sidecar prints them to stderr rather than into
     #: the projection.
     warnings: list[tuple[int, str]] = field(default_factory=list[tuple[int, str]])
+    #: Modded objects whose payload did not read to its declared end, each also one warning.
+    partial_objects: list[PartialObject] = field(default_factory=list[PartialObject])
 
     @property
     def object_count(self) -> int:
         return sum(len(level.objects) for level in self.levels)
+
+
+#: Where the base game's classes live. Mods mount their own roots (``/FicsItNetworks/``) and
+#: their own script modules (``/Script/FicsItNetworksMisc.``), so anything else is modded.
+VANILLA_CLASS_ROOTS = ("/Game/", "/Script/FactoryGame.", "/Script/Engine.", "/Script/CoreUObject.")
+
+
+def is_modded_class(class_path: str) -> bool:
+    """Whether a payload that does not read to its end is tolerated rather than refused."""
+    return not class_path.startswith(VANILLA_CLASS_ROOTS)
 
 
 #: Class paths that carry their own bytes after the property list on a save below
@@ -149,43 +177,74 @@ def _attach_trailer(
         warnings.append((obj.extra_offset, what))
 
 
-def read_full_save_bytes(data: bytes) -> ParsedSave:
+def _class_of(header: ActorHeader | ComponentHeader) -> str:
+    return header.type_path if isinstance(header, ActorHeader) else header.class_path
+
+
+def _note_partial(
+    level: str, header: ActorHeader | ComponentHeader, obj: ParsedObject, save: ParsedSave
+) -> None:
+    """Record a partial object in ``save.partial_objects`` and as one warning."""
+    record = PartialObject(
+        level=level,
+        class_path=_class_of(header),
+        instance_name=header.instance_name,
+        offset=obj.extra_offset,
+        unread=obj.extra_length,
+        reason=obj.partial or "",
+    )
+    save.partial_objects.append(record)
+    what = (
+        f"kept {record.class_path} {record.instance_name} partial, {record.unread} bytes "
+        f"unread: {record.reason}"
+    )
+    save.warnings.append((record.offset, what))
+
+
+def read_full_save_bytes(data: bytes, *, strict: bool = False) -> ParsedSave:
     """Parse a complete .sav already in memory.
 
     Split out from ``read_full_save`` so the tests can assemble a file from the committed
     fixtures and exercise the whole composition with no game install. Every raise below is a
     ``ParseError``; anything else escaping here is a bug in this parser rather than a problem
-    with the file.
+    with the file. An object of a modded class (``is_modded_class``) whose payload does not
+    read is kept partial instead, unless ``strict``.
     """
     info = read_info_bytes(data)
     # every layer below is gated on this one header-read version, so no two can disagree
     old = info.save_version < FIRST_MODERN_BODY
     body = decompress_body(data, info.body_offset, old=old)
     parsed = read_body(body, info.save_version, info.build_version)
-    warnings = list(parsed.warnings)
-    levels: list[ParsedLevel] = []
+    save = ParsedSave(
+        info=info,
+        body=body,
+        levels=[],
+        warnings=list(parsed.warnings),
+        destroyed_actors=parsed.destroyed_actors,
+    )
     for level in parsed.levels:
         objects: list[ParsedObject] = []
         for header, slot in zip(level.headers, level.objects, strict=True):
             actor = isinstance(header, ActorHeader)
-            obj = read_object(body, slot, actor=actor, save_version=info.save_version)
-            if obj.warnings:
-                warnings.extend(obj.warnings)
-            if actor:
-                _attach_trailer(body, header, obj, warnings, info.save_version)
+            lenient = not strict and is_modded_class(_class_of(header))
+            obj = read_object(
+                body, slot, actor=actor, save_version=info.save_version, lenient=lenient
+            )
+            save.warnings.extend(obj.warnings)
+            if obj.partial is not None:
+                _note_partial(level.name, header, obj, save)
+            elif actor:
+                _attach_trailer(body, header, obj, save.warnings, info.save_version)
             objects.append(obj)
-        levels.append(ParsedLevel(name=level.name, headers=level.headers, objects=objects))
-
-    return ParsedSave(
-        info=info,
-        body=body,
-        levels=levels,
-        warnings=warnings,
-        destroyed_actors=parsed.destroyed_actors,
-    )
+        save.levels.append(ParsedLevel(name=level.name, headers=level.headers, objects=objects))
+    if save.partial_objects:
+        # last, so the tail of stderr the sidecar keeps still carries the count
+        count = len(save.partial_objects)
+        save.warnings.append((0, f"{count} modded objects kept partial; see the lines above"))
+    return save
 
 
-def read_full_save(path: str | os.PathLike[str]) -> ParsedSave:
+def read_full_save(path: str | os.PathLike[str], *, strict: bool = False) -> ParsedSave:
     """Read and fully parse the save at ``path``.
 
     The whole file is read at once rather than streamed: it is the closest thing available to
@@ -197,4 +256,4 @@ def read_full_save(path: str | os.PathLike[str]) -> ParsedSave:
     """
     with open(path, "rb") as fh:
         data = fh.read()
-    return read_full_save_bytes(data)
+    return read_full_save_bytes(data, strict=strict)
