@@ -1288,6 +1288,14 @@ match the node table instance for instance. A core carries a resource and no pur
 geysers carry nothing, because the purity setting does not reach them. A vanilla node writes
 neither property, so its `node_state` entry is unchanged and still holds only `resources_left`.
 
+**The node table is still the map's.** `data/resource_nodes.json` holds the vanilla layout. A
+reader that needs what a node yields asks `spatial.nodes.nodes_for(projection)`, which returns
+the table with each override applied and with each core's resource taken from its own override.
+A core that has no override takes its satellites' resource when they agree on one. On a vanilla
+save, `nodes_for` returns the very same table object. A reader that needs only positions may keep
+`load_nodes()`, because a node never moves. Where no save is in scope, which means the codex, a
+selector resolved without a world, or a failed save read, the answer is the vanilla table.
+
 **What the multipliers change, and what this project applies:**
 
 | option | the game (wiki "New game") | applied here |

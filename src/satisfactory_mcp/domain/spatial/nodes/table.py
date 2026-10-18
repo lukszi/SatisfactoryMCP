@@ -85,6 +85,8 @@ class NodeTable:
     meta: JsonObject
     #: The fracking cores, kept out of ``nodes`` because no extractor can stand on one.
     well_cores: list[WellCoreRecord] = field(default_factory=list[WellCoreRecord])
+    #: True on a randomized world's table (``world.nodes_for``), whose nodes are the save's.
+    randomized: bool = False
 
     def __len__(self) -> int:
         return len(self.nodes)

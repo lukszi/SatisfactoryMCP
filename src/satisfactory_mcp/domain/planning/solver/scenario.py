@@ -171,7 +171,7 @@ def select_for(game: GameData, state: WorldState, sources: list[str] | None) -> 
     into a cone from the player (docs/planning.md §8.9). ``stored.provenance`` re-resolves
     through here too, so a staleness check measures the field the plan plans over.
     """
-    table = nodes_mod.load_nodes()
+    table = nodes_mod.nodes_for(state.projection)
     return select_nodes(
         sources,
         table.nodes,
@@ -208,6 +208,8 @@ class PlanRequest:
     site: siting_mod.Siting | None = None
     #: A ``site_at`` that would not resolve: reported, never raised.
     site_errors: list[str] = field(default_factory=list[str])
+    #: This world's node table, which a randomized world re-rolls.
+    nodes: nodes_mod.NodeTable | None = None
 
 
 def _shared_settings() -> _Shared:
@@ -542,6 +544,7 @@ def build_scenario(
         site=site,
         site_errors=site_errors,
         required=pool.required,
+        nodes=nodes_mod.nodes_for(state.projection),
     )
 
 

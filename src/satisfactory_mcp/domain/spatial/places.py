@@ -153,15 +153,15 @@ def _slab_origin(st: WorldState | None, text: str) -> Place:
     )
 
 
-def _node_origin(text: str) -> Place:
+def _node_origin(st: WorldState | None, text: str) -> Place:
     """Centre on one resource node, by the id ``search_resource_nodes`` prints.
 
-    Map data rather than save data, so this is the one place kind that resolves with no
-    save at all. The short id is accepted beside the full instance path because that is
+    The one place kind that resolves with no save at all; with one, the label reads the
+    save's own purity, which a randomized world re-rolls. The short id is accepted beside the full instance path because that is
     the half the tools print.
     """
     want = text.partition(":")[2].strip()
-    table = nodes.load_nodes()
+    table = nodes.nodes_for(st.projection if st else None)
     for instance, node in table.by_instance().items():
         if want in (instance, instance_leaf(instance)):
             return (node["x"], node["y"]), f"node:{want} ({node['purity']} {node['kind']})"
@@ -220,7 +220,7 @@ def resolve_place(st: WorldState | None, near: str) -> Place:
         if head == SLAB_PREFIX:
             return _slab_origin(st, text)
         if head == NODE_PREFIX:
-            return _node_origin(text)
+            return _node_origin(st, text)
         if head == MACHINE_PREFIX:
             return _machine_origin(st, text)
         if head == PLAN_PREFIX:

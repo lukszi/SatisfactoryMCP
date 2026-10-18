@@ -308,7 +308,7 @@ def _add_extractors(
 ) -> None:
     node_state = projection.get("node_state", {})
     try:
-        node_table = nodes_mod.load_nodes().by_instance()
+        node_table = nodes_mod.nodes_for(projection).by_instance()
     except Exception:
         node_table = {}
     for leaf, record in members:

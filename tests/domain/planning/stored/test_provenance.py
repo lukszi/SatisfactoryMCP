@@ -58,6 +58,8 @@ class _World:
     def __init__(self, plans=None):
         self.plans = plans
         self.game = object()
+        #: No save: the node table is the map's own.
+        self.projection = None
 
     def player_position(self):
         return None

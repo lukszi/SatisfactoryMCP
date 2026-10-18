@@ -1,7 +1,7 @@
 {
  "_meta": {
   "description": "Static resource node table: type, purity, world position.",
-  "why": "Save files serialize only mResourcesLeft for node actors; resource type and purity are level data and must come from a static table.",
+  "why": "A vanilla save writes only mResourcesLeft for a node actor; resource type and purity are level data, so this table holds the map's own layout. A 1.2 randomized world also writes mResourceClassOverride and mPurityOverride per node, which the server lays over this table (docs/save-projection.md, 6.18).",
   "sources": {
    "primary": {
     "name": "data/world_resource_nodes.json",

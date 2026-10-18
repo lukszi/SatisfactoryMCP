@@ -20,7 +20,6 @@ from fastapi.responses import JSONResponse
 from typing_extensions import TypedDict
 
 from .....core.filelock import LockTimeout
-from .....core.gamedata.model import GameData
 from .....core.jsontypes import JsonObject
 from .....domain.planning.analysis import swaps
 from .....domain.planning.readout import summary
@@ -39,6 +38,7 @@ from .....domain.planning.stored.planlog import (
 )
 from .....domain.planning.stored.views import PlanArgsBody, PlanOp, PlanStamp
 from .....domain.session import journal, pins
+from .....domain.spatial.nodes import nodes_for
 from .....domain.world import pin
 from .....domain.world.state import WorldState
 from ...serial import (
@@ -270,7 +270,7 @@ def _version_row(row: _Version) -> VersionRow:
     }
 
 
-def _state_body(log: PlanLog, state: PlanState, game: GameData) -> PlanStateReply:
+def _state_body(log: PlanLog, state: PlanState, st: WorldState) -> PlanStateReply:
     """``PlanState.to_dict`` with the head's rev and words, in the record's key order."""
     head = log.commits(state.key)[-1]
     return {
@@ -287,13 +287,13 @@ def _state_body(log: PlanLog, state: PlanState, game: GameData) -> PlanStateRepl
         "args": state.args.to_dict(),
         "headroom_mw": state.headroom_mw,
         "node_positions": state.node_positions,
-        "names": summary.names_for(game, state.args),
+        "names": summary.names_for(st.game, state.args, nodes_for(st.projection)),
         "head": head.rev,
         "text": head.text(),
     }
 
 
-def _pushed(log: PlanLog, pushed: Pushed, game: GameData) -> PushedResponse:
+def _pushed(log: PlanLog, pushed: Pushed, st: WorldState) -> PushedResponse:
     return {
         "key": pushed.key,
         "rev": pushed.rev,
@@ -304,11 +304,11 @@ def _pushed(log: PlanLog, pushed: Pushed, game: GameData) -> PushedResponse:
         "dropped": _ops(pushed.dropped),
         "others": [_commit_body(c) for c in pushed.others],
         "text": pushed.text(pushed.state.name),
-        "state": _state_body(log, pushed.state, game),
+        "state": _state_body(log, pushed.state, st),
     }
 
 
-def _outdated(log: PlanLog, exc: Outdated, game: GameData) -> JSONResponse:
+def _outdated(log: PlanLog, exc: Outdated, st: WorldState) -> JSONResponse:
     body: OutdatedResponse = {
         "error": exc.text(exc.state.name),
         "outdated": True,
@@ -326,14 +326,14 @@ def _outdated(log: PlanLog, exc: Outdated, game: GameData) -> JSONResponse:
             }
             for c in exc.conflicts
         ],
-        "state": _state_body(log, exc.state, game),
+        "state": _state_body(log, exc.state, st),
     }
     return JSONResponse(body, status_code=409)
 
 
-def _refused(log: PlanLog, exc: Exception, game: GameData) -> JSONResponse:
+def _refused(log: PlanLog, exc: Exception, st: WorldState) -> JSONResponse:
     if isinstance(exc, Outdated):
-        return _outdated(log, exc, game)
+        return _outdated(log, exc, st)
     if isinstance(exc, AlreadyUndone):
         body: AlreadyUndoneResponse = {"error": str(exc), "already_undone": True, "by": exc.by}
         return JSONResponse(body, status_code=409)
@@ -418,8 +418,8 @@ def create_plan(
     except NameTaken as exc:
         return _name_taken(exc)
     except _ERRORS as exc:
-        return _refused(log, exc, st.game)
-    return _pushed(log, pushed, st.game)
+        return _refused(log, exc, st)
+    return _pushed(log, pushed, st)
 
 
 @router.get("/plans/{key}", response_model=PlanStateBody)
@@ -432,7 +432,7 @@ def plan_state(
 ) -> PlanStateBody:
     """A plan at ``rev`` (the head when omitted), forgotten plans included."""
     st, log = _world_and_log(request, key, save, world)
-    return _state_body(log, require_plan(log, key, rev), st.game)
+    return _state_body(log, require_plan(log, key, rev), st)
 
 
 @router.get("/plans/{key}/ops", response_model=PlanOpsResponse)
@@ -489,8 +489,8 @@ def push_ops(
         )
     except _ERRORS as exc:
         _journal_rejection(st, key, sav, exc)
-        return _refused(log, exc, st.game)
-    return _pushed(log, pushed, st.game)
+        return _refused(log, exc, st)
+    return _pushed(log, pushed, st)
 
 
 @router.post(
@@ -524,8 +524,8 @@ def push_args(
         )
     except _ERRORS as exc:
         _journal_rejection(st, key, sav, exc)
-        return _refused(log, exc, st.game)
-    return _pushed(log, pushed, st.game)
+        return _refused(log, exc, st)
+    return _pushed(log, pushed, st)
 
 
 @router.post(
@@ -554,8 +554,8 @@ def undo_rev(
         )
     except _ERRORS as exc:
         _journal_rejection(st, key, sav, exc)
-        return _refused(log, exc, st.game)
-    return _pushed(log, pushed, st.game)
+        return _refused(log, exc, st)
+    return _pushed(log, pushed, st)
 
 
 @router.post(
@@ -586,8 +586,8 @@ def restore_rev(
         return _name_taken(exc)
     except _ERRORS as exc:
         _journal_rejection(st, key, sav, exc)
-        return _refused(log, exc, st.game)
-    return _pushed(log, pushed, st.game)
+        return _refused(log, exc, st)
+    return _pushed(log, pushed, st)
 
 
 @router.post(
@@ -625,8 +625,8 @@ def duplicate_plan(
     except NameTaken as exc:
         return _name_taken(exc)
     except _ERRORS as exc:
-        return _refused(log, exc, st.game)
-    return _pushed(log, pushed, st.game)
+        return _refused(log, exc, st)
+    return _pushed(log, pushed, st)
 
 
 @router.get("/plans/{key}/versions", response_model=VersionsResponse)

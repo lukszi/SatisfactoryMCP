@@ -33,6 +33,10 @@ from .table import (
     WellCoreRecord,
     load_nodes,
 )
+from .world import (
+    nodes_for,
+    overlaid,
+)
 
 __all__ = [
     "EXTRACTOR_FOR_KIND",
@@ -53,7 +57,9 @@ __all__ = [
     "load_nodes",
     "measure_from",
     "node_rate",
+    "nodes_for",
     "occupancy_by_node",
+    "overlaid",
     "position_notes",
     "reachable",
     "skew_for_save",

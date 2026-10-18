@@ -493,7 +493,8 @@ def _underclock(
 ) -> tuple[list[health.MachineHealth], list[Advisory]]:
     """K6: an extractor below 100 % in a named factory where a machine starves of its item."""
     resource: dict[str, str] = {
-        instance_leaf(n["instance"]): n["resource"] for n in nodes_mod.load_nodes().nodes
+        instance_leaf(n["instance"]): n["resource"]
+        for n in nodes_mod.nodes_for(ctx.st.projection).nodes
     }
     rows: list[Advisory] = []
     taken: set[str] = set()
