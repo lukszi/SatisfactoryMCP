@@ -7,7 +7,10 @@ What each option changes in the game, and which of it this project models, is in
 from __future__ import annotations
 
 import math
+import threading
+from dataclasses import replace
 
+from ...core.gamedata.model import Flow, GameData, Recipe
 from ...core.saveio.schema import GameMode, Projection
 
 __all__ = [
@@ -15,10 +18,12 @@ __all__ = [
     "PURITY_LABELS",
     "RANDOMIZATION_LABELS",
     "energy_cost",
+    "game_for",
     "is_default",
     "mode_of",
     "parts_cost",
     "randomized",
+    "scaled_game",
     "scaled_part",
     "summary",
 ]
@@ -62,7 +67,7 @@ def energy_cost(projection: Projection | None) -> float:
 
 
 def parts_cost(projection: Projection | None) -> float:
-    """The factor on every build recipe's parts."""
+    """The factor on every recipe's ingredients, build and production alike."""
     return mode_of(projection)["parts_cost"]
 
 
@@ -71,6 +76,62 @@ def scaled_part(amount: float, multiplier: float) -> float:
     if multiplier == 1.0 or amount <= 0:
         return amount
     return float(max(1, math.floor(amount * multiplier + 0.5)))
+
+
+#: Litres per m3: the game counts a fluid amount in whole litres, so it rounds there.
+_LITRES = 1000.0
+
+
+def _scaled_flow(flow: Flow, fluid: bool, multiplier: float, duration_s: float) -> Flow:
+    unit = _LITRES if fluid else 1.0
+    amount = scaled_part(flow.amount * unit, multiplier) / unit
+    per_min = amount * 60 / duration_s if duration_s else 0.0
+    return Flow(item=flow.item, amount=amount, per_min=per_min)
+
+
+def _scaled_recipe(game: GameData, recipe: Recipe, multiplier: float) -> Recipe:
+    def fluid(item: str) -> bool:
+        known = game.items.get(item)
+        return known is not None and known.is_fluid
+
+    ingredients = tuple(
+        _scaled_flow(f, fluid(f.item), multiplier, recipe.duration_s) for f in recipe.ingredients
+    )
+    return replace(recipe, ingredients=ingredients)
+
+
+#: ``(id(base), multiplier)`` to ``(base, scaled)``, and each scaled copy's id back to its
+#: base, so one factor yields one object: views are cached on the game data's ``id()``.
+_SCALED: dict[tuple[int, float], tuple[GameData, GameData]] = {}
+_ORIGIN: dict[int, tuple[GameData, float]] = {}
+_LOCK = threading.Lock()
+
+
+def scaled_game(game: GameData, multiplier: float) -> GameData:
+    """``game`` with each production and craft-bench recipe's ingredients under the parts
+    multiplier, products untouched. Build recipes stay as they are, because ``cost_of``
+    scales building parts. Idempotent; a factor of 1 gives back the vanilla object."""
+    with _LOCK:
+        base, applied = _ORIGIN.get(id(game), (game, 1.0))
+        if applied == multiplier:
+            return game
+        if multiplier == 1.0:
+            return base
+        held = _SCALED.get((id(base), multiplier))
+        if held is None:
+            recipes = {
+                cls: r if r.kind == "building" else _scaled_recipe(base, r, multiplier)
+                for cls, r in base.recipes.items()
+            }
+            held = (base, replace(base, recipes=recipes))
+            _SCALED[(id(base), multiplier)] = held
+            _ORIGIN[id(held[1])] = (base, multiplier)
+        return held[1]
+
+
+def game_for(game: GameData, projection: Projection | None) -> GameData:
+    """The recipes as this save's game mode runs them (``scaled_game``)."""
+    return scaled_game(game, parts_cost(projection))
 
 
 def randomized(mode: GameMode) -> bool:

@@ -466,6 +466,7 @@ def build_scenario(
     ``exports`` REPLACES the default ``[MW]`` rather than extending it, because the grid
     import allowance is derived from it (docs/planning.md §8.9).
     """
+    game = gamemode.game_for(game, state.projection)
     export_ids, minimums, export_errors = _resolve_exports(game, exports, export_minimums)
     raw_caps = _supplied_caps(game, supplied, export_errors)
 

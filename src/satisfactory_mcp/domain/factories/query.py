@@ -412,6 +412,7 @@ def build_view(
     labels: LabelStore | None = None,
 ) -> FactoryView:
     """Compute every aspect of one machine set in a single pass over the projection."""
+    game = gamemode.game_for(game, projection)
     wanted = set(machines)
     view = FactoryView(name=name)
     flows: Flows = defaultdict(_empty_flow)

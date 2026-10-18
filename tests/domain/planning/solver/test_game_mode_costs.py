@@ -5,6 +5,8 @@ What the game scales is in docs/save-projection.md §6.18.
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from satisfactory_mcp.domain.planning.layout.materials import cost_of
@@ -55,3 +57,37 @@ def test_build_parts_round_per_building_then_multiply(game):
         "Desc_IronPlateReinforced_C": 6.0,
         "Desc_Cable_C": 18.0,
     }
+
+
+def test_the_parts_factor_scales_what_a_machine_consumes(game):
+    pid = "r:Recipe_IronPlate_C"
+    plain = Scenario(game=game, recipes=["Recipe_IronPlate_C"])
+    cheap = Scenario(game=game, recipes=["Recipe_IronPlate_C"], parts_cost=0.75)
+    rates = next(p for p in recipe_processes(plain) if p.pid == pid).rates
+    scaled = next(p for p in recipe_processes(cheap) if p.pid == pid).rates
+    assert rates == {"Desc_IronIngot_C": -30.0, "Desc_IronPlate_C": 20.0}
+    assert scaled == {"Desc_IronIngot_C": -20.0, "Desc_IronPlate_C": 20.0}
+    assert plain.game is game
+
+
+def test_the_power_ledger_scales_draw_and_never_generation(game):
+    from satisfactory_mcp.domain.power.report import PowerLedger
+
+    groups: Any = {
+        "generators": [{"instance": "Build_GeneratorCoal_C_1", "cls": "Build_GeneratorCoal_C"}],
+        "machines": [
+            {
+                "instance": "Build_ConstructorMk1_C_1",
+                "cls": "Build_ConstructorMk1_C",
+                "recipe": "Recipe_IronPlate_C",
+                "uptime": {"window_s": 100.0, "produce_s": 50.0},
+            }
+        ],
+        "extractors": [{"instance": "Build_MinerMk1_C_1", "cls": "Build_MinerMk1_C"}],
+    }
+    plain = PowerLedger(projection=groups, game=game).power_report()
+    cheap = PowerLedger(projection=groups, game=game, energy_cost=0.75).power_report()
+    assert plain["draw_mw"] == pytest.approx(4.0 + 5.0)
+    assert cheap["draw_mw"] == pytest.approx(plain["draw_mw"] * 0.75)
+    assert cheap["measured_draw_mw"] == pytest.approx(plain["measured_draw_mw"] * 0.75)
+    assert cheap["generation_mw"] == plain["generation_mw"] == pytest.approx(75.0)
