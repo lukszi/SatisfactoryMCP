@@ -55,6 +55,8 @@ export type WorldsResponse = Body<"WorldsResponse">;
  *  always sent and its three fields are what go null; markers.ts branches on that, and
  *  reads the branch off this type as `SummaryResponse["player"]`. */
 export type SummaryResponse = Body<"SummaryResponse">;
+/** The 1.2 new-game options; the defaults on a save older than them. */
+export type GameMode = Schema["GameMode"];
 
 /* -------------------------------------------- /api/machines and /api/structures */
 

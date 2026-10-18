@@ -13,6 +13,7 @@ from ....core.text import ago, format_local_time
 from ....domain import advice
 from ....domain.power.report import biomass_note, starved_cause
 from ....domain.power.views import PowerReport
+from ....domain.world import gamemode
 from ....presenters.text import advice as advice_text
 from ....presenters.text import primitives as render
 from .. import app
@@ -99,6 +100,9 @@ def world_summary(
         )
     if st.paused:
         notes.append(f"{len(st.paused)} building(s) paused by the player")
+    mode = gamemode.summary(gamemode.mode_of(st.projection))
+    if mode:
+        notes.append(mode)
     notes.extend(app.integrity_notes(st.projection, g))
     notes.extend(app.stale_artifact_notes())
     working_on = st.unlocks.last_active_schematic

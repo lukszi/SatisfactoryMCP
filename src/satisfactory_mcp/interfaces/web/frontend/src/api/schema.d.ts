@@ -3991,6 +3991,26 @@ export interface components {
             spoiler: boolean;
         };
         /**
+         * GameMode
+         * @description The new-game options off the game state (§6.18). A pre-1.2 save reads as the defaults.
+         *
+         *     The three multipliers are plain factors, 1.0 by default: the game's ``75`` is ``0.75``.
+         */
+        GameMode: {
+            /** Node Randomization */
+            node_randomization: string;
+            /** Node Purity */
+            node_purity: string;
+            /** Seed */
+            seed: number;
+            /** Energy Cost */
+            energy_cost: number;
+            /** Parts Cost */
+            parts_cost: number;
+            /** Space Parts Cost */
+            space_parts_cost: number;
+        };
+        /**
          * GateInput
          * @description One input of a part's recipe: per part made, needed for what is short, held.
          */
@@ -7862,6 +7882,7 @@ export interface components {
             power: components["schemas"]["PowerReport"];
             progression: components["schemas"]["ProgressionSummary"];
             player: components["schemas"]["PlayerPosition"];
+            game_mode: components["schemas"]["GameMode"];
         };
         /**
          * SwapOption

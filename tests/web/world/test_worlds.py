@@ -106,3 +106,6 @@ def test_summary_reports_the_header_power_and_progression(client, state):
     else:
         assert body["player"]["x_m"] == pytest.approx(round(pos[0] / 100.0, 1))
         assert body["player"]["y_m"] == pytest.approx(round(pos[1] / 100.0, 1))
+    # A pre-1.2 world: every option at its default, which the header leaves unsaid.
+    assert body["game_mode"]["node_randomization"] == "none"
+    assert body["game_mode"]["energy_cost"] == 1.0

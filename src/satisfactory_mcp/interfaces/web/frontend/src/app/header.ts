@@ -17,7 +17,7 @@ import { loadOne } from "./load";
 import { drawPlayer } from "../map/drawn/markers";
 import { biomassLine, biomassQuery, onBiomass, ratedSummary, readCapacity, readConsumption } from "../dash/power/readings";
 import { registerFetch } from "./registry";
-import { WORDS } from "../kit/words";
+import { gameModeText, WORDS } from "../kit/words";
 
 import type { SummaryResponse } from "../api/shapes";
 
@@ -30,6 +30,8 @@ function drawHeader(summary: SummaryResponse): void {
   const parts = [summary.header.session_name];
   const phase = phaseText(summary.progression.game_phase);
   if (phase) parts.push(phase);
+  const mode = gameModeText(summary.game_mode);
+  if (mode) parts.push(mode);
   parts.push(measured.value + " " + WORDS.consumption + " / " + capacity.value + " " + WORDS.capacity);
   const span = el("summary");
   span.textContent = parts.join(" · ");
