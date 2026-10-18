@@ -168,7 +168,9 @@ emitted by mistake. A change confined inside a key that is dropped whole needs n
 14's pipe actor column, schema 15's spline tangents and schema 20's belt actor column (which
 also moved the tangents from column 3 to 4) all live inside `belts` or `pipes`. Schema 17's
 `power` is new and listed, but who is wired to whom has been `graph["power"]` since schema 11,
-so a sidecar that reordered or dropped a power edge still fails the comparison. The list is
+so a sidecar that reordered or dropped a power edge still fails the comparison. Schema 26's
+`graph["hidden_power"]` lands inside that compared key, so it is named in `graph_fields` and
+dropped alone. The list is
 pinned in both directions against the committed fixture, so a new top-level key with no entry,
 or an entry for a key that is gone, fails on a clone with no game.
 
