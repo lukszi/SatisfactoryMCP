@@ -27,6 +27,7 @@ from ....core.gamedata.search import match_recipes, resolve_item
 from ... import settings
 from ...spatial import nodes as nodes_mod
 from ...spatial.nodes.selectors import Selection, select_nodes
+from ...world import gamemode
 from .. import siting as siting_mod
 from ..stored.plan_args import inherits_default, is_power
 from . import prices as prices_mod
@@ -507,6 +508,8 @@ def build_scenario(
         # Zero spends none: a fixed number exist on the whole map (docs/planning.md §8.2f).
         sloop_budget=max(0, int(sloops or 0)),
         grid_import_mw=None if MW in export_ids else 1e6,
+        energy_cost=gamemode.energy_cost(state.projection),
+        parts_cost=gamemode.parts_cost(state.projection),
         **payback_fields,
     )
 
@@ -591,6 +594,11 @@ def _plan_id(sc: Scenario, only_free_nodes: bool, required: list[str] | None = N
     if sc.excluded_pids:
         # Only when present, so a plan without bans keeps the id it was stored under.
         fields["excluded_pids"] = sorted(sc.excluded_pids)
+    if sc.energy_cost != 1.0:
+        # Likewise only off the default: a vanilla world's ids stay what they were.
+        fields["energy_cost"] = sc.energy_cost
+    if sc.parts_cost != 1.0:
+        fields["parts_cost"] = sc.parts_cost
     payload = json.dumps(
         {
             **fields,

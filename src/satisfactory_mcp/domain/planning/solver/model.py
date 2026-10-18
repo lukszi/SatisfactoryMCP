@@ -133,6 +133,9 @@ class Scenario:
     #: Per recipe id, a row's own choice over ``overclock_last``: ``"last"`` builds the
     #: overclocked candidate whatever it costs, ``"spread"`` never does.
     row_overclock: dict[str, str] = field(default_factory=dict[str, str])
+    #: The save's game-mode factors: on every machine's draw, and on build recipes' parts.
+    energy_cost: float = 1.0
+    parts_cost: float = 1.0
 
     def __post_init__(self) -> None:
         self.objective = normalise_objective(self.objective)

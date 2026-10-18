@@ -19,6 +19,8 @@ from ....core.jsontypes import JsonObject, JsonValue
 from ....core.saveio.records import instance_leaf
 from ....core.saveio.schema import GeneratorRecord, Projection
 from ...power.report import BIOMASS_BURNERS, generator_building
+from ...world import gamemode
+from ...world.gamemode import scaled_part
 from ..stored.store import PlanStore
 from .views import PowerSource
 
@@ -142,28 +144,32 @@ def _scarcity_tier(available: float, per_machine: float, before: float | None) -
 
 
 def material_tiers(
-    g: GameData, stock: dict[str, float], surplus: dict[str, float], world: str = ""
+    g: GameData,
+    stock: dict[str, float],
+    surplus: dict[str, float],
+    world: str = "",
+    parts_cost: float = 1.0,
 ) -> dict[tuple[str, str], float]:
     """``{(building, item): tier}`` for every build-cost line of every building.
 
     With ``world`` the last tiers are read from and written back to ``tiers_path`` under its
     lock, so the web server and the MCP server hold the same band."""
     if not world:
-        return _all_tiers(g, stock, surplus, {})
+        return _all_tiers(g, stock, surplus, {}, parts_cost)
     path = tiers_path(world)
     try:
         with filelock.held(path):
             before = _read_tiers(path)
-            out = _all_tiers(g, stock, surplus, before)
+            out = _all_tiers(g, stock, surplus, before, parts_cost)
             if out != before:
                 _write_tiers(path, out)
             return out
     except schema.NewerSchema:
         _log.warning("%s is from a newer version; scarcity tiers are not stored", path)
-        return _all_tiers(g, stock, surplus, {})
+        return _all_tiers(g, stock, surplus, {}, parts_cost)
     except OSError:
         _log.warning("scarcity tiers for %s not stored", world, exc_info=True)
-        return _all_tiers(g, stock, surplus, _read_tiers(path))
+        return _all_tiers(g, stock, surplus, _read_tiers(path), parts_cost)
 
 
 def _all_tiers(
@@ -171,6 +177,7 @@ def _all_tiers(
     stock: dict[str, float],
     surplus: dict[str, float],
     before: dict[tuple[str, str], float],
+    parts_cost: float = 1.0,
 ) -> dict[tuple[str, str], float]:
     out: dict[tuple[str, str], float] = {}
     for cls, b in g.buildings.items():
@@ -180,16 +187,22 @@ def _all_tiers(
             available = stock.get(f.item, 0.0) + SURPLUS_MINUTES * max(
                 0.0, surplus.get(f.item, 0.0)
             )
-            out[(cls, f.item)] = _scarcity_tier(available, f.amount, before.get((cls, f.item)))
+            needed = scaled_part(f.amount, parts_cost)
+            out[(cls, f.item)] = _scarcity_tier(available, needed, before.get((cls, f.item)))
     return out
 
 
-def building_points(g: GameData, cls: str, tiers: dict[tuple[str, str], float]) -> float:
+def building_points(
+    g: GameData, cls: str, tiers: dict[tuple[str, str], float], parts_cost: float = 1.0
+) -> float:
     """Save-priced build materials plus the machine's own floor area."""
     b = g.buildings.get(cls)
     if b is None:
         return 0.0
-    total = sum(f.amount * _sink(g, f.item) * tiers.get((cls, f.item), 1.0) for f in b.build_cost)
+    total = sum(
+        scaled_part(f.amount, parts_cost) * _sink(g, f.item) * tiers.get((cls, f.item), 1.0)
+        for f in b.build_cost
+    )
     if b.footprint is not None:
         total += b.footprint.area_m2 * AREA_POINTS_M2
     return total
@@ -251,14 +264,16 @@ def prices_for(state: WorldState, biomass: bool) -> Prices:
 
     def build() -> Prices:
         g = state.game
+        parts = gamemode.parts_cost(state.projection)
         tiers = material_tiers(
             g,
             state.inventory.stock(),
             nameplate_surplus(g, state.projection),
             world=state.world_id,
+            parts_cost=parts,
         )
         points = {
-            cls: building_points(g, cls, tiers)
+            cls: building_points(g, cls, tiers, parts)
             for cls, b in g.buildings.items()
             if b.build_cost or b.footprint is not None
         }

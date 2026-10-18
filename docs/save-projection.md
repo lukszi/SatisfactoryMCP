@@ -1288,6 +1288,20 @@ match the node table instance for instance. A core carries a resource and no pur
 geysers carry nothing, because the purity setting does not reach them. A vanilla node writes
 neither property, so its `node_state` entry is unchanged and still holds only `resources_left`.
 
+**What the multipliers change, and what this project applies:**
+
+| option | the game (wiki "New game") | applied here |
+|---|---|---|
+| Power Consumption | "all Power consumption", every building and machine | the planner's processes and the factory view's draw, ×`energy_cost`. Generation is never scaled |
+| Recipe Parts Cost | "the parts cost for each Recipe", rounded to whole parts | build costs: each part of one building is rounded, at least 1, then multiplied by the count. This covers the bill, the shortfall list, payback and build points |
+| Space Elevator | "the part cost for each Space Elevator Phase" | nothing to scale: phase costs are read from the save, which already holds the game's figures (§6.4) |
+
+**Open questions.** It is not yet known whether the parts multiplier also scales the
+ingredients of production recipes. One third-party planner applies it to them. Until an in-game
+check settles it, only build costs are scaled here. The Power page's rated draws are not
+scaled either, because they live in `domain/power`. Measured consumption needs no scaling, since
+the save already records the scaled figure.
+
 ### Schema history
 
 `SCHEMA_VERSION` lives in `core/saveio/projection.py`, which keys the pickle cache on it; the
