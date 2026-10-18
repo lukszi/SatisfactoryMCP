@@ -50,13 +50,15 @@ BIOMASS_BURNERS = frozenset(
 
 
 def wired_actors(projection: Projection) -> frozenset[str] | None:
-    """Every actor at either end of a power edge, or ``None`` when the projection carries no
-    power layer at all -- an older projection, where no record may be called unwired."""
+    """Every actor at either end of a power edge or in a hidden power group (rail power), or
+    ``None`` when the projection carries no power layer at all -- an older projection, where
+    no record may be called unwired."""
     payload = projection.get("graph") or {}
     if "power" not in payload:
         return None
     actors = payload.get("actors") or []
-    return frozenset(actors[i] for row in payload["power"] for i in row[:2] if 0 <= i < len(actors))
+    rows = [row[:2] for row in payload["power"]] + list(payload.get("hidden_power") or ())
+    return frozenset(actors[i] for row in rows for i in row if 0 <= i < len(actors))
 
 
 @dataclass(frozen=True)

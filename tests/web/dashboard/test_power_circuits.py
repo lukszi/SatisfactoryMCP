@@ -264,6 +264,47 @@ def test_a_battery_bank_behind_an_off_switch_is_its_own_grid(game):
     assert body["world"]["batteries"] == 3
 
 
+def _railed(game, hidden: bool):
+    """A coal plant wired to one station, an outpost wired to another, and the two stations
+    on one rail network: joined by the third rail, not by any wire."""
+    from satisfactory_mcp.domain.world.state import WorldState
+
+    actors = [
+        "Build_PowerPoleMk1_C_1",
+        "Build_GeneratorCoal_C_1",
+        "Build_TrainStation_C_1",
+        "Build_PowerPoleMk1_C_2",
+        "Build_ConstructorMk1_C_1",
+        "Build_TrainStation_C_2",
+        "Build_TrainDockingStation_C_1",
+    ]
+    projection = {
+        "generators": [{"instance": actors[1], "cls": "Build_GeneratorCoal_C"}],
+        "machines": [
+            {"instance": actors[4], "cls": "Build_ConstructorMk1_C", "recipe": "Recipe_IronPlate_C"}
+        ],
+        "graph": {
+            "actors": actors,
+            "power": [[0, 1], [0, 2], [3, 4], [3, 5]],
+            "hidden_power": [[2, 5, 6]] if hidden else [],
+        },
+    }
+    with client_over(WorldState(projection=projection, game=game), game) as client:
+        return client.get("/api/power/circuits").json()
+
+
+def test_rail_power_joins_an_outpost_to_the_grid_that_feeds_the_track(game):
+    (grid,) = _railed(game, hidden=True)["circuits"]
+    assert grid["consumers"] == 1 and grid["ledger"]["generation_mw"] > 0
+    assert _railed(game, hidden=True)["no_generator"] == []
+
+
+def test_without_the_rail_the_outpost_is_its_own_dark_grid(game):
+    body = _railed(game, hidden=False)
+    assert len(body["circuits"]) == 2
+    assert [r["instance"] for r in body["no_generator"]] == ["Build_ConstructorMk1_C_1"]
+
+
 def test_a_grid_with_no_battery_says_so_with_zeros(game):
     body = _switched(game, on=True)
     led = body["circuits"][0]["ledger"]

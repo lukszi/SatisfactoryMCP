@@ -121,7 +121,10 @@ limits are worth knowing before trusting it:
   (maximum consumption), in neither measured figure, and apart in `switched_off` and
   `switched_off_draw_mw`, on the circuit and on the world. `assess` gives them the state
   `switched off`, so they are in no problem list. A grid holding batteries is never folded.
-- **Rail power has no wire.** An outpost fed only through the track reads as its own grid.
+- **Rail power joins grids.** A station and the platforms on one rail network take power from
+  the track's third rail, which has no wire. Since schema 26 they are one group
+  (`graph["hidden_power"]`, docs/save-projection.md §6.12b), so an outpost fed only through the
+  track is part of the grid that feeds the track.
 - **Batteries sit beside the ledger, not in it.** Each ledger carries `batteries`,
   `storage_mwh` (the charge the save records) and `storage_capacity_mwh` (100 MWh each, from
   the docs dump), and the world's are the sum of the circuits'. Neither headroom counts them:
