@@ -10,6 +10,7 @@
 import { requestRender } from "../dash/actions";
 import { el } from "../kit/dom";
 import { loadOne, reload } from "./load";
+import { pushHere } from "./nav";
 import { writeHash } from "../map/map";
 import { WORDS } from "../kit/words";
 import { BOOT, currentWorld, pinnedPath, state } from "./state";
@@ -82,6 +83,7 @@ function fillSavePicker(): void {
   picker.onchange = function () {
     state.save = picker.value;
     const chosen = picker.selectedOptions[0];
+    pushHere();
     if (!state.save) reload("back to the newest save…");
     else reload("opening " + (chosen ? chosen.textContent : "save") + "…");
   };
@@ -122,6 +124,7 @@ function wireWorldPicker(): void {
     state.save = "";
     fillSavePicker();
     const chosen = picker.selectedOptions[0];
+    pushHere();
     reload("switching to " + (chosen ? chosen.textContent : "world") + "…");
   };
 }

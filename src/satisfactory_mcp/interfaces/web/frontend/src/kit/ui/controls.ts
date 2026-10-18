@@ -32,11 +32,12 @@ export interface SegItem {
   href?: string;
 }
 
-/** The segmented control: links when items carry href, else buttons with data-seg. */
+/** The segmented control: links when items carry href (a click replaces the entry), else
+ *  buttons with data-seg. */
 export function seg(name: string, items: SegItem[], on: string, label: string): Safe {
   return html`<span class="seg" role="group" aria-label="${label}">${items.map(function (item) {
     const pressed = item.value === on;
-    if (item.href) return html`<a href="${item.href}"${pressed ? html` class="on" aria-current="page"` : ""}>${item.label}</a>`;
+    if (item.href) return html`<a href="${item.href}" data-nav="replace"${pressed ? html` class="on" aria-current="page"` : ""}>${item.label}</a>`;
     return html`<button type="button" data-seg="${name}" data-val="${item.value}" aria-pressed="${String(pressed)}"${pressed ? html` class="on"` : ""}>${item.label}</button>`;
   })}</span>`;
 }

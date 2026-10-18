@@ -5,7 +5,7 @@
 import "./factories.css";
 import "../power/power.css";
 import { adviceCard } from "../../chat/advice";
-import { replaceDash } from "../../app/nav";
+import { go, replaceDash } from "../../app/nav";
 import { state } from "../../app/state";
 import { vitals } from "../../app/vitals";
 import { count, pct } from "../../kit/format";
@@ -64,17 +64,17 @@ function light(root: HTMLElement, key: string | null): void {
   root.querySelectorAll('.fsvg [data-k~="' + key + '"], .fside [data-hl~="' + key + '"]').forEach((el) => el.classList.add("hl"));
 }
 
-function pick(c: FCtx, key: string, go?: string, fromPlan?: boolean): void {
+function pick(c: FCtx, key: string, there?: string, fromPlan?: boolean): void {
   if (!key) return;
   if (/^fl-?\d+$/.test(key)) {
     const ordinal = key.slice(2);
-    location.hash = aspectHref(c, c.aspect, c.floor === +ordinal ? "all" : ordinal);
+    go(factoryDash(c.name, c.aspect, c.floor === +ordinal ? "all" : ordinal), "replace");
     return;
   }
   const same = c.picked === key;
   setPick(c.name, same ? "" : key);
   scrollTo = same || !fromPlan ? "" : key;
-  if (go && !same && location.hash !== go) location.hash = go;
+  if (there && !same && location.hash !== there) location.hash = there;
   else requestRender();
 }
 
@@ -83,7 +83,7 @@ function stepFloor(c: FCtx, by: number): void {
   const order = [-1].concat(c.floors.map((f) => f.ordinal));
   const at = order.indexOf(c.floor);
   const next = order[Math.max(0, Math.min(order.length - 1, at + by))]!;
-  if (next !== c.floor) location.hash = aspectHref(c, c.aspect, next < 0 ? "all" : String(next));
+  if (next !== c.floor) go(factoryDash(c.name, c.aspect, next < 0 ? "all" : String(next)), "replace");
 }
 
 function wire(root: HTMLElement, c: FCtx): void {

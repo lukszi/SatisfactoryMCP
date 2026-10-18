@@ -38,7 +38,7 @@ function hfig(value: string, unit: string): Safe {
 }
 
 function closeLink(href: string): Safe {
-  return html`<a class="btn icon" href="${href}" aria-label="close the sheet" title="close (Esc)">×</a>`;
+  return html`<a class="btn icon" href="${href}" data-nav="close" aria-label="close the sheet" title="close (Esc)">×</a>`;
 }
 
 function pinBtn(p: StockPlace): Safe {
