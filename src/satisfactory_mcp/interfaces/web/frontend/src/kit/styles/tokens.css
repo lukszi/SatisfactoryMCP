@@ -95,6 +95,9 @@
   --t-emph-w: var(--w-bold);
   --t-ctl-lh: var(--lh-control);
   --t-chip-lh: var(--lh-chip);
+  /* a chip's box: on its own, and inside a text line */
+  --chip-h: 18px;
+  --chip-h-in: 14px;
 
   /* space, radius, edges */
   --sp-0: 2px;
