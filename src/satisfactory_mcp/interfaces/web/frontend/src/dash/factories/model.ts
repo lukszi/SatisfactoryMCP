@@ -11,7 +11,7 @@ export const SORTS: [FactorySort, string][] = [
   ["need", "need action"],
   ["name", "name"],
   ["uptime", "uptime"],
-  ["draw", "drawing now"],
+  ["draw", "power consumption"],
 ];
 
 export function sortFactories(rows: FactoryHealthRow[], by: FactorySort): FactoryHealthRow[] {

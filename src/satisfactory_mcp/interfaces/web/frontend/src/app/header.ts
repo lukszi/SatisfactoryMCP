@@ -15,7 +15,7 @@ import { el } from "../kit/dom";
 import { mw, phaseText } from "../kit/format";
 import { loadOne } from "./load";
 import { drawPlayer } from "../map/drawn/markers";
-import { biomassLine, biomassQuery, onBiomass, ratedSummary, readGeneration, readMeasuredDraw } from "../dash/power/readings";
+import { biomassLine, biomassQuery, onBiomass, ratedSummary, readCapacity, readConsumption } from "../dash/power/readings";
 import { registerFetch } from "./registry";
 import { WORDS } from "../kit/words";
 
@@ -25,15 +25,15 @@ function drawHeader(summary: SummaryResponse): void {
   holdToken(summary.save_token);
   drawPlayer(summary.player);
   const rated = ratedSummary(summary);
-  const measured = readMeasuredDraw(rated);
-  const generation = readGeneration(rated);
+  const measured = readConsumption(rated);
+  const capacity = readCapacity(rated);
   const parts = [summary.header.session_name];
   const phase = phaseText(summary.progression.game_phase);
   if (phase) parts.push(phase);
-  parts.push(measured.value + " " + WORDS.measuredDraw + " / " + generation.value + " " + WORDS.generation);
+  parts.push(measured.value + " " + WORDS.consumption + " / " + capacity.value + " " + WORDS.capacity);
   const span = el("summary");
   span.textContent = parts.join(" · ");
-  const power = [measured.why || measured.value + " " + WORDS.measuredDraw, mw(summary.power.draw_mw) + " " + WORDS.nameplateDraw, generation.value + " " + WORDS.generation];
+  const power = [measured.why || measured.value + " " + WORDS.consumption, mw(summary.power.draw_mw) + " " + WORDS.maxConsumption, capacity.value + " " + WORDS.capacity];
   const biomass = biomassLine(summary.power);
   if (biomass) power.push(biomass);
   span.title = parts.join(" · ") + "\n" + summary.age_note + "\npower: " + power.join("; ");

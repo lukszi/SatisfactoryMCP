@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { circuitUncounted, GENERATOR_UNWIRED, problemsOf, utilScale, worldUncounted, worstFirst } from "../../src/dash/power/model";
+import { buildOut, circuitDraws, circuitUncounted, GENERATOR_UNWIRED, problemsOf, utilScale, worldUncounted, worstFirst } from "../../src/dash/power/model";
 import { supplyBlock, utilBar } from "../../src/dash/power/supply";
 
-import type { CircuitRow, CircuitsResponse, Ledger, MachineRef, StarvedGenerator } from "../../src/api/shapes";
+import type { CircuitRow, CircuitsResponse, GeneratorCandidate, Ledger, MachineRef, StarvedGenerator } from "../../src/api/shapes";
 
 function ledger(over: Partial<Ledger>): Ledger {
   const base: Ledger = {
@@ -115,6 +115,11 @@ describe("circuits", () => {
     expect(utilScale([circuit(0, { generation_mw: 100, draw_mw: 400 })])).toBe(1.5);
   });
 
+  it("reads a starved circuit against what it can run", () => {
+    const row = circuit(0, { generation_mw: 100, starved_generation_mw: 100, draw_mw: 10, measured_draw_mw: 10 });
+    expect(utilBar(row, 1, false).safeHtml).toContain("every generator starved");
+  });
+
   it("marks draw above generation as over", () => {
     const bar = utilBar(circuit(0, { generation_mw: 100, draw_mw: 120, measured_draw_mw: 80 }), 1.2, false).safeHtml;
     expect(bar).toContain('class="np ov"');
@@ -126,15 +131,23 @@ describe("circuits", () => {
 describe("supply block", () => {
   it("hatches the starved part of each generator type and draws the generation line", () => {
     const gens = [{ name: "Coal Generator", count: 4, mw: 300, starved_mw: 75, icon: null }];
-    const out = supplyBlock({ gens, gen: 300, np: 360, ms: 200 }, [["3 paused", "tip"]]).safeHtml;
+    const out = supplyBlock({ gens, gen: 300, cap: 225, np: 360, ms: 200 }, [["3 paused", "tip"]]).safeHtml;
     expect(out).toContain('<i class="ha" style="flex:75"></i>');
     expect(out).toContain('class="gl"');
     expect(out).toContain('class="v bad-t"');
     expect(out).toContain("not counted");
   });
 
+  it("puts the capacity line at production capacity, not at the rated length", () => {
+    const gens = [{ name: "Coal Generator", count: 4, mw: 300, starved_mw: 150, icon: null }];
+    const out = supplyBlock({ gens, gen: 300, cap: 150, np: 120, ms: 100 }, []).safeHtml;
+    expect(out).toContain('style="left:50.00%"');
+    expect(out).toContain("150 <span>MW</span>");
+    expect(out).not.toContain("bad-t");
+  });
+
   it("draws no line and no overdraw when generation is unknown", () => {
-    const out = supplyBlock({ gens: [], gen: 0, np: 50, ms: 40, unknown: true }, []).safeHtml;
+    const out = supplyBlock({ gens: [], gen: 0, cap: 0, np: 50, ms: 40, unknown: true }, []).safeHtml;
     expect(out).not.toContain('class="gl"');
     expect(out).not.toContain(" ov");
     expect(out).toContain("no generator");
@@ -148,5 +161,32 @@ describe("supply block", () => {
     });
     expect(worldUncounted(data).map((u) => u[0])).toEqual(["biomass +120 MW", "75 MW starved", "41 unmeasured", "3 paused", "4 on no wire"]);
     expect(circuitUncounted(circuit(0, {}, { unmodellable: ["Build_X_C"] })).map((u) => u[0])).toEqual(["1 generator type unrated"]);
+  });
+});
+
+describe("circuit page", () => {
+  const works = { name: "Works", draw_mw: 30, measured_draw_mw: 10 };
+  const mill = { name: "Mill", draw_mw: 60, measured_draw_mw: 20 };
+
+  it("splits the draw by factory, most maximum consumption first, the remainder last", () => {
+    const row = circuit(0, { draw_mw: 100, measured_draw_mw: 40 }, { factories: [works, mill] });
+    expect(circuitDraws(row)).toEqual([
+      { name: "Mill", ms: 20, np: 60 },
+      { name: "Works", ms: 10, np: 30 },
+      { name: null, ms: 10, np: 10 },
+    ]);
+    const whole = circuit(0, { draw_mw: 90, measured_draw_mw: 30 }, { factories: [works, mill] });
+    expect(circuitDraws(whole).map((d) => d.name)).toEqual(["Mill", "Works"]);
+  });
+
+  const candidate = (name: string, mw: number, runnable: boolean): GeneratorCandidate => ({ name, icon: null, mw, runnable, verdict: "", why: "", fuel: null });
+  const candidates = [candidate("Nuclear Power Plant", 2500, false), candidate("Fuel-Powered Generator", 250, true), candidate("Coal-Powered Generator", 75, true)];
+
+  it("builds the biggest runnable type, counting short once starved generators are fed", () => {
+    const row = circuit(0, { generation_mw: 500, starved_generation_mw: 250, draw_mw: 760, measured_draw_mw: 300 });
+    const out = buildOut(row, candidates)!;
+    expect([out.pick.name, out.n, Math.round(out.short), out.now]).toEqual(["Fuel-Powered Generator", 2, 260, false]);
+    expect(buildOut(circuit(0, { generation_mw: 500, draw_mw: 400 }), candidates)).toBeNull();
+    expect(buildOut(row, [candidate("Nuclear Power Plant", 2500, false)])).toBeNull();
   });
 });

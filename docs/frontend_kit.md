@@ -101,7 +101,7 @@ two across. The order is the DOM order on both, picked at render by a 600 px med
 - **Factories**: machines and need action in the heading; one cell per named factory, worst
   first (need action, then blocked, then most machines, lowest uptime): the factory's icon
   (`icon-choice.ts`), name, the need-action count or uptime, the state mix bar.
-- **Power**: headroom now as the figure and headroom if all run under it (`headroomFigs`); the
+- **Power**: headroom now as the figure and headroom at maximum consumption under it (`headroomFigs`); the
   three worst circuits as label, utilisation bar (`utilBar`, one shared scale) and headroom
   now, as on Power, then "+N more".
 - **Do next** (`model.ts` `todoOf`): power problems that stop machines (no wire, no
@@ -123,22 +123,41 @@ two across. The order is the DOM order on both, picked at render by a 600 px med
 
 ## Power
 
-`dash/power/` is the Power page (`#dash=power`) and a circuit's page (`#dash=power/<n>`), both
-from `/api/power/circuits` (circuit pages also read factory health for the factory rows).
+`dash/power/` is the Power page (`#dash=power`, `page.ts`) and a circuit's page
+(`#dash=power/<n>`, `circuit.ts`), both from `/api/power/circuits`; the circuit page also reads
+factory health, and `/api/power/generators` when its circuit is short.
 
-- **Supply and demand** (`supply.ts`): three bars on one scale, the largest of generation and
-  both draws. Generation is segmented by generator type, each type's starved MW hatched; "if
-  all run" is nameplate draw (every machine flat out at its saved clock), "drawing now" the
-  measured draw. A white line marks generation, so the gap to it is the headroom; draw past it
-  turns red. Under the bars, "not counted" chips with tooltips name what the figures leave
-  out: hand-fed biomass, starved MW, unmeasured machines (charged in full), paused buildings,
-  what stands on no wire, and generator types game data cannot rate (no line then).
+- **Words**: the game's circuit terms, lowercase (`kit/words.ts`): **production capacity**
+  (rated generation less what starved generators cannot run), **power consumption** (measured;
+  machines without a monitor count in full), **maximum consumption** (every machine flat out at
+  its saved clock; "max consumption" in a row's second line and on factory cards). Headroom
+  stays ours: **headroom now** and **at maximum consumption**.
+- **Starved generation never counts.** The server leaves it out of `capacity_mw` and both
+  headrooms; the capacity line, overdraw, the circuit bars' 100% and the worst-first rank use
+  it. The capacity bar keeps the rated length with each type's starved part hatched.
+- **Supply and demand** (`supply.ts`): three bars on one scale, the largest of rated
+  generation and both consumptions. Production capacity is segmented by generator type; a
+  white line marks it, so the gap to it is the headroom, and consumption past it turns red.
+  Under the bars, "not counted" chips with tooltips name what the figures leave out: hand-fed
+  biomass, starved MW, unmeasured machines, paused buildings, what stands on no wire, and
+  generator types game data cannot rate (no line then).
 - **Problems** (`model.ts` `problemsOf`): one building with one fault at one place is one row;
   no wire and no generator first, starved generators next, generators on no wire last and
   muted (they are not a fault, just left out).
 - **Circuits**: worst first (no generator, short now, a starved generator, then least
-  headroom per MW generated). The bar's 100% is that circuit's own generation, and every bar
-  shares one overflow room (`utilScale`, up to 150%), so overdraw reads alike across rows.
+  headroom per MW of capacity). The bar's 100% is that circuit's own production capacity, and
+  every bar shares one overflow room (`utilScale`, up to 150%), so overdraw reads alike.
+- **Circuit page**: a ledger, no tabs. A slim header ("circuit N", the numbering caveat as its
+  tooltip, at most one chip, ◎, one note line of counts); the supply-and-demand card with
+  headroom in its heading and both consumption rows split per named factory (`CircuitRow.factories`,
+  each factory's draw on this circuit only), the remainder "outside named factories" last;
+  "do next" (feed a starved generator, wire machines on no generator, build the biggest
+  generator type the world can run when consumption passes rated generation); then generators |
+  draw by factory, 2 : 3 on desktop, stacked on phones. Hover or focus on a consumption segment,
+  or on the build row's name, opens a popover (`seg-tip.ts`): a factory's two consumptions with
+  their share of the circuit and its paused and need-action machines; or every generator type,
+  biggest first, with its verdict. Battery storage is not drawn: the projection does not carry
+  `mPowerStore`.
 - `readings.ts` reads a ledger for every surface (the header, the map's side panel, the
   planner); `ledger-bar.ts` is the compact DOM bar the side panel uses.
 
@@ -150,8 +169,8 @@ from `/api/power/circuits` (circuit pages also read factory health for the facto
 - **List** (`list.ts`, `clusters.ts`): the unnamed clusters first, compact (name field, what
   they make, machine count, ◎, name, ⋯ graph / skip); then the named factories as equal-height
   cards (status edge, icon, name, "N machines" with power chips, need-action count or uptime,
-  drawing now and if all run, the state mix bar on the card's bottom edge, an expand with the
-  worst machines). The sort select (need action, name, uptime, drawing now) groups into "need
+  power consumption and max consumption, the state mix bar on the card's bottom edge, an expand
+  with the worst machines). The sort select (need action, name, uptime, power consumption) groups into "need
   action" and "running" when sorting by need action.
 - **Icon** (`icon-choice.ts`): the main product the health read names (`product_icon`: of the
   surpluses a recipe makes, the highest sink value, then the larger surplus; an extraction-only

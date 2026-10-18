@@ -1,19 +1,16 @@
-/* The Power lists: problems, circuits and a circuit's factories, with their ◎ map buttons and
- * row links wired by delegation on the page root. */
+/* The Power lists: problems and circuits, with their ◎ map buttons (the circuit page shares
+ * them) and row links wired by delegation on the page root. */
 
 import { cls, html, type Safe } from "../../kit/html";
-import { acts, entry, identity, list, nameLine } from "../../kit/ui/entry";
+import { acts, entry, identity, list } from "../../kit/ui/entry";
 import { chip } from "../../kit/ui/marks";
 import { icon } from "../../kit/ui/text";
 import { btn } from "../../kit/ui/controls";
 import { counted, WORDS } from "../../kit/words";
-import { mw, pct } from "../../kit/format";
 import { hashFor } from "../../map/map";
 import { showCircuit, showFactory } from "../../map/panel";
 import { showMachine } from "../../map/map-highlight";
 import { leaveDashThen } from "../actions";
-import { factoryDash } from "../factories/address";
-import { factoryLead, iconLead } from "../factories/icon-choice";
 import { circuitDark, factoriesOn, ratedCircuit, readHeadroomFull, readHeadroomNow, unrated } from "./readings";
 import { utilBar } from "./supply";
 import { utilScale, worstFirst, type Problem } from "./model";
@@ -28,7 +25,7 @@ function mapBtn(key: string, label: string, action: () => void): Safe {
   return btn("◎", { extra: "icon", title: "show " + label + " on the map", data: { map: key } });
 }
 
-function noMap(): Safe {
+export function noMap(): Safe {
   return html`<span class="btn-gap" aria-hidden="true"></span>`;
 }
 
@@ -73,7 +70,7 @@ export function circuitList(rows: CircuitRow[]): Safe {
     const ctx = html`${circuitChips(row)} ${factoriesOn(row)}`;
     return entry(
       { tone, href },
-      html`${identity("circuit " + (row.index + 1), ctx, href)}${utilBar(row, scale, unrated(rated))}${headroomCell(now.value, now.bad, "now", "now", now.why || WORDS.headroomNow)}${headroomCell(full.value, full.bad, "sm", WORDS.ifAllRun, full.why || "headroom " + WORDS.ifAllRun + ": " + WORDS.ifAllRunTip)}${acts(circuitMap(row))}`
+      html`${identity("circuit " + (row.index + 1), ctx, href)}${utilBar(row, scale, unrated(rated))}${headroomCell(now.value, now.bad, "now", "now", now.why || WORDS.headroomNow)}${headroomCell(full.value, full.bad, "sm", "at maximum", full.why || WORDS.headroomFull + ": " + WORDS.maxConsumptionTip)}${acts(circuitMap(row))}`
     );
   });
   return list("pcirc", "stacked", entries, "nolead");
@@ -82,12 +79,6 @@ export function circuitList(rows: CircuitRow[]): Safe {
 function whereLine(p: Problem): Safe {
   const place = p.where.dash ? html`<a href="${hashFor(p.where.dash)}">${p.where.where}</a>` : p.where.where;
   return html`${p.cause}${p.cause && p.where.where ? " · " : ""}${place}`;
-}
-
-function problemMap(p: Problem, key: string): Safe {
-  const at = p.refs.find((r) => r.x_m !== null && r.y_m !== null);
-  if (!at) return noMap();
-  return mapBtn(key, p.building + " (" + p.kind + ")", () => showMachine(at.instance, p.building, at.x_m!, at.y_m!, { layers: ["machines"] }));
 }
 
 export function problemList(problems: Problem[]): Safe {
@@ -103,21 +94,14 @@ export function problemList(problems: Problem[]): Safe {
   return list("prob", "stacked", entries);
 }
 
-/** A circuit's named factories, as the factory health read has them. */
-export function factoryList(names: string[], health: FactoryHealthRow[]): Safe {
-  const entries = names.map(function (name) {
-    const row = health.find((r) => r.name === name);
-    const href = hashFor(factoryDash(name, ""));
-    const link = html`<a class="name" href="${href}" title="${name}">${name}</a>`;
-    const ctx = row ? mw(row.measured_mw) + " " + WORDS.drawingNow : "";
-    const metric = !row
-      ? html`<div class="metric none"><b>–</b></div>`
-      : row.actionable
-        ? html`<div class="metric bad" title="${WORDS.needAction}"><b>${row.actionable}</b><span>${WORDS.needAction}</span></div>`
-        : html`<div class="metric"><b>${pct(row.uptime)}</b><span>up</span></div>`;
-    const map = row && row.bbox_m ? mapBtn("factory:" + name, name, () => showFactory(name)) : noMap();
-    const lead = row ? factoryLead(row) : iconLead(null, "");
-    return entry({ tone: row && row.actionable ? "bad" : "", href }, html`${lead}<div class="id">${nameLine(link, ctx)}</div>${metric}${acts(map)}`);
-  });
-  return list("ofac", "stacked", entries);
+/** ◎ for a named factory, or the empty slot when it has no extent to show. */
+export function factoryMap(name: string, health: FactoryHealthRow | undefined): Safe {
+  return health && health.bbox_m ? mapBtn("factory:" + name, name, () => showFactory(name)) : noMap();
+}
+
+/** ◎ for one problem group: its first placed machine. */
+export function problemMap(p: Problem, key: string): Safe {
+  const at = p.refs.find((r) => r.x_m !== null && r.y_m !== null);
+  if (!at) return noMap();
+  return mapBtn(key, p.building + " (" + p.kind + ")", () => showMachine(at.instance, p.building, at.x_m!, at.y_m!, { layers: ["machines"] }));
 }

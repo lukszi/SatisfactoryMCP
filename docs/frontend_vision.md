@@ -537,8 +537,9 @@ fragment key reuses all of that, and a bookmark still lands on the view.
   and `c` into every fragment it makes while the map is showing. Back and Forward are
   unchanged.
 - **Headroom is two metrics.** "Actual usage and potential usage": **headroom now** is
-  generation minus measured draw, **headroom at full rate** is generation minus nameplate
-  draw. Each tile is red when negative, and neither leads. The separate "draw, measured" tile
+  production capacity minus power consumption, **headroom at maximum consumption** is production
+  capacity minus maximum consumption; production capacity leaves out what starved generators
+  cannot run (2026-10-17). Each tile is red when negative, and neither leads. The separate "draw, measured" tile
   is gone from the Overview: its figures are the two subtitles and its bar moved into the
   generation tile. Power and the circuit detail use the same two tiles, and the circuits
   table uses the same two names.
@@ -1264,9 +1265,10 @@ The vocabulary that follows from these, one term per concept, lives in `kit/word
 - **power problems** are no wire, no generator and starved generator. They are never folded
   into the need-action count, on the map, the panel or the dashboard.
 - **unnamed cluster** is what Detect offers, what the map layer draws and what Settings filters.
-- The power ledger says **generation**, **measured draw**, **nameplate draw**, **headroom now**
-  and **headroom at full rate** (always signed), and counts **poles and towers**. The header
-  uses the same words: "measured draw / generation".
+- The power ledger uses the game's circuit terms (2026-10-17): **production capacity**,
+  **power consumption**, **maximum consumption** ("max consumption" when short), then **headroom
+  now** and **headroom at maximum consumption** (always signed), and counts **poles and
+  towers**. The header uses the same words: "power consumption / production capacity".
 - Status words are lowercase and coloured by token (locked, looted, unlocked, done); upper
   case is only for tag chips.
 - Copy is lowercase, without a trailing full stop, and uses a colon or semicolon rather than a

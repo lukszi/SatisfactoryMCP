@@ -9,13 +9,13 @@ import type { CircuitRow, CircuitsResponse, Ledger, MachineRef, StarvedGenerator
 
 export const NONE = "–";
 
-const UNRATED = "generation not modelled";
+const UNRATED = "production capacity not modelled";
 
 const UNMEASURED = "no machine measured";
 
 export type Figures = Pick<
   Ledger,
-  "generation_mw" | "draw_mw" | "measured_draw_mw" | "headroom_mw" | "measured_headroom_mw" | "monitored" | "unmonitored" | "biomass_mw" | "biomass_generators"
+  "generation_mw" | "capacity_mw" | "draw_mw" | "measured_draw_mw" | "headroom_mw" | "measured_headroom_mw" | "monitored" | "unmonitored" | "biomass_mw" | "biomass_generators"
 >;
 
 export interface Rated {
@@ -73,13 +73,13 @@ export function headroom(value: number): string {
   return mw(value, { signed: true });
 }
 
-export function readGeneration(rated: Rated): Reading {
+export function readCapacity(rated: Rated): Reading {
   if (unrated(rated)) return { value: NONE, bad: false, why: UNRATED };
   if (rated.dark) return { value: WORDS.noGenerator, bad: true, why: "" };
-  return { value: mw(rated.ledger.generation_mw), bad: false, why: "" };
+  return { value: mw(rated.ledger.capacity_mw), bad: false, why: "" };
 }
 
-export function readMeasuredDraw(rated: Rated): Reading {
+export function readConsumption(rated: Rated): Reading {
   if (unmeasured(rated)) return { value: NONE, bad: false, why: UNMEASURED };
   return { value: mw(rated.ledger.measured_draw_mw), bad: false, why: "" };
 }

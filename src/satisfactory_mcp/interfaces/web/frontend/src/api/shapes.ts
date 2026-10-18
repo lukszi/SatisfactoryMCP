@@ -153,6 +153,8 @@ export type Ledger = Schema["Ledger"];
 export type StarvedGenerator = Schema["StarvedGenerator"];
 export type MachineRef = Schema["MachineRef"];
 export type CircuitRow = Schema["CircuitRow"];
+export type FactoryDraw = Schema["FactoryDraw"];
+export type GeneratorCandidate = Schema["GeneratorCandidate"];
 export type CircuitsResponse = Body<"CircuitsResponse">;
 
 /* ------------------------------------------------------- /api/progress/milestones */
