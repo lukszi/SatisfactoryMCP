@@ -15,7 +15,7 @@
 }
 
 .l-cand .entry {
-  --cols: minmax(var(--col-name), 1fr) minmax(0, 1.5fr) var(--col-num-l) auto;
+  --cols: minmax(var(--col-name), 1fr) minmax(0, 1.5fr) var(--col-num-l) var(--col-acts-pin);
   padding-left: calc(var(--sp-3) + var(--edge));
 }
 
@@ -70,7 +70,7 @@
 }
 
 .l-fac .entry {
-  --cols: var(--col-icon-l) minmax(0, 1fr) var(--col-num-l) auto;
+  --cols: var(--col-icon-l) minmax(0, 1fr) var(--col-num-l) calc(var(--col-glyphs) + var(--sp-1) + var(--ic-s));
 }
 
 .l-fac .entry[data-href] {

@@ -2,7 +2,7 @@
  * them) and row links wired by delegation on the page root. */
 
 import { cls, html, type Safe } from "../../kit/html";
-import { acts, entry, identity, list } from "../../kit/ui/entry";
+import { actSlots, entry, identity, list } from "../../kit/ui/entry";
 import { chip } from "../../kit/ui/marks";
 import { icon } from "../../kit/ui/text";
 import { btn } from "../../kit/ui/controls";
@@ -26,7 +26,7 @@ function mapBtn(key: string, label: string, action: () => void): Safe {
 }
 
 export function noMap(): Safe {
-  return html`<span class="btn-gap" aria-hidden="true"></span>`;
+  return html``;
 }
 
 /** Row clicks follow the row's link; ◎ leaves for the map. */
@@ -70,7 +70,7 @@ export function circuitList(rows: CircuitRow[]): Safe {
     const ctx = html`${circuitChips(row)} ${factoriesOn(row)}`;
     return entry(
       { tone, href },
-      html`${identity("circuit " + (row.index + 1), ctx, href)}${utilBar(row, scale, unrated(rated))}${headroomCell(now.value, now.bad, "now", "now", now.why || WORDS.headroomNow)}${headroomCell(full.value, full.bad, "sm", "at maximum", full.why || WORDS.headroomFull + ": " + WORDS.maxConsumptionTip)}${acts(circuitMap(row))}`
+      html`${identity("circuit " + (row.index + 1), ctx, href)}${utilBar(row, scale, unrated(rated))}${headroomCell(now.value, now.bad, "now", "now", now.why || WORDS.headroomNow)}${headroomCell(full.value, full.bad, "sm", "at maximum", full.why || WORDS.headroomFull + ": " + WORDS.maxConsumptionTip)}${actSlots(null, { pin: circuitMap(row), more: false })}`
     );
   });
   return list("pcirc", "stacked", entries, "nolead");
@@ -88,7 +88,7 @@ export function problemList(problems: Problem[]): Safe {
     const title = p.refs.map((r) => r.instance).join(", ");
     return entry(
       { tone: p.fine ? "" : "bad", title },
-      html`${icon(p.icon, p.building)}${identity(p.building, whereLine(p))}<div class="chips">${chip(p.kind, p.fine ? "muted" : "bad")}</div><div class="metric"><b>${n}</b><span>${unit}</span></div>${acts(problemMap(p, "problem:" + i))}`
+      html`${icon(p.icon, p.building)}${identity(p.building, whereLine(p))}<div class="chips">${chip(p.kind, p.fine ? "muted" : "bad")}</div><div class="metric"><b>${n}</b><span>${unit}</span></div>${actSlots(null, { pin: problemMap(p, "problem:" + i), more: false })}`
     );
   });
   return list("prob", "stacked", entries);

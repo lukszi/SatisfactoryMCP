@@ -433,7 +433,7 @@ a.sg {
   }
 
   .l-cdraw .entry {
-    --cols: var(--col-icon) minmax(0, 1fr) auto var(--col-act) !important;
+    --cols: var(--col-icon) minmax(0, 1fr) var(--col-num-l) var(--col-act) !important;
   }
 
   .l-cgen .entry > .metric,

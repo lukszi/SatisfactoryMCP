@@ -8,7 +8,7 @@ import { count, perMin } from "../../kit/format";
 import { html, type Safe } from "../../kit/html";
 import { openMenu } from "../../kit/overlay/menu";
 import { btn, busyBtn, moreBtn } from "../../kit/ui/controls";
-import { acts, entry, list } from "../../kit/ui/entry";
+import { actSlots, entry, list } from "../../kit/ui/entry";
 import { chip } from "../../kit/ui/marks";
 import { dashH, emptyLine, note, toolrow } from "../../kit/ui/text";
 import { fail, friendlyError, notify } from "../../kit/toast";
@@ -195,11 +195,10 @@ function candidateEntry(row: CandidateRow): Safe {
   const ctx = html`${!row.confident && chip("guess", "muted", "no clear end product, so this name is a guess")} ${SOURCE[row.fed] || row.fed}${row.region ? " · " + row.region : ""}`;
   const input = html`<input type="text" class="${row.confident ? "" : "guess"}" data-candidate="${row.index}" value="${value}" maxlength="${NAME_MAX}" spellcheck="false" aria-label="${"name for the unnamed cluster of " + counted(row.machines, "machine")}"${problem ? html` aria-invalid="true" title="${problem}"` : ""}>`;
   const id = html`<div class="id">${input}<div class="ctx">${problem ? html`<span class="bad-t">${problem}</span>` : ctx}</div></div>`;
-  const map = row.bbox_m ? btn("◎", { extra: "icon", title: "show it on the map, ringed", data: { cact: "map", ci: String(row.index) } }) : html`<span class="btn-gap" aria-hidden="true"></span>`;
-  const name = busyBtn(detect.saving === row.index ? "naming…" : "name", { title: "save this name as a factory", disabled: detect.saving >= 0 });
+  const map = row.bbox_m ? btn("◎", { extra: "icon", title: "show it on the map, ringed", data: { cact: "map", ci: String(row.index) } }) : "";
+  const name = busyBtn(detect.saving === row.index ? "naming…" : "name", { title: "save this name as a factory", disabled: detect.saving >= 0, data: { cact: "name", ci: String(row.index) } });
   const more = html`<span data-ci="${row.index}">${moreBtn("cluster of " + row.machines, ["graph", skipped ? "unskip" : "skip"])}</span>`;
-  const nameBtn = html`<span data-cact="name" data-ci="${row.index}">${name}</span>`;
-  return entry({ extra: skipped ? "skipped" : "" }, html`${id}${makes(row)}<div class="metric"><b>${count(row.machines)}</b><span>machines</span></div>${acts(html`${map}${nameBtn}${more}`)}`);
+  return entry({ extra: skipped ? "skipped" : "" }, html`${id}${makes(row)}<div class="metric"><b>${count(row.machines)}</b><span>machines</span></div>${actSlots(name, { pin: map, more })}`);
 }
 
 function filterLine(data: CandidatesResponse, skipped: number): Safe {

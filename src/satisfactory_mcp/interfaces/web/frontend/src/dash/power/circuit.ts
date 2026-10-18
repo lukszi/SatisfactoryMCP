@@ -3,7 +3,7 @@
  * generators | draw by factory on the same MW scale. docs/frontend_kit.md, "Power". */
 
 import { html, type Safe } from "../../kit/html";
-import { acts, entry, list } from "../../kit/ui/entry";
+import { actSlots, entry, list } from "../../kit/ui/entry";
 import { chip } from "../../kit/ui/marks";
 import { blockHead, dashH, emptyLine, icon, pageHead } from "../../kit/ui/text";
 import { count, mw } from "../../kit/format";
@@ -132,7 +132,7 @@ function problemRow(c: Ctx, p: Problem, i: number): Safe {
   const unit = starved ? (n === 1 ? "generator" : "generators") : n === 1 ? "machine" : "machines";
   const ctx = [count(n) + " " + unit, p.cause, p.where.where].filter(Boolean).join(" · ");
   const metric = starved ? html`<div class="metric"><b>+${count(Math.round(starvedMw(c.row, p)))}</b><span>MW</span></div>` : html`<div class="metric"><b>${count(n)}</b><span>${unit}</span></div>`;
-  return entry({ tone: "bad" }, html`${icon(p.icon, p.building)}<div class="id"><span class="name">${name}</span><div class="ctx">${ctx}</div></div><div class="chips">${chip(p.kind, "bad")}</div>${metric}${acts(problemMap(p, "do:" + i))}`);
+  return entry({ tone: "bad" }, html`${icon(p.icon, p.building)}<div class="id"><span class="name">${name}</span><div class="ctx">${ctx}</div></div><div class="chips">${chip(p.kind, "bad")}</div>${metric}${actSlots(null, { pin: problemMap(p, "do:" + i), more: false })}`);
 }
 
 function buildRow(c: Ctx): Safe | null {
@@ -147,7 +147,7 @@ function buildRow(c: Ctx): Safe | null {
   const passes = (out.now ? WORDS.consumption : WORDS.maxConsumption) + " passes rated generation";
   return entry(
     { tone: "bad" },
-    html`${icon(g.icon, g.name)}<div class="id"><span class="name" tabindex="0"${tipAttrs("which", whichTip(slot.data))}>${what}</span><div class="ctx">${ctx}</div></div><div class="chips">${chip("short " + mw(out.short), "bad", passes)}</div><div class="metric"><b>+${count(out.n * g.mw)}</b><span>MW</span></div>${acts(noMap())}`
+    html`${icon(g.icon, g.name)}<div class="id"><span class="name" tabindex="0"${tipAttrs("which", whichTip(slot.data))}>${what}</span><div class="ctx">${ctx}</div></div><div class="chips">${chip("short " + mw(out.short), "bad", passes)}</div><div class="metric"><b>+${count(out.n * g.mw)}</b><span>MW</span></div>${actSlots(null, { pin: "", more: false })}`
   );
 }
 
@@ -181,7 +181,7 @@ function drawList(c: Ctx): Safe {
     const bar = html`<div class="ubar" title="${title}"><i class="${d.off ? "np off" : "np"}" style="width:${pctW(c.scale(d.np))}"></i><i class="ms" style="width:${pctW(c.scale(d.ms))}"></i></div>`;
     const metric = html`<div class="metric"><b>${count(Math.round(d.ms))}</b><span>MW</span><span class="line2">${count(Math.round(d.np))} ${WORDS.maxConsumptionShort}</span></div>`;
     const map = d.name === null ? noMap() : factoryMap(d.name, health);
-    return entry({ href: d.name === null ? undefined : factoryHref(d.name) }, html`${lead}<div class="id">${name}</div>${bar}${metric}${acts(map)}`);
+    return entry({ href: d.name === null ? undefined : factoryHref(d.name) }, html`${lead}<div class="id">${name}</div>${bar}${metric}${actSlots(null, { pin: map, more: false })}`);
   });
   return html`<section>${dashH("draw by factory", rows.length)}${rows.length ? list("cdraw", "stacked", rows) : emptyLine("nothing draws")}</section>`;
 }
