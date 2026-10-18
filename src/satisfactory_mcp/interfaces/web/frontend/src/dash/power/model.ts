@@ -110,9 +110,11 @@ export function circuitUncounted(row: CircuitRow): Uncounted[] {
   return ledgerChips(row.ledger, row.ledger.paused, row.unmodellable);
 }
 
-/** One slice of a circuit's draw: a named factory, or (name null) what stands outside them. */
+/** One slice of a circuit's draw: a named factory, or (name null) what stands outside them,
+ *  or (`off`) what stands behind a power switch standing off. */
 export interface DrawSlice {
   name: string | null;
+  off?: boolean;
   /** Power consumption, measured. */
   ms: number;
   /** Maximum consumption. */
@@ -125,8 +127,10 @@ export function circuitDraws(row: CircuitRow): DrawSlice[] {
   const named: DrawSlice[] = row.factories.map((f) => ({ name: f.name, ms: f.measured_draw_mw, np: f.draw_mw }));
   named.sort((a, b) => b.np - a.np || b.ms - a.ms);
   const ms = row.ledger.measured_draw_mw - named.reduce((sum, x) => sum + x.ms, 0);
-  const np = row.ledger.draw_mw - named.reduce((sum, x) => sum + x.np, 0);
+  const off = row.ledger.switched_off_draw_mw;
+  const np = row.ledger.draw_mw - off - named.reduce((sum, x) => sum + x.np, 0);
   if (ms > 0.5 || np > 0.5) named.push({ name: null, ms: Math.max(0, ms), np: Math.max(0, np) });
+  if (off > 0) named.push({ name: null, off: true, ms: 0, np: off });
   return named;
 }
 

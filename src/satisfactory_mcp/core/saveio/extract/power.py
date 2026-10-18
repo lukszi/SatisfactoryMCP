@@ -18,7 +18,7 @@ from .readers import to_float
 if TYPE_CHECKING:
     from .parser import SaveValue
 
-__all__ = ["PoleActor", "WireSpan", "power_network", "wire_span"]
+__all__ = ["PoleActor", "WireSpan", "hidden_power", "power_network", "wire_span"]
 
 #: ``(class, instanceName, pos, yaw)`` per pole.
 PoleActor: TypeAlias = tuple[str, str, Position | None, float | None]
@@ -94,6 +94,39 @@ def _wire_edges(
         span = wire_geometry.get(str(path).rsplit(".", 1)[-1])
         wires.append(_wire_row(span, a_owner, b_owner, actor_positions))
     return edges, wires
+
+
+def hidden_power(links: list[tuple[str, str]], actors: Interner) -> list[list[int]]:
+    """``graph["hidden_power"]``: buildables the game joins with no wire (§6.12b), one row of
+    actor indices per group. ``links`` are ``mHiddenConnections`` pairs of component paths.
+
+    A buildable is one node however many connections it has. Anything else keeps each
+    component apart: the railroad subsystem owns one third rail per rail network, and a
+    locomotive's shoe or a hover pack only taps one, so neither joins two groups.
+    """
+    parent: dict[str, str] = {}
+
+    def node(path: str) -> str:
+        owner = path.rsplit(".", 2)[-2]
+        return owner if owner.startswith("Build_") else path
+
+    def find(at: str) -> str:
+        while parent.setdefault(at, at) != at:
+            parent[at] = parent[parent[at]]
+            at = parent[at]
+        return at
+
+    for a, b in links:
+        parent[find(node(a))] = find(node(b))
+    groups: dict[str, set[str]] = {}
+    for at in list(parent):
+        if at.startswith("Build_"):
+            groups.setdefault(find(at), set()).add(at)
+    return [
+        [actors.intern(owner) for owner in sorted(members)]
+        for members in sorted(groups.values(), key=min)
+        if len(members) > 1
+    ]
 
 
 def _pole_table(pole_actors: list[PoleActor], actors: Interner, drops: Drops) -> PoleTable:

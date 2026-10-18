@@ -21,9 +21,11 @@
 }
 
 /* supply and demand: key | bar | value, one scale; the production-capacity line spans the three rows */
-.sd {
+.power-page {
   --hatch: 3px;
+}
 
+.sd {
   display: grid;
   grid-template-columns: var(--col-num-l) minmax(0, 1fr) var(--col-num-l);
   column-gap: var(--sp-3);
@@ -159,6 +161,17 @@
 .tr .ms,
 .ubar .ms {
   background: var(--ink-soft);
+}
+
+/* behind a power switch standing off: maximum consumption only, hatched in --off */
+.tr .np.off,
+.ubar .np.off,
+.sg.da.off > i {
+  background: repeating-linear-gradient(135deg, var(--off) 0 var(--hatch), transparent var(--hatch) calc(2 * var(--hatch)));
+}
+
+.sg.da.off .lb {
+  color: var(--muted);
 }
 
 .tr .np.ov,

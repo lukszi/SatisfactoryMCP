@@ -41,7 +41,7 @@ RUNNING_STATES = frozenset({"saturated", "intermittent"})
 #: The states where "no power" is still a live explanation. ``blocked`` and ``starved`` name
 #: a supply cause instead; ``stalled`` is where an unpowered block lands -- and also where a
 #: monitor that has not caught up lands, so it is never conclusive.
-DARK_STATES = frozenset({"stalled", "unmonitored"})
+DARK_STATES = frozenset({"stalled", "switched off", "unmonitored"})
 
 #: States reachable only by reading the productivity monitor. If none of a plan's machines
 #: land in one, the save carries no uptime evidence at all and the report has to say so

@@ -103,10 +103,11 @@ the wires supports exactly one claim, in two shapes:
 whose circuit is at 0 MW — none of these are in the file, and a machine some generator *can* reach
 is therefore never called unpowered no matter what the report otherwise says about it. A **power
 switch standing off** stops the walk, as it stops power in the game: since schema 25 the save's
-`mIsSwitchOn` is read (§6.12a), so a sub-circuit behind an off switch with no generator of its own
-is reported. A switch standing on joins its two sides. Rail power is the remaining blind spot, and
-it fails in the direction that over-reports: an outpost fed only through the track has no wire to a
-generator.
+`mIsSwitchOn` is read (§6.12a). A machine a generator would reach with every switch on is
+reported as **switched off** (`SWITCHED_OFF`, its own state, not actionable), not as `no generator`:
+the switch is a choice, not a wiring fault. One no generator reaches even then is still reported.
+A switch standing on joins its two sides. Since schema 26 rail power joins too (§6.12b), so an
+outpost fed only through the track is no longer reported.
 
 Two absences are also refused as findings. No graph supplied, no verdict. And **no generator
 anywhere in the projection**, which would make every actor in the world unreachable: that is a
@@ -944,8 +945,44 @@ saves. Every grid matched, with two exceptions, both rare and both outside switc
 
 - A **Lights Control Panel** has an upstream and a downstream connection in two game circuits,
   and the wire graph joins them. The downstream side carries lights, which no ledger counts.
-- **Rail power** has no wire: a train station or docking station takes power through the track,
-  so an outpost fed only by rail reads as a separate grid.
+- **Rail power** has no wire: a train station or docking station takes power through the track.
+  Schema 26 reads it (§6.12b).
+
+### 6.12b Rail power — schema 26
+
+Tracks carry no power connection and no wire. Each connected rail network has one invisible
+power connection, the third rail, and it belongs to the `RailroadSubsystem` actor rather than to
+any track. From the game's headers (`CommunityResources/Headers.zip`):
+
+- `FGRailroadSubsystem.h`: `FTrackGraph` holds `UPROPERTY( SaveGame ) ThirdRail`, "the third
+  rail the locomotives and stations connect to", one per track graph.
+- `FGBuildableRailroadTrack.h`: the third rail "is not unique per track segment but is the same
+  for all tracks in a graph". A track has no power member.
+- `FGCircuitConnectionComponent.h`: `UPROPERTY( SaveGame ) mHiddenConnections`, "the non-wired
+  connections to this". `mCircuitID` is not saved.
+
+In the save, every station's `PowerConnection` and every freight or fluid platform's
+`FGPowerConnection` lists `RailroadSubsystem.FGPowerConnectionComponent_<n>` in
+`mHiddenConnections`. Both ends write the link. A platform's hidden link is often its only power
+link. A locomotive's `SlidingShoe` links the same way. `mTrackGraphs` and `mTrackGraphID` are
+absent, so the hidden connections are the whole mapping from network to power.
+
+`graph["hidden_power"]` holds one row of actor indices per group of buildables joined that way.
+A `Build_` owner is one node. Any other owner keeps each component apart: the subsystem owns one
+third rail per network, and a locomotive's shoe or a hover pack's tether joins nothing.
+`build_graph` chains each row into power edges. Other hidden links between two buildables come
+along too, for example an elevator and its floor stops. `power["wires"]` is untouched and stays
+the twin of `graph["power"]`.
+
+Measured on two publicly shared saves from two worlds, against the game's own `FGPowerCircuit.mComponents`:
+
+| save | groups | stations and platforms a generator reaches, wires only | with hidden power |
+|---|---|---|---|
+| one | 8 (one rail network, plus modded farm plots) | 7 of 62 | 62 of 62 |
+| other | 4 (two rail networks, two elevators) | 2 of 34 | 34 of 34 |
+
+In both saves the game puts every one of them on the generators' circuit. The reference world
+has no rail, so its `hidden_power` is empty.
 
 ### 6.13 Crates — the inventory that is an event, not a place
 
@@ -1282,6 +1319,7 @@ pickle then disagrees with the code rather than merely being thinner.
 | 23 | adds `fittings` (pipe junctions, pumps, valves) and `facilities` (the HUB, sink, MAM and other one-off buildings), so the map can draw them |
 | 24 | adds `hypertubes` (§6.16), `hypertube_entrances` and `map_markers` (§6.17), so the map can draw them |
 | 25 | files power switches as `facilities` with `switch_on` and `switch_sides`, and gives Power Storage `stored_mwh` (§6.12a) |
+| 26 | adds `graph["hidden_power"]`: buildables joined with no wire, rail power above all (§6.12b) |
 
 ---
 

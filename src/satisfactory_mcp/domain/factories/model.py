@@ -170,6 +170,42 @@ class FactoryGraph:
         join them (save-projection.md §6.12a)."""
         return self.components("power", skip=self.switched_off)
 
+    def power_reach(self, sources: set[str], *, through_off: bool = False) -> set[str]:
+        """Every actor ``sources`` reach over the power layer. Power stops at a switch standing
+        off unless ``through_off``, which reads every switch as on."""
+        seen: set[str] = set()
+        stack = list(sources)
+        while stack:
+            node = stack.pop()
+            if node in seen:
+                continue
+            seen.add(node)
+            if through_off or node not in self.switched_off:
+                stack.extend(self.neighbours(node, "power"))
+        return seen
+
+    def behind_off_switch(self, sources: set[str]) -> set[str]:
+        """The actors ``sources`` would reach if every switch were on, and do not now."""
+        if not self.switched_off or not sources:
+            return set()
+        return self.power_reach(sources, through_off=True) - self.power_reach(sources)
+
+    def switch_links(self, grids: list[list[str]]) -> dict[int, set[int]]:
+        """Which of ``grids`` (by index) face each other across switches standing off; a run
+        of off switches wired to each other counts as one."""
+        grid_of = {leaf: i for i, grid in enumerate(grids) for leaf in grid}
+        links: dict[int, set[int]] = {}
+        for run in self.components("power", nodes=sorted(self.switched_off)):
+            facing = {
+                grid_of[n]
+                for switch in run
+                for n in self.neighbours(switch, "power")
+                if n in grid_of
+            }
+            for i in facing:
+                links.setdefault(i, set()).update(facing - {i})
+        return links
+
     def towers(self) -> set[str]:
         return {n for n in self.cls if self.kind(n) == "tower"}
 

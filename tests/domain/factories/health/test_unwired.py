@@ -227,3 +227,19 @@ def test_the_note_names_a_machine_on_a_circuit_with_no_source(use_world, game, p
     assert "1 machine(s) are wired to a circuit NO GENERATOR stands on" in out
     assert victim in out
     assert "have no electrical connection at all" not in out, "it is wired; say the right one"
+
+
+def test_a_machine_behind_an_off_switch_reads_switched_off_not_unpowered(game):
+    """A generator reaches it once the switch is on, so it is a choice, not a fault."""
+    behind = _fed("Build_ConstructorMk1_C_110")
+    graph = _grid(
+        ("Build_GeneratorBiomass_C_111", "Build_PowerSwitch_C_1"),
+        ("Build_PowerSwitch_C_1", "Build_ConstructorMk1_C_110"),
+    )
+    graph.switched_off.add("Build_PowerSwitch_C_1")
+    report = assess_records(
+        game, machines=[behind], generators=[_burner("Build_GeneratorBiomass_C_111")], graph=graph
+    )
+    assert state_of(report, "Build_ConstructorMk1_C_110") == "switched off"
+    assert report.switched_off == ["Build_ConstructorMk1_C_110"]
+    assert report.no_generator == []
