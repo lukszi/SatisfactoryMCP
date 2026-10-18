@@ -3,7 +3,8 @@
  * each. See docs/planner-p3_contract.md F2. */
 
 import { html, type Safe } from "../../../kit/html";
-import { acts, entry, list } from "../../../kit/ui/entry";
+import { openMenu } from "../../../kit/overlay/menu";
+import { actSlots, entry, list } from "../../../kit/ui/entry";
 import { chip, tagChip } from "../../../kit/ui/marks";
 import { loadingLine } from "../../../kit/ui/states";
 import { dashH, emptyLine, note } from "../../../kit/ui/text";
@@ -26,12 +27,32 @@ function named(ops: PlanOpBody[]): Op[] {
   return ops.filter((o): o is Op => typeof o.op === "string");
 }
 
+type AltOp = "require" | "ban" | "free";
+
+/** What can be done to an option, in button order: the first is the button, the rest go into ⋯. */
+function opsOf(o: SwapOption): AltOp[] {
+  const out: AltOp[] = [];
+  if (!o.required && named(o.require_ops).length) out.push("require");
+  if (named(o.free_ops).length) out.push("free");
+  if (!o.banned && named(o.ban_ops).length) out.push("ban");
+  return out;
+}
+
+const OP_LABEL: Record<AltOp, string> = { require: "require", ban: "ban", free: WORDS.letSolverChoose };
+
+function opTitle(what: AltOp, o: SwapOption): string {
+  if (what === "require") return "make every unit in this plan with " + o.name;
+  if (what === "ban") return "keep " + o.name + " out of this plan";
+  return "drop " + o.name + " from the required and banned lists";
+}
+
 function optionActs(o: SwapOption, i: number): Safe {
-  if (o.status === "locked" || bench.gone) return acts("");
-  if (o.banned_by && !o.solved) return acts("");
+  if (o.status === "locked" || bench.gone || (o.banned_by && !o.solved)) return actSlots("", { more: "" });
+  const ops = opsOf(o);
   const off = current() ? "" : html` aria-disabled="true"`;
-  const b = (what: string, label: string, title: string) => html`<button type="button" class="btn" data-alt-op="${what}" data-alt-i="${String(i)}" data-ctl="${"alt:" + o.recipe_id + ":" + what}" title="${title}"${off}>${label}</button>`;
-  return acts(html`${!o.required && named(o.require_ops).length ? b("require", "require", "make every unit in this plan with " + o.name) : ""}${!o.banned && named(o.ban_ops).length ? b("ban", "ban", "keep " + o.name + " out of this plan") : ""}${named(o.free_ops).length ? b("free", WORDS.letSolverChoose, "drop " + o.name + " from the required and banned lists") : ""}`);
+  const main = ops[0] ? html`<button type="button" class="btn" data-alt-op="${ops[0]}" data-alt-i="${String(i)}" data-ctl="${"alt:" + o.recipe_id + ":" + ops[0]}" title="${opTitle(ops[0], o)}"${off}>${OP_LABEL[ops[0]]}</button>` : "";
+  const more = ops.length > 1 ? html`<button class="btn icon more" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="${"more for " + o.name}" data-alt-more="${String(i)}" data-ctl="${"alt:" + o.recipe_id + ":more"}"${off}>⋯</button>` : "";
+  return actSlots(main, { more });
 }
 
 function rawPills(o: SwapOption): Safe {
@@ -86,13 +107,21 @@ export function drawerClick(target: Element, close: () => void): boolean {
     loadAlternates();
     return true;
   }
+  const more = target.closest<HTMLElement>("[data-alt-more]");
+  if (more) {
+    const o = bench.alternates?.data?.options[Number(more.dataset.altMore)];
+    if (o && current()) openMenu(more, opsOf(o).slice(1).map((what) => ({ label: OP_LABEL[what], act: () => runOp(o, what) })));
+    return true;
+  }
   const b = target.closest<HTMLElement>("[data-alt-op]");
   if (!b) return false;
   const o = bench.alternates?.data?.options[Number(b.dataset.altI)];
-  if (!o || !current()) return true;
-  const what = b.dataset.altOp;
+  if (o && current()) runOp(o, b.dataset.altOp as AltOp);
+  return true;
+}
+
+function runOp(o: SwapOption, what: AltOp): void {
   if (what === "require") applyOps(named(o.require_ops), bench.alternates!.data!.item);
   else if (what === "ban") applyOps(named(o.ban_ops));
   else applyOps(named(o.free_ops));
-  return true;
 }

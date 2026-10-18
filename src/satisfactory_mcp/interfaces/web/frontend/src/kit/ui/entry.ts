@@ -76,11 +76,12 @@ export interface SlotOptions {
 
 /** Fixed action slots that line up from row to row: an optional ◎ slot, one text-button slot
  *  (`--act-w`; `{ split: [a, b] }` halves it for two related buttons), then the ⋯ slot. Empty slots keep their
- *  width, so the column is `--col-acts` (`--col-acts-pin` with ◎, `--act-w` without ⋯). */
-export function actSlots(action: Hole | { split: [Hole, Hole] }, o?: SlotOptions): Safe {
+ *  width, so the column is `--col-acts` (`--col-acts-pin` with ◎, `--act-w` without ⋯). `null` drops the
+ *  button slot in a list whose rows carry glyphs only (`--col-act` per glyph slot, `--col-glyphs` for two). */
+export function actSlots(action: Hole | { split: [Hole, Hole] } | null, o?: SlotOptions): Safe {
   const opts = o || {};
   const pair = typeof action === "object" && action !== null && "split" in action ? action.split : null;
-  const main = pair ? html`<span class="aslot-s">${pair[0]}${pair[1]}</span>` : html`<span class="aslot-b">${action as Hole}</span>`;
+  const main = action === null ? "" : pair ? html`<span class="aslot-s">${pair[0]}${pair[1]}</span>` : html`<span class="aslot-b">${action as Hole}</span>`;
   const pin = opts.pin === undefined ? "" : html`<span class="aslot-g">${opts.pin}</span>`;
   const more = opts.more === false ? "" : html`<span class="aslot-g">${opts.more}</span>`;
   return html`<div class="acts aslots">${pin}${main}${more}</div>`;

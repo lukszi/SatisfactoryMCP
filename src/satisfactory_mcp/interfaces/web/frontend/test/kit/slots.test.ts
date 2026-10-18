@@ -16,4 +16,8 @@ describe("action slots", () => {
   it("drops the ⋯ slot for a list without menus", () => {
     expect(actSlots("", { more: false }).safeHtml).toBe('<div class="acts aslots"><span class="aslot-b"></span></div>');
   });
+
+  it("drops the button slot for a list of glyphs only", () => {
+    expect(actSlots(null, { pin: "", more: "" }).safeHtml).toBe('<div class="acts aslots"><span class="aslot-g"></span><span class="aslot-g"></span></div>');
+  });
 });

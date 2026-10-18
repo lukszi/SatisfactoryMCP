@@ -11,8 +11,8 @@ import { timeOfDay } from "../../../kit/format";
 import { html, type Safe } from "../../../kit/html";
 import { openMenu } from "../../../kit/overlay/menu";
 import { fail, friendlyError, notify } from "../../../kit/toast";
-import { btn, glyphBtn, moreBtn } from "../../../kit/ui/controls";
-import { acts, entry, list, nameLine } from "../../../kit/ui/entry";
+import { btn, moreBtn } from "../../../kit/ui/controls";
+import { actSlots, entry, list, nameLine } from "../../../kit/ui/entry";
 import { chip } from "../../../kit/ui/marks";
 import { loadingLine } from "../../../kit/ui/states";
 import { dashH, emptyLine, toolrow } from "../../../kit/ui/text";
@@ -28,6 +28,7 @@ import type { AskAbout, AskRow, PinRow } from "../../../api/shapes";
 const PINS_SHOWN = 50;
 const PIN_MENU = ["rename", "copy", "ask chat", "delete"];
 const ASK_MENU = ["copy", "delete"];
+const SAVE_SOLVE = "new plan from it";
 
 const view = { allPins: false, renaming: 0 };
 
@@ -40,14 +41,15 @@ export function solveCard(): Safe {
   const called = card.plan ? planTitle(card.plan) || card.name : "";
   if (card.plan && !called) loadList();
   const open = card.plan && btn("open " + (called ? "“" + called + "”" : "its plan"), { title: "open the plan chat solved from; apply it there to merge with its edits", data: { cs: "open" } });
-  const save = card.args && btn("new plan from it", { title: "save chat's request as a new plan and open it", data: { cs: "new" } });
+  const save = card.args && btn(SAVE_SOLVE, { title: "save chat's request as a new plan and open it", data: { cs: "new" } });
+  const menu = (open && card.args ? [SAVE_SOLVE] : []).concat(["dismiss"]);
   const parts = card.args ? describeParts(card.args) : [];
   return list(
     "csolve",
     "stacked",
     entry(
       { title: parts.join(" · ") },
-      html`<div class="id">${nameLine(html`<span class="name">chat solved this</span>`, objectiveText(card.text))}${parts.length ? html`<div class="chips">${parts.map((p) => chip(p, "muted"))}</div>` : ""}</div>${chip("not saved", "mid")}${acts(html`${open}${save}${glyphBtn("×", "dismiss", { extra: "cs-x" })}`)}`
+      html`<div class="id">${nameLine(html`<span class="name">chat solved this</span>`, objectiveText(card.text))}${parts.length ? html`<div class="chips">${parts.map((p) => chip(p, "muted"))}</div>` : ""}</div>${chip("not saved", "mid")}${actSlots(open || save || "", { more: html`<span data-csmenu="1">${moreBtn("chat’s solve", menu)}</span>` })}`
     ),
     "nolead"
   );
@@ -72,10 +74,10 @@ function solveAction(what: string): void {
 
 /* ------------------------------------------------------------------ pins */
 
-function pinWhere(pin: PinRow): Safe {
+function pinWhere(pin: PinRow): Safe | "" {
   if (pin.x_m !== null && pin.y_m !== null) return html`<button type="button" class="btn icon" data-pinmap="${String(pin.n)}" title="${"show " + pin.id + " on the map"}" aria-label="${"show " + pin.id + " on the map"}">◎</button>`;
   if (pin.ref.plan && !pin.gone) return html`<a class="btn icon" href="${hashFor("planner/" + pin.ref.plan)}" title="open the plan" aria-label="${"open the plan of " + pin.id}">→</a>`;
-  return html`<span class="btn-gap" aria-hidden="true"></span>`;
+  return "";
 }
 
 function pinName(pin: PinRow): Safe {
@@ -84,10 +86,10 @@ function pinName(pin: PinRow): Safe {
 }
 
 function pinRow(pin: PinRow): Safe {
-  const state = pin.gone ? chip("gone", "muted", pin.gone_why) : html`<span></span>`;
+  const state = pin.gone ? chip("gone", "muted", pin.gone_why) : "";
   return entry(
     { title: pin.id + " · " + pin.text + (pin.gone ? " · gone: " + pin.gone_why : "") },
-    html`<div class="id">${pinName(pin)}</div>${state}${acts(html`${pinWhere(pin)}<span data-pin="${String(pin.n)}">${moreBtn(pin.id, PIN_MENU)}</span>`)}`
+    html`<div class="id">${pinName(pin)}</div>${actSlots(state, { pin: pinWhere(pin), more: html`<span data-pin="${String(pin.n)}">${moreBtn(pin.id, PIN_MENU)}</span>` })}`
   );
 }
 
@@ -159,7 +161,7 @@ function askRow(ask: AskRow): Safe {
   const answer = ask.answer ? html`<div class="ctx" title="${ask.answer}">answer: ${ask.answer}</div>` : "";
   return entry(
     { title: ask.text },
-    html`<div class="id">${nameLine(html`${chip(ask.id, "id")} <span class="name">${ask.text}</span>`, askAbout(ask))}${answer}</div>${askState(ask)}${acts(html`<span data-ask="${String(ask.n)}">${moreBtn(ask.id, ASK_MENU)}</span>`)}`
+    html`<div class="id">${nameLine(html`${chip(ask.id, "id")} <span class="name">${ask.text}</span>`, askAbout(ask))}${answer}</div>${actSlots(askState(ask), { more: html`<span data-ask="${String(ask.n)}">${moreBtn(ask.id, ASK_MENU)}</span>` })}`
   );
 }
 
@@ -195,7 +197,6 @@ export function wireChatLists(root: HTMLElement): void {
       else solveAction(what);
       return;
     }
-    if (target.closest(".cs-x")) return solveAction("dismiss");
     const map = target.closest<HTMLElement>("[data-pinmap]");
     if (map) {
       const pin = pinOf(map.dataset.pinmap);
@@ -203,6 +204,7 @@ export function wireChatLists(root: HTMLElement): void {
       return;
     }
     const more = target.closest<HTMLElement>(".more[data-menu]");
+    if (more && more.closest("[data-csmenu]")) return openMenu(more, more.dataset.menu!.split("|").map((label) => ({ label, act: () => solveAction(label === SAVE_SOLVE ? "new" : "dismiss") })));
     const pin = more && pinOf(more.closest<HTMLElement>("[data-pin]")?.dataset.pin);
     if (more && pin) return openMenu(more, PIN_MENU.map((label) => ({ label, act: () => pinAction(label, pin) })));
     const ask = more && askOf(more.closest<HTMLElement>("[data-ask]")?.dataset.ask);

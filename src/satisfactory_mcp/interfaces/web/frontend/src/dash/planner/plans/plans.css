@@ -24,10 +24,16 @@
 }
 
 /* ---------- chat's solve, pins and asks: one line per row ---------- */
-.l-csolve .entry,
-.l-cpins .entry,
+.l-csolve .entry {
+  --cols: minmax(0, 1fr) auto var(--col-acts);
+}
+
+.l-cpins .entry {
+  --cols: minmax(0, 1fr) var(--col-acts-pin);
+}
+
 .l-casks .entry {
-  --cols: minmax(0, 1fr) auto auto;
+  --cols: minmax(0, 1fr) var(--col-acts);
 }
 
 .l-csolve .id > .chips {
@@ -70,19 +76,13 @@
 }
 
 .l-plans .entry {
-  --cols: var(--pcard-ic) minmax(0, 1fr) auto;
+  --cols: var(--pcard-ic) minmax(0, 1fr) var(--col-acts);
 }
 
 .l-plans .entry > .ic,
 .l-plans .entry > .noic {
   width: var(--pcard-ic);
   height: var(--pcard-ic);
-}
-
-.l-plans .acts {
-  display: flex;
-  gap: var(--sp-2);
-  align-items: center;
 }
 
 .pcard .pv {

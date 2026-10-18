@@ -9,7 +9,7 @@ import { count, mw, pct } from "../../kit/format";
 import { html, mount, type Safe } from "../../kit/html";
 import { openMenu } from "../../kit/overlay/menu";
 import { sortSelect } from "../../kit/ui/controls";
-import { acts, chevron, entry, expandBody, list, wireExpand } from "../../kit/ui/entry";
+import { acts, actSlots, chevron, entry, expandBody, list, wireExpand } from "../../kit/ui/entry";
 import { chip, mixBar } from "../../kit/ui/marks";
 import { dashH, emptyLine, icon, toolrow } from "../../kit/ui/text";
 import { counted, WORDS } from "../../kit/words";
@@ -77,7 +77,7 @@ function factoryCard(row: FactoryHealthRow): Safe {
   const foot = html`<div class="full foot">${mixBar(mix, "machines by state: " + row.states.map((s) => s.count + " " + s.state).join(", "))}</div>`;
   return entry(
     { tone, href, key, open },
-    html`${factoryLead(row)}<div class="id"><a class="name" href="${href}" title="${row.name}">${row.name}</a><div class="ctx">${ctx}</div></div>${metric}${acts(html`${mapBtn(row.name, !!row.bbox_m)}${factoryMore(row.name, MENU_CARD)}${chevron(key, row.name, open)}`)}${facts}${foot}${expandOf(row)}`
+    html`${factoryLead(row)}<div class="id"><a class="name" href="${href}" title="${row.name}">${row.name}</a><div class="ctx">${ctx}</div></div>${metric}${acts(html`${actSlots(null, { pin: mapBtn(row.name, !!row.bbox_m), more: factoryMore(row.name, MENU_CARD) })}${chevron(key, row.name, open)}`)}${facts}${foot}${expandOf(row)}`
   );
 }
 
