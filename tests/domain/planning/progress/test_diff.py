@@ -31,7 +31,7 @@ from satisfactory_mcp.presenters.text import primitives as render
 from tests.support.reference_world import REFERENCE_FIELD
 
 #: See tests/mcp/test_surface.py for why ``game`` is requested module-wide: the three tests here that
-#: call a tool rather than the domain reach the game through the lru_cache'd ``app.game()``,
+#: call a tool rather than the domain reach the game through the lru_cache'd ``app.vanilla_game()``,
 #: which is not this suite's fixture and does not skip when the install is absent.
 pytestmark = [pytest.mark.integration, pytest.mark.usefixtures("game")]
 

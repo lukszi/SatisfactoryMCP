@@ -115,7 +115,6 @@ def plan_layout(
     Blocks are split by carrier throughput, and floors follow chain depth with a logistics
     deck between production floors.
     """
-    g = app.game()
     if gone := app.retired(("detail", detail, "show")):
         return gone
     wanted = show.strip().casefold()
@@ -123,6 +122,7 @@ def plan_layout(
         return f"! unknown show {show!r}. Choose from: {', '.join(LAYOUT_VIEWS)}"
     show = wanted
     st = app.load_world(save, world, as_of)
+    g = st.game
 
     row_choices, refused = resolve_row_overclock(row_overclock)
     if refused:

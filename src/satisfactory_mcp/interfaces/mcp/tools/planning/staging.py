@@ -134,8 +134,8 @@ def diff_vs_save(
     Saves are read-only: this never proposes writing one, and there is no dismantle action.
     Machines standing among the plan but not in it are listed for you to judge.
     """
-    g = app.game()
     st = app.load_world(save, world, as_of)
+    g = st.game
 
     exports = exports_for(objective, plan, exports, export_minimums)
     objective = goal_for(objective, plan, export_minimums)
@@ -232,8 +232,8 @@ def commission_plan(
 
     Takes the plan_factory arguments it declares; a saved plan (``plan=``) carries the rest.
     """
-    g = app.game()
     st = app.load_world(save, world, as_of)
+    g = st.game
 
     exports = exports_for(objective, plan, exports, export_minimums)
     objective = goal_for(objective, plan, export_minimums)

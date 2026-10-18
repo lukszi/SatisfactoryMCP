@@ -34,13 +34,14 @@ from ...serial import (
     cm_to_m,
     error_response,
     found_field_json,
-    game_data,
+    game_of,
     node_identity,
     point_m,
     region_json,
     require_world,
     resource_name,
     stale_tables,
+    vanilla_game_data,
     world_state,
 )
 
@@ -265,7 +266,13 @@ def world_nodes(
     by it. Locked nodes stay in, flagged ``spoiler``; the page fades them. A save that will
     not load still answers from the node table, with ``save_error`` set.
     """
-    game = game_data(request)
+    st: WorldState | None = None
+    save_error: str | None = None
+    try:
+        st = world_state(request, save, world)
+    except Exception as exc:
+        save_error = f"could not read save: {exc}"
+    game = game_of(request, st)
     view = view.strip().casefold()
     status = status.strip().casefold()
     refusal = (
@@ -285,13 +292,6 @@ def world_nodes(
         spatial_nodes.load_nodes()
     except FileNotFoundError as exc:
         return error_response(str(exc), 404)
-
-    st: WorldState | None = None
-    save_error: str | None = None
-    try:
-        st = world_state(request, save, world)
-    except Exception as exc:
-        save_error = f"could not read save: {exc}"
 
     found = node_search.find_nodes(
         st,
@@ -360,11 +360,11 @@ def world_sites(
     world: str | None = None,
 ) -> RankedSitesResponse | JSONResponse:
     """Candidate fields for one resource, best first, as ``rank_build_sites`` ranks them."""
-    game = game_data(request)
+    st = require_world(request, save, world)
+    game = st.game
     resource_id = resolve_item(game, resource)
     if resource_id is None:
         return error_response(f"unknown resource {resource!r}")
-    st = require_world(request, save, world)
     ranked = node_search.rank_build_sites(
         st, game, resource_id, source, resolve_resource=_resolver(game)
     )
@@ -398,7 +398,7 @@ def world_here(
 ) -> HereResponse:
     """Where the player stands and the nodes around them, as ``whereami`` answers it."""
     st = require_world(request, save, world)
-    game = game_data(request)
+    game = st.game
     found = surroundings.player_surroundings(st, game, radius_m)
     rows = found.nodes
     instances = [node["instance"] for node in rows]
@@ -438,7 +438,7 @@ def world_regions(
     world: str | None = None,
 ) -> RegionTableResponse | JSONResponse:
     """Named regions with their node counts, as ``list_regions`` lists them."""
-    game = game_data(request)
+    game = vanilla_game_data(request)
     resource_id = resolve_item(game, resource) if resource else None
     if resource and resource_id is None:
         return error_response(f"unknown resource {resource!r}")

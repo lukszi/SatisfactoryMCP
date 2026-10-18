@@ -13,11 +13,12 @@ from .....core.saveio.records import instance_leaf
 from .....domain.spatial import nodes as spatial_nodes
 from .....domain.spatial import regions as spatial_regions
 from .....domain.spatial.nodes.extraction import Occupant
+from .....domain.world.state import WorldState
 from ...serial import (
     Region,
     cm_to_m,
     error_response,
-    game_data,
+    game_of,
     node_identity,
     region_json,
     resource_name,
@@ -121,6 +122,7 @@ def nodes(
     save_error: str | None = None
     taken: dict[str, Occupant] = {}
     unlocked: set[str] | None = None
+    st: WorldState | None = None
     try:
         st = world_state(request, save, world)
         # A randomized world's resources and purities; the map's own when the save fails.
@@ -130,7 +132,7 @@ def nodes(
     except Exception as exc:
         save_error = f"could not read save: {exc}"
 
-    game = game_data(request)
+    game = game_of(request, st)
     rows = table.by_resource(resource) if resource else table.nodes
     out: list[NodeRow] = []
     for node in rows:

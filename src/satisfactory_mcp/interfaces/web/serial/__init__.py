@@ -12,7 +12,7 @@ from .responses import (
     check_plan_key,
     choice_refusal,
     error_response,
-    game_data,
+    game_of,
     json_object,
     newer_schema_response,
     page_actor,
@@ -21,6 +21,7 @@ from .responses import (
     require_plan,
     require_world,
     sidecar_meta_block,
+    vanilla_game_data,
     world_state,
 )
 from .shapes import (
@@ -104,7 +105,7 @@ __all__ = [
     "flow_group_json",
     "flow_json",
     "found_field_json",
-    "game_data",
+    "game_of",
     "item_amounts",
     "json_object",
     "machine_name",
@@ -126,6 +127,7 @@ __all__ = [
     "sidecar_meta_block",
     "stale_tables",
     "standing_anchors",
+    "vanilla_game_data",
     "world_state",
     "xyz_m",
     "yaw_deg",

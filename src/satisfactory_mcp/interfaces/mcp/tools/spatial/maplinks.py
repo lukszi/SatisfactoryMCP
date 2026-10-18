@@ -129,8 +129,8 @@ def show_on_map(
     if mode:
         mode = _base_map(mode)
 
-    g = app.game()
     st, _reason = app.load_world_or_none(save, world, as_of)
+    g = app.game_of(st)
 
     table = nodes_mod.nodes_for(st.projection if st else None)
     text = at.strip()

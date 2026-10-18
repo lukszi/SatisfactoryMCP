@@ -114,7 +114,7 @@ def resolve_required(entries: list[str] | None) -> tuple[list[str] | None, str]:
     """Recipe class ids for ``required``, by exact id or exact display name, or a refusal."""
     if not entries:
         return None, ""
-    recipes = app.game().recipes
+    recipes = app.vanilla_game().recipes
     out: list[str] = []
     for raw in entries:
         text = str(raw).strip()

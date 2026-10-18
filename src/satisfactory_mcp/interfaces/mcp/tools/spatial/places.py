@@ -6,6 +6,7 @@ from typing import Annotated
 
 from pydantic import Field
 
+from .....core.gamedata.model import GameData
 from .....domain.spatial import elevation, geo, heightfield, surroundings
 from .....domain.spatial import nodes as nodes_mod
 from .....domain.spatial import regions as regions_mod
@@ -37,10 +38,10 @@ def list_regions(
     """
     if gone := app.retired(("with_resource", with_resource, "resource")):
         return gone
-    g = app.game()
     regions = regions_mod.load_regions()
     # No save argument: the default world's counts, or the map's own without one.
     st, _reason = app.load_world_or_none()
+    g = app.game_of(st)
     table = nodes_mod.nodes_for(st.projection if st else None)
     resource_id = app.resolve_item_id(resource) if resource else None
     if resource and resource_id is None:
@@ -185,8 +186,7 @@ def _conduit_fields(
     return fields, notes
 
 
-def _surroundings(found: surroundings.PointDescription) -> list[tuple[str, str]]:
-    g = app.game()
+def _surroundings(g: GameData, found: surroundings.PointDescription) -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
     if found.nearest:
         nearest = found.nearest[0]
@@ -267,8 +267,9 @@ def describe_location(
 
     field = heightfield.load_field()
     player = st.player_position() if st and at.strip().casefold() in PLAYER_WORDS else None
+    g = app.game_of(st)
     found = surroundings.describe_point(
-        st, app.game(), x, y, radius_m, terrain_field=field, hint_z_cm=player[2] if player else None
+        st, g, x, y, radius_m, terrain_field=field, hint_z_cm=player[2] if player else None
     )
     near = found.probe
 
@@ -291,7 +292,7 @@ def describe_location(
     ):
         fields += more_fields
         notes += more_notes
-    fields += _surroundings(found)
+    fields += _surroundings(g, found)
     notes += found.notes
     return render.envelope(render.kv(fields), "", notes)
 
@@ -312,8 +313,8 @@ def whereami(
     ``near:me@<radius>`` as a source selector in the planning tools to scope work to
     here.
     """
-    g = app.game()
     st = app.load_world(save, world, as_of)
+    g = st.game
 
     found = surroundings.player_surroundings(st, g, radius_m)
     app.journal_world_find(st, ctx, "whereami", "", {}, "looked where the player is")

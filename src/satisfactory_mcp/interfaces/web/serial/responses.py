@@ -26,7 +26,7 @@ __all__ = [
     "check_plan_key",
     "choice_refusal",
     "error_response",
-    "game_data",
+    "game_of",
     "json_object",
     "newer_schema_response",
     "page_actor",
@@ -35,6 +35,7 @@ __all__ = [
     "require_plan",
     "require_world",
     "sidecar_meta_block",
+    "vanilla_game_data",
     "world_state",
 ]
 
@@ -55,9 +56,15 @@ def error_response(message: str, status: int = 400) -> JSONResponse:
     return JSONResponse({"error": message}, status_code=status)
 
 
-def game_data(request: Request) -> GameData:
-    """The normalized docs the app was built with; needs no save."""
+def vanilla_game_data(request: Request) -> GameData:
+    """The game data as shipped. Only for answers that hold no world: a world's own table
+    is ``WorldState.game``."""
     return request.app.state.game()
+
+
+def game_of(request: Request, st: WorldState | None) -> GameData:
+    """The world's own game data, or the game as shipped when no world could be read."""
+    return st.game if st is not None else vanilla_game_data(request)
 
 
 def world_state(request: Request, save: str | None, world: str | None) -> WorldState:

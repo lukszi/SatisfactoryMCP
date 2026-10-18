@@ -64,7 +64,7 @@ def _follow_nodes(
         return None if not value or value.strip().casefold() == "all" else value
 
     resource_id = app.resolve_item_id(asked) if (asked := given(resource)) else None
-    name = app.game().item_name(resource_id) if resource_id else "every"
+    name = st.game.item_name(resource_id) if resource_id else "every"
     shown = "fields" if view == "fields" else "nodes"
     app.journal_world_find(
         st,
@@ -274,8 +274,6 @@ def search_resource_nodes(
     """
     if gone := app.retired(("mode", mode, "show"), ("group", group, "show")):
         return gone
-    g = app.game()
-
     view = (show or "fields").strip().casefold()
     view = {"field": "fields", "node": "nodes"}.get(view, view)
     if view not in node_search.VIEWS:
@@ -285,6 +283,7 @@ def search_resource_nodes(
         return f"! unknown status {status!r}. Choose from: free, tapped, all"
 
     st, _reason = app.load_world_or_none(save, world, as_of)
+    g = app.game_of(st)
 
     if view == "nearest" and not near:
         return "! show='nearest' needs near=<x,y | me | factory name> to measure from"
@@ -398,7 +397,6 @@ def rank_build_sites(
     A ranking does not page: the rows below the cut score worse by construction, so raise
     `limit` or narrow `sources` rather than looking for an offset.
     """
-    g = app.game()
     resource_id = app.resolve_item_id(resource)
     if resource_id is None:
         return f"no resource matching {resource!r}"
@@ -407,6 +405,7 @@ def rank_build_sites(
     st = app.load_world(
         save, world, as_of, purpose=" (site ranking needs a save to know what is already built)"
     )
+    g = st.game
 
     ranked = node_search.rank_build_sites(
         st, g, resource_id, sources, resolve_resource=app.resolve_item_id

@@ -99,7 +99,7 @@ def write(name: str, nothing: str, push: Callable[[], Pushed]) -> tuple[Pushed |
 
 def head_stamper(st: WorldState) -> Stamp:
     """What the store records on the new head: its solve-input hash and resolved field."""
-    return summary.stamp_for(app.game(), st)
+    return summary.stamp_for(st)
 
 
 def journal_view(

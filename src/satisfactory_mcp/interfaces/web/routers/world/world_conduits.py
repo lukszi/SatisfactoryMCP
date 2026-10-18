@@ -21,7 +21,6 @@ from ...serial import (
     choice_refusal,
     cm_to_m,
     error_response,
-    game_data,
     require_world,
     resource_name,
 )
@@ -239,7 +238,7 @@ def world_conduits(
     if view == "networks" and kind == "belt":
         return error_response("view=networks lists fluid networks; a belt chain belongs to none")
     st = require_world(request, save, world)
-    game = game_data(request)
+    game = st.game
     base = _empty_reply("networks" if view == "networks" else "runs", radius_m, offset, st.age_note)
     page = slice(offset, offset + limit)
     if view == "networks":

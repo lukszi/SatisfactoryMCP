@@ -40,7 +40,7 @@ def _no_save_note(reason: str | None) -> str:
 @app.tool()
 def search_items(query: str, limit: Limit = 10, offset: int = 0) -> str:
     """Find items by name. Returns form, energy and sink points."""
-    hits = search.find_items(app.game(), query)
+    hits = search.find_items(app.vanilla_game(), query)
     window = render.page(limit, offset)
     page = window.of(hits)
     rows = [
@@ -62,7 +62,7 @@ def _shown(st: WorldState | None) -> tuple[GameData, list[str]]:
     """The recipe table a lookup shows: the world's game mode when a world is in scope, else
     vanilla; and the note naming the multiplier when the amounts differ from vanilla."""
     if st is None:
-        return app.game(), []
+        return app.vanilla_game(), []
     note = gamemode.parts_note(st.projection)
     return gamemode.shown_game(st.game, st.projection), [note] if note else []
 
@@ -396,10 +396,10 @@ def list_buildings(
     """
     if gone := app.retired(("kind", kind, "building_kind")):
         return gone
-    g = app.game()
     # Game data alone is still a useful answer: without a save the columns go blank and a
     # note says which save could not be read and why.
     st, save_error = app.load_world_or_none(save, world, as_of)
+    g = app.game_of(st)
     unlocked, built = (st.unlocked_building_ids, st.built_counts) if st is not None else (None, {})
     chosen_kind = (building_kind or "").strip().casefold()
     want = _BUILDING_KINDS.get(chosen_kind)

@@ -290,7 +290,7 @@ def _store_request(
     A site is resolved before the store is touched, so a bad coordinate refuses the whole
     save rather than leaving a half-written plan.
     """
-    g = app.game()
+    g = st.game
     plan_id = report.prepared.request.plan_id
     # What the selectors resolved to, stored WITH the request: plan_id moves when the world
     # does, never when a selector starts meaning a different part of the map.
@@ -483,8 +483,8 @@ def plan_factory(
     ``site_at`` says where the plan will STAND: the water there is measured, never an LP
     number. With ``save_as`` it is recorded; site_plan moves it.
     """
-    g = app.game()
     st = app.load_world(save, world, as_of)
+    g = st.game
     pinned = _canonical_pins(st, plan, sources, required, exclude_recipes)
     plan = pinned.plan
 

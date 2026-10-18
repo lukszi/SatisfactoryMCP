@@ -387,7 +387,7 @@ def plan_from_factory(
     name = _free_name(log, built.factory)
     draft = PlanState(key="", rev=1, name=name, args=built.args)
     try:
-        stamped = summary.stamp_for(g, st)(draft)
+        stamped = summary.stamp_for(st)(draft)
     except Exception:
         stamped = PlanStamp(plan_id="", provenance={})
     pushed = log.create(

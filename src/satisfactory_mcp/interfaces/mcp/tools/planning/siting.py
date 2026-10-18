@@ -70,8 +70,8 @@ def site_plan(
     The siting is a RECORD of your decision, not a constraint on the solve -- re-running
     the plan neither reads nor moves it, and ``save_as`` over the same name keeps it.
     """
-    g = app.game()
     st = app.load_world(save, world, as_of)
+    g = st.game
     stored = find_stored_plan(st, plan)
 
     def push(value: JsonObject | None, nothing: str) -> tuple[Pushed | None, str]:

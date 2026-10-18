@@ -21,7 +21,7 @@ from tests.support.projections import CONSTRUCTOR, SMELTER, smelter_belted_to_co
 def traced(game, monkeypatch, use_world) -> WorldState:
     st = WorldState(projection=smelter_belted_to_constructor(), game=game)
     use_world(st)
-    monkeypatch.setattr(app, "game", lambda: game)
+    monkeypatch.setattr(app, "vanilla_game", lambda: game)
     return st
 
 
