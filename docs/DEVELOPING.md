@@ -112,10 +112,34 @@ numbers held unchanged. The stored `spire-coast-full` plan keeps its region sele
 purpose. `SPIRE_COAST_NODES` is the second sanctioned field: the 18 `node:` ids that region
 resolved to when the payback tests were written, frozen so only a node-table change moves them.
 
-**`live` and `state`.** `state` is the committed projection, frozen; `live` is the newest save
-on the machine, for tests that measure the tool's real answer. `live` skips on `SaveError`, so
-a machine with the game and no save reports skips rather than errors. An MCP tool test hands
-the tools its world through `use_world`, which replaces `app.load_world` (docs/mcp-surface.md).
+**`live` and `state`.** `state` is the committed projection, frozen; `live` is the reference
+save parsed by today's sidecar, for tests that measure the tool's real answer. An MCP tool test
+hands the tools its world through `use_world`, which replaces `app.load_world`
+(docs/mcp-surface.md); one that does not reads the reference save, as `live` does.
+
+**The reference save.** The tests never read the newest save on the machine. They did until
+October 2026, and about 76 integration tests failed the day a nearly empty test world became
+the newest save. The session fixture `reference_pin` (`tests/support/reference_save.py`)
+replaces `config.saves_root` with a folder holding one save, so every path through the
+server's own discovery, `live` and a tool called without `use_world` alike, finds that save
+and nothing else. The folder is a copy in the system temp directory, kept at one path so the
+parse cache holds one entry for it. The save is `FIXTURE_SAVE`, the manual save the committed
+projection was cut from, looked for in this order:
+
+1. `SATISFACTORY_TEST_SAVE`, a path to a `.sav`, which pins another save for one run;
+2. the frozen copy `data/local/test-saves/reference/<FIXTURE_SAVE>`;
+3. that filename anywhere under the machine's save folder.
+
+Without one, every test that asks for the save folder skips and names what it looked for, so
+a clone with no saves reports skips rather than failures. The saves stay out of git, because
+they carry a Steam ID and a player name; `data/local/` is ignored. A manual save is never
+rewritten, unlike an autosave, but it can be deleted in the game; the frozen copy survives
+that. To refresh the copy, copy the same file from the save folder into
+`data/local/test-saves/reference/`. To move the suite to a newer save, re-cut the projection
+from it ("The reference world" above) and change `FIXTURE_SAVE`, which names both. `live`
+asserts it read the pinned file. `scan_saves` refuses the machine's save folder
+for the whole session: a test that wants every save, a whole-folder test, walks the folder
+itself through `machine_saves_root_or_skip` in `tests/support/saves.py`.
 
 **Speed.** `-n 8` is measured. On a 16-core, 32-thread machine with other work holding about a
 tenth of it, the default set (2,668 tests) takes 36 to 39 s at 8 workers and the integration set

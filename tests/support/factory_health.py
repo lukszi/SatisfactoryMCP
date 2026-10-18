@@ -43,7 +43,7 @@ def machine(name, recipe, *, uptime=None, buffers=None, **extra):
 
 
 class SingleCircuit:
-    """A ``FactoryGraph`` reduced to the one question ``assess`` asks it: one shared circuit."""
+    """A ``FactoryGraph`` reduced to what ``assess`` asks it: one shared circuit, no switch."""
 
     def __init__(self, wired):
         self.wired = set(wired)
@@ -53,6 +53,14 @@ class SingleCircuit:
         if node == POLE:
             return sorted(self.wired)
         return [POLE] if node in self.wired else []
+
+    def power_reach(self, sources, *, through_off=False):
+        """The sources, and the whole circuit once one of them is on it; no switch stands off."""
+        reached = set(sources)
+        return reached | {POLE, *self.wired} if reached & self.wired else reached
+
+    def behind_off_switch(self, sources):
+        return set()
 
 
 class ArrivingRuns:

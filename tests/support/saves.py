@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
 
 from pioneersav import ParseError, Reader, read_trailer
 from pioneersav.trailers import CONVEYOR_CHAIN
-from satisfactory_mcp import config
 from satisfactory_mcp.core.saveio.extract.interning import Interner
 from tests.support.paths import committed_fixture
 
@@ -16,10 +16,24 @@ from tests.support.paths import committed_fixture
 PLACED = ("machines", "extractors", "generators")
 
 
-def saves_root_or_skip() -> Path:
-    """The save directory the server would read, or a skip when this machine has none."""
-    root = config.saves_root()
-    if not root.is_dir():
+def machine_saves_root() -> Path | None:
+    """The machine's own save folder, read past the test pin on ``config.saves_root``.
+
+    ``SATISFACTORY_SAVES``, else the game's folder. An empty variable is rejected before the
+    ``is_dir`` check: ``Path("")`` is the working directory, which always exists.
+    """
+    env = os.environ.get("SATISFACTORY_SAVES")
+    candidates = [Path(env)] if env else []
+    local = os.environ.get("LOCALAPPDATA")
+    if local:
+        candidates.append(Path(local) / "FactoryGame" / "Saved" / "SaveGames")
+    return next((root for root in candidates if root.is_dir()), None)
+
+
+def machine_saves_root_or_skip() -> Path:
+    """The machine's save folder for a whole-folder test, or a skip when it has none."""
+    root = machine_saves_root()
+    if root is None:
         pytest.skip("no save directory on this machine")
     return root
 
