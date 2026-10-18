@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildOut, circuitDraws, circuitUncounted, GENERATOR_UNWIRED, problemsOf, utilScale, worldUncounted, worstFirst } from "../../src/dash/power/model";
-import { supplyBlock, utilBar } from "../../src/dash/power/supply";
+import { storageRow, supplyBlock, utilBar } from "../../src/dash/power/supply";
 
 import type { CircuitRow, CircuitsResponse, GeneratorCandidate, Ledger, MachineRef, StarvedGenerator } from "../../src/api/shapes";
 
@@ -20,6 +20,9 @@ function ledger(over: Partial<Ledger>): Ledger {
     paused: 0,
     biomass_mw: 0,
     biomass_generators: 0,
+    batteries: 0,
+    storage_mwh: 0,
+    storage_capacity_mwh: 0,
   };
   const out = { ...base, ...over };
   out.capacity_mw = out.generation_mw - out.starved_generation_mw;
@@ -144,6 +147,17 @@ describe("supply block", () => {
     expect(out).toContain('style="left:50.00%"');
     expect(out).toContain("150 <span>MW</span>");
     expect(out).not.toContain("bad-t");
+  });
+
+  it("adds a power storage row below the capacity line only when the grid has batteries", () => {
+    expect(storageRow(ledger({})).safeHtml).toBe("");
+    const out = storageRow(ledger({ batteries: 8, storage_mwh: 584.8, storage_capacity_mwh: 800 })).safeHtml;
+    expect(out).toContain("power storage");
+    expect(out).toContain("grid-row:4");
+    expect(out).toContain('style="width:73.10%"');
+    expect(out).toContain("of 800 MWh");
+    expect(out).toContain("585 <span>MWh</span>");
+    expect(out).toContain("8 batteries");
   });
 
   it("draws no line and no overdraw when generation is unknown", () => {

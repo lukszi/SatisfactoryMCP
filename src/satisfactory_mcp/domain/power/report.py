@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from typing_extensions import TypedDict
@@ -21,8 +22,10 @@ from .views import GeneratorTotal, PowerReport, StarvedEntry
 __all__ = [
     "BIOMASS_BURNERS",
     "NO_FUEL",
+    "BatteryBank",
     "MachineGroups",
     "PowerLedger",
+    "battery_bank",
     "biomass_note",
     "dry_input_classes",
     "dry_inputs",
@@ -54,6 +57,32 @@ def wired_actors(projection: Projection) -> frozenset[str] | None:
         return None
     actors = payload.get("actors") or []
     return frozenset(actors[i] for row in payload["power"] for i in row[:2] if 0 <= i < len(actors))
+
+
+@dataclass(frozen=True)
+class BatteryBank:
+    """The Power Storage on one grid: how many, the charge they hold and the most they can."""
+
+    batteries: int = 0
+    stored_mwh: float = 0.0
+    capacity_mwh: float = 0.0
+
+
+def battery_bank(records: Iterable[BuildableRecord], game: GameData) -> BatteryBank:
+    """Sum the batteries among ``records``: any building game data gives a store capacity.
+
+    The charge is the save's own figure per battery (save-projection.md §6.12a); the game
+    spreads a grid's charge evenly, so the sum is the grid's.
+    """
+    count, stored, capacity = 0, 0.0, 0.0
+    for record in records:
+        building = game.buildings.get(record["cls"])
+        if building is None or not building.power_store_capacity_mwh:
+            continue
+        count += 1
+        stored += record.get("stored_mwh") or 0.0
+        capacity += building.power_store_capacity_mwh
+    return BatteryBank(count, stored, capacity)
 
 
 def generator_building(game: GameData, cls: str) -> Building | None:

@@ -4403,7 +4403,9 @@ export interface components {
          * @description ``capacity_mw`` is production capacity, ``generation_mw`` less what starved generators
          *     cannot run; both headrooms are taken from it. ``biomass_mw`` and ``biomass_generators``
          *     are the wired burners left out of every figure here under ``?biomass=exclude``; both are
-         *     0 under ``include``.
+         *     0 under ``include``. ``batteries`` counts the Power Storage on the grid, ``storage_mwh`` the
+         *     charge they hold and ``storage_capacity_mwh`` the most they can; all three are 0 on a grid
+         *     with none, and none of them is in either headroom.
          */
         Ledger: {
             /** Generation Mw */
@@ -4432,6 +4434,12 @@ export interface components {
             biomass_mw: number;
             /** Biomass Generators */
             biomass_generators: number;
+            /** Batteries */
+            batteries: number;
+            /** Storage Mwh */
+            storage_mwh: number;
+            /** Storage Capacity Mwh */
+            storage_capacity_mwh: number;
         };
         /**
          * MachineIssue

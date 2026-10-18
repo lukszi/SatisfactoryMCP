@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import itertools
+
 from ...core.saveio import ports
-from ...core.saveio.records import actor_class, iter_machine_records
+from ...core.saveio.records import actor_class, instance_leaf, iter_machine_records
 from ...core.saveio.schema import Projection
 from .model import Edge, FactoryGraph, kind_of
 
@@ -47,5 +49,12 @@ def build_graph(projection: Projection) -> FactoryGraph:
         if len(row) < 2:
             continue
         graph.power.append(Edge(a=actors[row[0]], b=actors[row[1]]))
+    for record in projection.get("facilities") or ():
+        if record.get("switch_on") is False:
+            graph.switched_off.add(instance_leaf(record["instance"]))
+            # Skipping the switch must not split one side from itself: chain each side's
+            # neighbours, which were already joined through the switch.
+            for side in record.get("switch_sides") or ():
+                graph.power.extend(Edge(a=a, b=b) for a, b in itertools.pairwise(side))
 
     return graph

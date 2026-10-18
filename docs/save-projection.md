@@ -101,10 +101,12 @@ the wires supports exactly one claim, in two shapes:
 
 **Everything else is refused.** A brownout, a tripped grid, a coal plant out of coal, a machine
 whose circuit is at 0 MW — none of these are in the file, and a machine some generator *can* reach
-is therefore never called unpowered no matter what the report otherwise says about it. An **open
-power switch** is the one known blind spot and it fails in the safe direction: the switch is a node
-joined to both sides, so a genuinely dark sub-circuit behind one reads as reached and is not
-reported. Under-report, never over-report.
+is therefore never called unpowered no matter what the report otherwise says about it. A **power
+switch standing off** stops the walk, as it stops power in the game: since schema 25 the save's
+`mIsSwitchOn` is read (§6.12a), so a sub-circuit behind an off switch with no generator of its own
+is reported. A switch standing on joins its two sides. Rail power is the remaining blind spot, and
+it fails in the direction that over-reports: an outpost fed only through the track has no wire to a
+generator.
 
 Two absences are also refused as findings. No graph supplied, no verdict. And **no generator
 anywhere in the projection**, which would make every actor in the world unreachable: that is a
@@ -912,6 +914,39 @@ span of `graph["power"][i]` — **one pass writes both**, which is the only thin
 positional join true. **+78,671 bytes on the reference projection, +5.27%** (poles 24.3 KB over 701
 rows, wires 54.4 KB over 1,297).
 
+### 6.12a Switches and batteries — schema 25
+
+Power Switches, Priority Power Switches and Power Storage are filed under `facilities`, with the
+fields the power pages read. Measured on four publicly shared 1.0 saves (three from one world,
+one from another), since the reference world has built none of the three:
+
+- **`switch_on`**, on `Build_PowerSwitch_C` and `Build_PriorityPowerSwitch_C`, is `mIsSwitchOn`.
+  The property is written only while the switch is on, so an absent one reads `false`.
+- **`switch_sides`**, on the same two classes, lists the actors wired to each of the switch's two
+  connections (`PowerConnection1`, `PowerConnection2`) by short name. `graph["power"]` joins
+  every wire to the switch actor and so cannot say which side a neighbour is on.
+  `build_graph` uses the sides to cut an off switch without cutting a side from itself.
+- **`stored_mwh`**, on `Build_PowerStorageMk1_C`, is `mPowerStore`: the charge held, 0 to 100 MWh.
+  It is absent on an empty battery, which reads `0`. Every battery on one game circuit holds the
+  same figure, so the grid's charge is spread evenly rather than per building. The capacity is not
+  in the save; it is `mPowerStoreCapacity` in the docs dump, 100 MWh.
+
+**A switch splits a circuit even when it is on.** The game keeps each side of a switch in its own
+`FGPowerCircuit`, on or off: in one save a battery bank's circuit 22 joins the main circuit 75
+through an on switch, in the other circuit 37 joins circuit 40 the same way. The game's fuse treats
+circuits joined by on switches as one grid. The projection does not read those circuit objects,
+because `mCircuitID` holds only while a circuit's members stay the same. The server works on the
+wire graph instead, where a switch is one actor joined to both sides. A grid is therefore a
+connected component of `graph["power"]` with every **off** switch taken out (§6.1a).
+
+That rule was checked against the game's own circuits, merged through on switches, on the same
+saves. Every grid matched, with two exceptions, both rare and both outside switches:
+
+- A **Lights Control Panel** has an upstream and a downstream connection in two game circuits,
+  and the wire graph joins them. The downstream side carries lights, which no ledger counts.
+- **Rail power** has no wire: a train station or docking station takes power through the track,
+  so an outpost fed only by rail reads as a separate grid.
+
 ### 6.13 Crates — the inventory that is an event, not a place
 
 Schema 18. A death crate and a dismantle crate were the one thing in this world the projection
@@ -1246,6 +1281,7 @@ pickle then disagrees with the code rather than merely being thinner.
 | 22 | CORRECTS a false "possibly incomplete" note on saves whose older levels carry the previous build's changelist |
 | 23 | adds `fittings` (pipe junctions, pumps, valves) and `facilities` (the HUB, sink, MAM and other one-off buildings), so the map can draw them |
 | 24 | adds `hypertubes` (§6.16), `hypertube_entrances` and `map_markers` (§6.17), so the map can draw them |
+| 25 | files power switches as `facilities` with `switch_on` and `switch_sides`, and gives Power Storage `stored_mwh` (§6.12a) |
 
 ---
 

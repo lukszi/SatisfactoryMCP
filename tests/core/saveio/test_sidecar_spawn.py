@@ -210,10 +210,10 @@ def test_a_schema_bump_makes_every_cached_projection_miss(monkeypatch):
     header = {"path": "C:/saves/Han Solo.sav", "mtime_ns": 1785272928137058500, "size": 2935845}
     now = proj._cache_key(header)
 
-    monkeypatch.setattr(proj, "SCHEMA_VERSION", 23)
-    assert proj._cache_key(header) != now, "a schema 23 pickle would be served to schema 24"
-
     monkeypatch.setattr(proj, "SCHEMA_VERSION", 24)
+    assert proj._cache_key(header) != now, "a schema 24 pickle would be served to schema 25"
+
+    monkeypatch.setattr(proj, "SCHEMA_VERSION", 25)
     assert proj._cache_key(header) == now
     for field, other in (("path", "C:/saves/Other.sav"), ("mtime_ns", 1), ("size", 1)):
         assert proj._cache_key({**header, field: other}) != now, field

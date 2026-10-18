@@ -65,7 +65,9 @@ from .registers import (
     MANUFACTURER_HINTS,
     PIPE_CLASSES,
     POWER_POLE_CLASSES,
+    POWER_STORAGE_CLASSES,
     STORAGE_CLASSES,
+    SWITCH_CLASSES,
 )
 from .routes import ChainActor, HeldNetwork, PipeActor
 
@@ -208,6 +210,8 @@ class _ProjectionWalk:
     wire_ends: dict[str, list[tuple[str, str]]] = field(
         default_factory=dict[str, list[tuple[str, str]]]
     )
+    #: Power switches by short name, given their two sides once every wire is read.
+    switches: dict[str, BuildableRecord] = field(default_factory=dict[str, BuildableRecord])
 
     def visit(
         self, type_path: str, header: ActorHeader | ComponentHeader, obj: ParsedObject
@@ -483,6 +487,12 @@ class _ProjectionWalk:
             record["pending_clock"] = round(to_float(properties["mPendingPotential"]), 6)
         if "mIsProductionPaused" in properties:
             record["paused"] = truthy(properties["mIsProductionPaused"])
+        # Both written only when set, so an absent one is a real off and a real 0 MWh.
+        if seen.cls in SWITCH_CLASSES:
+            record["switch_on"] = truthy(properties.get("mIsSwitchOn", 0))
+            self.switches[str(seen.instance).rsplit(".", 1)[-1]] = record
+        if seen.cls in POWER_STORAGE_CLASSES:
+            record["stored_mwh"] = round(to_float(properties.get("mPowerStore", 0.0) or 0.0), 3)
         for name in _BOOST_PROPERTIES:
             if name in properties:
                 record["production_boost"] = to_float(properties[name])
@@ -532,6 +542,19 @@ class _ProjectionWalk:
             record = self.record_by_instance.get(owner)
             if record is not None:
                 record["potential_slots"] = slotted
+        self._attach_switch_sides()
+
+    def _attach_switch_sides(self) -> None:
+        """Each switch's neighbours per connection, so an off one can be cut between them."""
+        sides: dict[str, dict[str, set[str]]] = {leaf: {} for leaf in self.switches}
+        for ends in self.wire_ends.values():
+            if len(ends) != 2:
+                continue
+            for (owner, role), (other, _role) in (ends, ends[::-1]):
+                if owner in sides:
+                    sides[owner].setdefault(role, set[str]()).add(other)
+        for leaf, by_role in sides.items():
+            self.switches[leaf]["switch_sides"] = [sorted(by_role[r]) for r in sorted(by_role)]
 
     def finish(self, save: ParsedSave) -> None:
         out = self.out

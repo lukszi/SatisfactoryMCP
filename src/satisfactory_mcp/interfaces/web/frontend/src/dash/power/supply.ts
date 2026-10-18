@@ -5,9 +5,9 @@ import { html, type Safe } from "../../kit/html";
 import { chip } from "../../kit/ui/marks";
 import { icon, na } from "../../kit/ui/text";
 import { count, mw } from "../../kit/format";
-import { WORDS } from "../../kit/words";
+import { counted, WORDS } from "../../kit/words";
 
-import type { CircuitRow, CircuitsResponse } from "../../api/shapes";
+import type { CircuitRow, CircuitsResponse, Ledger } from "../../api/shapes";
 import type { Uncounted } from "./model";
 
 type GeneratorGroup = CircuitsResponse["generators"][number];
@@ -90,6 +90,20 @@ export function supplyBlock(s: Supply, uncounted: Uncounted[], split?: SplitDraw
   const label = WORDS.capacity + " " + mw(s.cap) + ", " + WORDS.maxConsumption + " " + mw(s.np) + ", " + WORDS.consumption + " " + mw(s.ms);
   const chips = uncounted.length ? html`<div class="nc"><span class="k">not counted</span>${uncounted.map((u) => chip(u[0], "muted", u[1]))}</div>` : "";
   return html`<div class="sd" role="group" aria-label="${label}">${cells}${line}${extra}</div>${chips}`;
+}
+
+/** The supply block's three MW rows; a row passed in as `extra` goes below them, where the
+ * capacity line does not reach. */
+const SUPPLY_ROWS = 3;
+
+/** "power storage": stored of capacity in MWh on its own scale, or nothing without batteries. */
+export function storageRow(led: Ledger): Safe {
+  if (!led.batteries) return html``;
+  const at = "grid-row:" + (SUPPLY_ROWS + 1);
+  const cap = led.storage_capacity_mwh;
+  const tip = number(led.storage_mwh) + " of " + number(cap) + " MWh in " + counted(led.batteries, "battery", "batteries") + "; not in headroom";
+  const fill = cap > 0 ? (led.storage_mwh / cap) * 100 : 0;
+  return html`<span class="k" style="${at}">${WORDS.powerStorage}</span><div class="tr g" style="${at}" title="${tip}"><i class="st" style="width:${pctW(fill)}"></i><span class="cap">of ${number(cap)} MWh</span></div><span class="v" style="${at}">${number(led.storage_mwh)} <span>MWh</span></span>`;
 }
 
 /** 100% = the circuit's production capacity; `scale` is the shared overflow room (utilScale). */

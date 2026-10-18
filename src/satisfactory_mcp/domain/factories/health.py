@@ -307,8 +307,7 @@ def _generator_reach(graph: FactoryGraph, sources: set[str]) -> set[str] | None:
     """Every actor some generator reaches over the power wires, or ``None`` for no sources.
 
     ``None`` because a projection with no generator at all says something about the save, not
-    about any one machine. An OPEN power switch still joins its two sides here, so this
-    under-reports rather than over-reports.
+    about any one machine. Power stops at a switch standing off, as it does in the game.
     """
     if not sources:
         return None
@@ -319,7 +318,8 @@ def _generator_reach(graph: FactoryGraph, sources: set[str]) -> set[str] | None:
         if node in seen:
             continue
         seen.add(node)
-        stack.extend(graph.neighbours(node, "power"))
+        if node not in graph.switched_off:
+            stack.extend(graph.neighbours(node, "power"))
     return seen
 
 

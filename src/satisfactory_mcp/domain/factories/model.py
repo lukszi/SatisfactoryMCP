@@ -76,6 +76,9 @@ class FactoryGraph:
     #: Hypertubes, written into the belts' edge list: kept so a tube stays findable, apart so
     #: no material question can traverse one.
     hyper: list[Edge] = field(default_factory=list[Edge])
+    #: Power switches standing off: each still sits on the wires to both sides, but passes no
+    #: power between them, so a grid is a power component with these taken out.
+    switched_off: set[str] = field(default_factory=set[str])
 
     _adj: dict[str, dict[str, list[Edge]]] = field(
         default_factory=dict[str, dict[str, list[Edge]]], repr=False
@@ -161,6 +164,11 @@ class FactoryGraph:
                 out.append(machines)
         out.sort(key=len, reverse=True)
         return out
+
+    def grids(self) -> list[list[str]]:
+        """The power components the game runs as one grid: off switches split them, on ones
+        join them (save-projection.md §6.12a)."""
+        return self.components("power", skip=self.switched_off)
 
     def towers(self) -> set[str]:
         return {n for n in self.cls if self.kind(n) == "tower"}
